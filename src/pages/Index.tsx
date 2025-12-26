@@ -4,9 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calculator, Moon, Sun, Calendar } from "lucide-react";
+import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import CalculatorHeader from "./Index/CalculatorHeader";
@@ -16,6 +17,7 @@ import UpgradeResult from "./Index/UpgradeResult";
 import FooterSection from "./Index/FooterSection";
 import UsageDurationInfo from "./Index/UsageDurationInfo";
 import CalculationHistorySheet from "./Index/CalculationHistorySheet";
+import ProRataUserAddition from "./Index/ProRataUserAddition";
 import { parseDate, formatDate } from "./Index/dateUtils";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,7 +25,6 @@ import UserManagement from "@/components/UserManagement";
 import PriceManagement from "@/components/PriceManagement";
 import MathSettings from "@/components/MathSettings";
 import { calculateUpgradeWithSettings } from "@/utils/calculationEngine";
-
 // Updated plan data structure with cycle-specific pricing
 const planData = {
   "shared-hosting": {
@@ -688,55 +689,79 @@ const Index = () => {
                 <CardTitle className={darkMode ? 'text-white' : 'text-gray-800'}>
                   UCAP
                 </CardTitle>
-                
               </div>
               <CalculationHistorySheet darkMode={darkMode} formatCurrency={formatCurrency} calculationHistory={calculationHistory} clearHistory={clearCalculationHistory} exportHistory={exportCalculationHistory} isAdmin={isAdmin} />
             </div>
           </CardHeader>
           
           <CardContent className="space-y-6">
-            <PlanSelectorSection 
-              category={category} 
-              setCategory={setCategory} 
-              currentPlan={currentPlan} 
-              setCurrentPlan={setCurrentPlan} 
-              billingCycle={billingCycle} 
-              setBillingCycle={setBillingCycle} 
-              darkMode={darkMode} 
-              targetCategory={targetCategory} 
-              setTargetCategory={setTargetCategory} 
-              targetPlan={targetPlan} 
-              setTargetPlan={setTargetPlan} 
-              targetBillingCycle={targetBillingCycle} 
-              setTargetBillingCycle={setTargetBillingCycle} 
-              currentPlanPriceOverride={currentPlanPriceOverride} 
-              setCurrentPlanPriceOverride={setCurrentPlanPriceOverride} 
-              targetPlanPriceOverride={targetPlanPriceOverride} 
-              setTargetPlanPriceOverride={setTargetPlanPriceOverride}
-              currentPlanTaxEnabled={currentPlanTaxEnabled}
-              setCurrentPlanTaxEnabled={setCurrentPlanTaxEnabled}
-              currentPlanTaxRate={currentPlanTaxRate}
-              setCurrentPlanTaxRate={setCurrentPlanTaxRate}
-              targetPlanTaxEnabled={targetPlanTaxEnabled}
-              setTargetPlanTaxEnabled={setTargetPlanTaxEnabled}
-              targetPlanTaxRate={targetPlanTaxRate}
-              setTargetPlanTaxRate={setTargetPlanTaxRate}
-              currentPlanDiscountEnabled={currentPlanDiscountEnabled}
-              setCurrentPlanDiscountEnabled={setCurrentPlanDiscountEnabled}
-              currentPlanDiscountRate={currentPlanDiscountRate}
-              setCurrentPlanDiscountRate={setCurrentPlanDiscountRate}
-              targetPlanDiscountEnabled={targetPlanDiscountEnabled}
-              setTargetPlanDiscountEnabled={setTargetPlanDiscountEnabled}
-              targetPlanDiscountRate={targetPlanDiscountRate}
-              setTargetPlanDiscountRate={setTargetPlanDiscountRate}
-            />
-            <DateRangeSelector darkMode={darkMode} startDateText={startDateText} endDateText={endDateText} handleStartDateChange={handleStartDateChange} handleEndDateChange={handleEndDateChange} startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} calculateDaysFromDates={calculateDaysFromDates} />
-            <UsageDurationInfo darkMode={darkMode} calculateDaysFromDates={calculateDaysFromDates} startDate={startDate} endDate={endDate} billingCycle={billingCycle} cycleLabels={cycleLabels} />
-            <Button onClick={calculateUpgrade} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-lg font-semibold" size="lg">
-              <Calculator className="w-5 h-5 mr-2" />
-              Calculate Upgrade Cost
-            </Button>
-            <UpgradeResult result={result} darkMode={darkMode} formatCurrency={formatCurrency} />
+            <Tabs defaultValue="upgrade" className="w-full">
+              <TabsList className={`grid w-full grid-cols-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                <TabsTrigger 
+                  value="upgrade" 
+                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                >
+                  <ArrowUpCircle className="w-4 h-4" />
+                  Upgrade Calculator
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="prorata" 
+                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Pro Rata User
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="upgrade" className="mt-6 space-y-6">
+                <PlanSelectorSection 
+                  category={category} 
+                  setCategory={setCategory} 
+                  currentPlan={currentPlan} 
+                  setCurrentPlan={setCurrentPlan} 
+                  billingCycle={billingCycle} 
+                  setBillingCycle={setBillingCycle} 
+                  darkMode={darkMode} 
+                  targetCategory={targetCategory} 
+                  setTargetCategory={setTargetCategory} 
+                  targetPlan={targetPlan} 
+                  setTargetPlan={setTargetPlan} 
+                  targetBillingCycle={targetBillingCycle} 
+                  setTargetBillingCycle={setTargetBillingCycle} 
+                  currentPlanPriceOverride={currentPlanPriceOverride} 
+                  setCurrentPlanPriceOverride={setCurrentPlanPriceOverride} 
+                  targetPlanPriceOverride={targetPlanPriceOverride} 
+                  setTargetPlanPriceOverride={setTargetPlanPriceOverride}
+                  currentPlanTaxEnabled={currentPlanTaxEnabled}
+                  setCurrentPlanTaxEnabled={setCurrentPlanTaxEnabled}
+                  currentPlanTaxRate={currentPlanTaxRate}
+                  setCurrentPlanTaxRate={setCurrentPlanTaxRate}
+                  targetPlanTaxEnabled={targetPlanTaxEnabled}
+                  setTargetPlanTaxEnabled={setTargetPlanTaxEnabled}
+                  targetPlanTaxRate={targetPlanTaxRate}
+                  setTargetPlanTaxRate={setTargetPlanTaxRate}
+                  currentPlanDiscountEnabled={currentPlanDiscountEnabled}
+                  setCurrentPlanDiscountEnabled={setCurrentPlanDiscountEnabled}
+                  currentPlanDiscountRate={currentPlanDiscountRate}
+                  setCurrentPlanDiscountRate={setCurrentPlanDiscountRate}
+                  targetPlanDiscountEnabled={targetPlanDiscountEnabled}
+                  setTargetPlanDiscountEnabled={setTargetPlanDiscountEnabled}
+                  targetPlanDiscountRate={targetPlanDiscountRate}
+                  setTargetPlanDiscountRate={setTargetPlanDiscountRate}
+                />
+                <DateRangeSelector darkMode={darkMode} startDateText={startDateText} endDateText={endDateText} handleStartDateChange={handleStartDateChange} handleEndDateChange={handleEndDateChange} startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} calculateDaysFromDates={calculateDaysFromDates} />
+                <UsageDurationInfo darkMode={darkMode} calculateDaysFromDates={calculateDaysFromDates} startDate={startDate} endDate={endDate} billingCycle={billingCycle} cycleLabels={cycleLabels} />
+                <Button onClick={calculateUpgrade} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-lg font-semibold" size="lg">
+                  <Calculator className="w-5 h-5 mr-2" />
+                  Calculate Upgrade Cost
+                </Button>
+                <UpgradeResult result={result} darkMode={darkMode} formatCurrency={formatCurrency} />
+              </TabsContent>
+              
+              <TabsContent value="prorata" className="mt-6">
+                <ProRataUserAddition darkMode={darkMode} />
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 
