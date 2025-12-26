@@ -16,7 +16,14 @@ interface ProRataUserAdditionProps {
   darkMode: boolean;
 }
 
+const productOptions = [
+  { value: "custom", label: "Custom", price: 0 },
+  { value: "google", label: "Google Workspace", price: 599 },
+  { value: "zoho", label: "Zoho", price: 2020 }
+];
+
 const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) => {
+  const [selectedProduct, setSelectedProduct] = useState<string>("custom");
   const [userCount, setUserCount] = useState<number>(1);
   const [pricePerUser, setPricePerUser] = useState<number>(0);
   const [billingCycle, setBillingCycle] = useState<string>("12");
@@ -24,6 +31,14 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
   const [subscriptionStartText, setSubscriptionStartText] = useState("");
   const [result, setResult] = useState<any>(null);
   const { toast } = useToast();
+
+  const handleProductChange = (value: string) => {
+    setSelectedProduct(value);
+    const product = productOptions.find(p => p.value === value);
+    if (product && product.price > 0) {
+      setPricePerUser(product.price);
+    }
+  };
 
   const cycleLabels: Record<string, string> = {
     "1": "Monthly",
@@ -51,7 +66,7 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
 
   useEffect(() => {
     setResult(null);
-  }, [userCount, pricePerUser, billingCycle, subscriptionStartDate]);
+  }, [userCount, pricePerUser, billingCycle, subscriptionStartDate, selectedProduct]);
 
   const calculateProRata = () => {
     if (!subscriptionStartDate || userCount <= 0 || pricePerUser <= 0) {
@@ -106,6 +121,24 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
 
   return (
     <div className="space-y-6">
+      <div className="space-y-2">
+        <Label className={darkMode ? 'text-gray-200' : 'text-gray-700'}>
+          Product
+        </Label>
+        <Select value={selectedProduct} onValueChange={handleProductChange}>
+          <SelectTrigger className={darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
+            {productOptions.map((product) => (
+              <SelectItem key={product.value} value={product.value} className={darkMode ? 'text-white hover:bg-gray-700' : ''}>
+                {product.label} {product.price > 0 && `(NPR ${product.price}/user/month)`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label className={darkMode ? 'text-gray-200' : 'text-gray-700'}>
@@ -128,7 +161,10 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
             type="number"
             min={0}
             value={pricePerUser}
-            onChange={(e) => setPricePerUser(parseFloat(e.target.value) || 0)}
+            onChange={(e) => {
+              setPricePerUser(parseFloat(e.target.value) || 0);
+              setSelectedProduct("custom");
+            }}
             className={darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}
             placeholder="NPR"
           />
