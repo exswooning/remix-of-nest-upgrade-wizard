@@ -26,7 +26,6 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
   const [selectedProduct, setSelectedProduct] = useState<string>("custom");
   const [userCount, setUserCount] = useState<string>("");
   const [pricePerUser, setPricePerUser] = useState<number>(0);
-  const [billingCycle, setBillingCycle] = useState<string>("12");
   const [subscriptionStartDate, setSubscriptionStartDate] = useState<Date>();
   const [subscriptionStartText, setSubscriptionStartText] = useState("");
   const [userAdditionDate, setUserAdditionDate] = useState<Date>();
@@ -42,18 +41,6 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
     if (product && product.price > 0) {
       setPricePerUser(product.price);
     }
-  };
-
-  const cycleLabels: Record<string, string> = {
-    "1": "Monthly",
-    "12": "Annual",
-    "36": "3 Years"
-  };
-
-  const cycleDays: Record<string, number> = {
-    "1": 30,
-    "12": 365,
-    "36": 1095
   };
 
   const handleStartDateChange = (value: string) => {
@@ -118,7 +105,7 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
 
   useEffect(() => {
     setResult(null);
-  }, [userCount, pricePerUser, billingCycle, subscriptionStartDate, userAdditionDate, selectedProduct]);
+  }, [userCount, pricePerUser, subscriptionStartDate, userAdditionDate, selectedProduct]);
 
   const calculateProRata = () => {
     const userCountNum = parseInt(userCount) || 0;
@@ -214,24 +201,6 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label className={darkMode ? 'text-gray-200' : 'text-gray-700'}>
-            Billing Cycle
-          </Label>
-          <Select value={billingCycle} onValueChange={setBillingCycle}>
-            <SelectTrigger className={darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
-              {Object.entries(cycleLabels).map(([value, label]) => (
-                <SelectItem key={value} value={value} className={darkMode ? 'text-white hover:bg-gray-700' : ''}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
         <div className="space-y-2">
           <Label className={darkMode ? 'text-gray-200' : 'text-gray-700'}>
             Subscription Start Date <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>(DD/MM/YYYY)</span>
