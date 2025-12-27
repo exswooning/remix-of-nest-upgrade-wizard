@@ -130,33 +130,19 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
       return;
     }
 
-    const addition = new Date(userAdditionDate);
-    const start = new Date(subscriptionStartDate);
-    const totalDays = cycleDays[billingCycle];
-
-    // Calculate days used since subscription start until user addition date
-    let usedDays = 0;
-    if (addition > start) {
-      usedDays = Math.ceil((addition.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      usedDays = Math.min(usedDays, totalDays);
-    }
-
-    const daysRemaining = totalDays - usedDays;
-    const totalCostPerUser = pricePerUser;
-    const dailyRate = totalCostPerUser / totalDays;
-    const proRataCostPerUser = dailyRate * daysRemaining;
-    const totalProRataCost = proRataCostPerUser * userCount;
+    // Calculate exact months (days / 30)
+    const exactMonths = elapsedDays / 30;
+    const roundedMonths = Number.isInteger(exactMonths) ? exactMonths : Math.ceil(exactMonths);
+    
+    // Total Pro Rata Cost = Price per User × Months Rounded Up × Number of Users
+    const totalProRataCost = pricePerUser * roundedMonths * userCount;
 
     setResult({
       userCount,
-      pricePerUser: totalCostPerUser,
-      dailyRate,
-      daysRemaining,
-      totalDays,
-      usedDays,
+      pricePerUser,
       elapsedDays,
-      elapsedMonths,
-      proRataCostPerUser,
+      exactMonths,
+      roundedMonths,
       totalProRataCost
     });
 
@@ -380,26 +366,34 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
           <CardContent className="space-y-3">
             <div className={`flex justify-between items-center p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
               <span className={darkMode ? 'text-gray-200' : 'text-gray-600'}>
-                Days Remaining ({result.daysRemaining} of {result.totalDays} days):
+                Days Elapsed:
               </span>
               <span className={`font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                {((result.daysRemaining / result.totalDays) * 100).toFixed(1)}%
+                {result.elapsedDays} days
               </span>
             </div>
             <div className={`flex justify-between items-center p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
               <span className={darkMode ? 'text-gray-200' : 'text-gray-600'}>
-                Daily Rate per User:
+                Months (Exact):
               </span>
               <span className={`font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                {formatCurrency(result.dailyRate)}
+                {result.exactMonths.toFixed(2)} months
               </span>
             </div>
             <div className={`flex justify-between items-center p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
               <span className={darkMode ? 'text-gray-200' : 'text-gray-600'}>
-                Pro Rata Cost per User:
+                Months (Rounded Up):
               </span>
               <span className={`font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                {formatCurrency(result.proRataCostPerUser)}
+                {result.roundedMonths} month{result.roundedMonths !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className={`flex justify-between items-center p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
+              <span className={darkMode ? 'text-gray-200' : 'text-gray-600'}>
+                Price per User:
+              </span>
+              <span className={`font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                {formatCurrency(result.pricePerUser)}
               </span>
             </div>
             <div className={`flex justify-between items-center p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
@@ -408,6 +402,11 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
               </span>
               <span className={`font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                 {result.userCount}
+              </span>
+            </div>
+            <div className={`p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
+              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                Calculation: {formatCurrency(result.pricePerUser)} × {result.roundedMonths} months × {result.userCount} user{result.userCount !== 1 ? 's' : ''}
               </span>
             </div>
             <div className={`flex justify-between items-center p-4 rounded font-bold text-lg ${darkMode ? 'bg-gray-600 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>
