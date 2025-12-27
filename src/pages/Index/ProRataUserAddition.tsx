@@ -185,8 +185,8 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
             Number of Users to Add
           </Label>
           <Input
-            type="number"
-            min={1}
+            type="text"
+            inputMode="numeric"
             value={userCount}
             onChange={(e) => setUserCount(parseInt(e.target.value) || 1)}
             className={darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}
@@ -198,8 +198,8 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
             Price per User (Full Cycle)
           </Label>
           <Input
-            type="number"
-            min={0}
+            type="text"
+            inputMode="decimal"
             value={pricePerUser}
             onChange={(e) => {
               setPricePerUser(parseFloat(e.target.value) || 0);
