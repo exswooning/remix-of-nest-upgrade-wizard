@@ -356,7 +356,7 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
         Calculate Pro Rata Cost
       </Button>
 
-      {result && (
+      {result && result.exactMonths !== undefined && (
         <Card className={`mt-6 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-green-50 border-green-200'}`}>
           <CardHeader>
             <CardTitle className={`text-lg ${darkMode ? 'text-white' : 'text-green-800'}`}>
