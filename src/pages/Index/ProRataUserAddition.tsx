@@ -192,12 +192,12 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
 
         <div className="space-y-2">
           <Label className={darkMode ? 'text-gray-200' : 'text-gray-700'}>
-            Subscription Start Date
+            Subscription Start Date <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>(DD/MM/YYYY)</span>
           </Label>
           <div className="flex gap-2">
             <Input
               type="text"
-              placeholder="YYYY-MM-DD"
+              placeholder="DD/MM/YYYY"
               value={subscriptionStartText}
               onChange={(e) => handleStartDateChange(e.target.value)}
               className={`flex-1 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}`}
@@ -220,7 +220,7 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
                   selected={subscriptionStartDate}
                   onSelect={setSubscriptionStartDate}
                   initialFocus
-                  className={darkMode ? 'bg-gray-800 text-white' : ''}
+                  className={cn("pointer-events-auto", darkMode ? 'bg-gray-800 text-white' : '')}
                 />
               </PopoverContent>
             </Popover>
