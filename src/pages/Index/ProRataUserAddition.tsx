@@ -29,6 +29,10 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
   const [billingCycle, setBillingCycle] = useState<string>("12");
   const [subscriptionStartDate, setSubscriptionStartDate] = useState<Date>();
   const [subscriptionStartText, setSubscriptionStartText] = useState("");
+  const [userAdditionDate, setUserAdditionDate] = useState<Date>();
+  const [userAdditionText, setUserAdditionText] = useState("");
+  const [elapsedDays, setElapsedDays] = useState<number>(0);
+  const [elapsedMonths, setElapsedMonths] = useState<number>(0);
   const [result, setResult] = useState<any>(null);
   const { toast } = useToast();
 
@@ -58,6 +62,24 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
     if (parsed) setSubscriptionStartDate(parsed);
   };
 
+  const handleUserAdditionDateChange = (value: string) => {
+    setUserAdditionText(value);
+    const parsed = parseDate(value);
+    if (parsed) setUserAdditionDate(parsed);
+  };
+
+  const setTodayAsStartDate = () => {
+    const today = new Date();
+    setSubscriptionStartDate(today);
+    setSubscriptionStartText(formatDate(today));
+  };
+
+  const setTodayAsUserAdditionDate = () => {
+    const today = new Date();
+    setUserAdditionDate(today);
+    setUserAdditionText(formatDate(today));
+  };
+
   useEffect(() => {
     if (subscriptionStartDate && (!subscriptionStartText || parseDate(subscriptionStartText)?.getTime() !== subscriptionStartDate.getTime())) {
       setSubscriptionStartText(formatDate(subscriptionStartDate));
@@ -65,11 +87,41 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
   }, [subscriptionStartDate]);
 
   useEffect(() => {
+    if (userAdditionDate && (!userAdditionText || parseDate(userAdditionText)?.getTime() !== userAdditionDate.getTime())) {
+      setUserAdditionText(formatDate(userAdditionDate));
+    }
+  }, [userAdditionDate]);
+
+  // Calculate elapsed days and months when dates change
+  useEffect(() => {
+    if (subscriptionStartDate && userAdditionDate) {
+      const start = new Date(subscriptionStartDate);
+      const addition = new Date(userAdditionDate);
+      
+      if (addition >= start) {
+        const diffTime = addition.getTime() - start.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        setElapsedDays(diffDays);
+        
+        // Convert to months and round up if not a whole number
+        const months = diffDays / 30;
+        setElapsedMonths(Number.isInteger(months) ? months : Math.ceil(months));
+      } else {
+        setElapsedDays(0);
+        setElapsedMonths(0);
+      }
+    } else {
+      setElapsedDays(0);
+      setElapsedMonths(0);
+    }
+  }, [subscriptionStartDate, userAdditionDate]);
+
+  useEffect(() => {
     setResult(null);
-  }, [userCount, pricePerUser, billingCycle, subscriptionStartDate, selectedProduct]);
+  }, [userCount, pricePerUser, billingCycle, subscriptionStartDate, userAdditionDate, selectedProduct]);
 
   const calculateProRata = () => {
-    if (!subscriptionStartDate || userCount <= 0 || pricePerUser <= 0) {
+    if (!subscriptionStartDate || !userAdditionDate || userCount <= 0 || pricePerUser <= 0) {
       toast({
         title: "Missing Information",
         description: "Please fill in all fields correctly.",
@@ -78,14 +130,14 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
       return;
     }
 
-    const today = new Date();
+    const addition = new Date(userAdditionDate);
     const start = new Date(subscriptionStartDate);
     const totalDays = cycleDays[billingCycle];
 
-    // Calculate days used since subscription start
+    // Calculate days used since subscription start until user addition date
     let usedDays = 0;
-    if (today > start) {
-      usedDays = Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    if (addition > start) {
+      usedDays = Math.ceil((addition.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
       usedDays = Math.min(usedDays, totalDays);
     }
 
@@ -102,6 +154,8 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
       daysRemaining,
       totalDays,
       usedDays,
+      elapsedDays,
+      elapsedMonths,
       proRataCostPerUser,
       totalProRataCost
     });
@@ -202,6 +256,16 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
               onChange={(e) => handleStartDateChange(e.target.value)}
               className={`flex-1 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}`}
             />
+            <Button
+              variant="outline"
+              onClick={setTodayAsStartDate}
+              className={cn(
+                "px-3",
+                darkMode ? 'bg-gray-800 border-gray-700 text-white hover:bg-gray-700' : ''
+              )}
+            >
+              Today
+            </Button>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -226,7 +290,76 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
             </Popover>
           </div>
         </div>
+
+        <div className="space-y-2">
+          <Label className={darkMode ? 'text-gray-200' : 'text-gray-700'}>
+            User Addition Date <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>(DD/MM/YYYY)</span>
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              placeholder="DD/MM/YYYY"
+              value={userAdditionText}
+              onChange={(e) => handleUserAdditionDateChange(e.target.value)}
+              className={`flex-1 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}`}
+            />
+            <Button
+              variant="outline"
+              onClick={setTodayAsUserAdditionDate}
+              className={cn(
+                "px-3",
+                darkMode ? 'bg-gray-800 border-gray-700 text-white hover:bg-gray-700' : ''
+              )}
+            >
+              Today
+            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "px-3",
+                    darkMode ? 'bg-gray-800 border-gray-700 text-white hover:bg-gray-700' : ''
+                  )}
+                >
+                  <Calendar className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className={`w-auto p-0 ${darkMode ? 'bg-gray-800 border-gray-700' : ''}`} align="end">
+                <CalendarComponent
+                  mode="single"
+                  selected={userAdditionDate}
+                  onSelect={setUserAdditionDate}
+                  initialFocus
+                  className={cn("pointer-events-auto", darkMode ? 'bg-gray-800 text-white' : '')}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
       </div>
+
+      {/* Elapsed Time Display */}
+      {subscriptionStartDate && userAdditionDate && elapsedDays > 0 && (
+        <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-blue-50 border border-blue-200'}`}>
+          <div className="flex justify-between items-center">
+            <span className={darkMode ? 'text-gray-200' : 'text-gray-700'}>
+              Days Elapsed:
+            </span>
+            <span className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+              {elapsedDays} days
+            </span>
+          </div>
+          <div className="flex justify-between items-center mt-2">
+            <span className={darkMode ? 'text-gray-200' : 'text-gray-700'}>
+              Months Elapsed (rounded up):
+            </span>
+            <span className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+              {elapsedMonths} month{elapsedMonths !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+      )}
 
       <Button
         onClick={calculateProRata}
