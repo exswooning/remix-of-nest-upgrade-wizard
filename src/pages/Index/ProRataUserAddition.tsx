@@ -24,7 +24,7 @@ const productOptions = [
 
 const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) => {
   const [selectedProduct, setSelectedProduct] = useState<string>("custom");
-  const [userCount, setUserCount] = useState<number>(1);
+  const [userCount, setUserCount] = useState<string>("");
   const [pricePerUser, setPricePerUser] = useState<number>(0);
   const [billingCycle, setBillingCycle] = useState<string>("12");
   const [subscriptionStartDate, setSubscriptionStartDate] = useState<Date>();
@@ -121,7 +121,8 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
   }, [userCount, pricePerUser, billingCycle, subscriptionStartDate, userAdditionDate, selectedProduct]);
 
   const calculateProRata = () => {
-    if (!subscriptionStartDate || !userAdditionDate || userCount <= 0 || pricePerUser <= 0) {
+    const userCountNum = parseInt(userCount) || 0;
+    if (!subscriptionStartDate || !userAdditionDate || userCountNum <= 0 || pricePerUser <= 0) {
       toast({
         title: "Missing Information",
         description: "Please fill in all fields correctly.",
@@ -135,10 +136,10 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
     const roundedMonths = Number.isInteger(exactMonths) ? exactMonths : Math.ceil(exactMonths);
     
     // Total Pro Rata Cost = Price per User × Months Rounded Up × Number of Users
-    const totalProRataCost = pricePerUser * roundedMonths * userCount;
+    const totalProRataCost = pricePerUser * roundedMonths * userCountNum;
 
     setResult({
-      userCount,
+      userCount: userCountNum,
       pricePerUser,
       elapsedDays,
       exactMonths,
@@ -188,8 +189,9 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
             type="text"
             inputMode="numeric"
             value={userCount}
-            onChange={(e) => setUserCount(parseInt(e.target.value) || 1)}
+            onChange={(e) => setUserCount(e.target.value.replace(/[^0-9]/g, ''))}
             className={darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}
+            placeholder="Enter number of users"
           />
         </div>
 
