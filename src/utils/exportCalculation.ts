@@ -9,6 +9,8 @@ interface ProRataExportData {
   exactMonths: number;
   roundedMonths: number;
   totalProRataCost: number;
+  vatAmount: number;
+  totalWithVat: number;
   subscriptionStartDate: string;
   userAdditionDate: string;
   product?: string;
@@ -102,14 +104,34 @@ export const exportToPDF = async (data: ExportData) => {
     pdf.text(`Calculation: ${formatCurrency(data.pricePerUser)} × ${data.roundedMonths} months × ${data.userCount} user${data.userCount !== 1 ? 's' : ''}`, 20, yPos + 8);
     yPos += 18;
     
-    // Total
+    // Subtotal
     pdf.setFillColor(16, 185, 129);
+    pdf.rect(14, yPos, pageWidth - 28, 12, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Subtotal (Before VAT):', 20, yPos + 8);
+    pdf.text(formatCurrency(data.totalProRataCost), pageWidth - 60, yPos + 8);
+    yPos += 14;
+    
+    // VAT
+    pdf.setTextColor(0, 0, 0);
+    pdf.setFillColor(249, 250, 251);
+    pdf.rect(14, yPos, pageWidth - 28, 10, 'F');
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('VAT (13%):', 20, yPos + 7);
+    pdf.text(formatCurrency(data.vatAmount), pageWidth - 60, yPos + 7);
+    yPos += 12;
+    
+    // Total with VAT
+    pdf.setFillColor(5, 150, 105);
     pdf.rect(14, yPos, pageWidth - 28, 14, 'F');
     pdf.setTextColor(255, 255, 255);
     pdf.setFontSize(12);
     pdf.setFont('helvetica', 'bold');
-    pdf.text('Total Pro Rata Cost:', 20, yPos + 9);
-    pdf.text(formatCurrency(data.totalProRataCost), pageWidth - 60, yPos + 9);
+    pdf.text('Total with VAT:', 20, yPos + 9);
+    pdf.text(formatCurrency(data.totalWithVat), pageWidth - 60, yPos + 9);
     
   } else {
     // Upgrade Table
