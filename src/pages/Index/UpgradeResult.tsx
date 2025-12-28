@@ -1,15 +1,47 @@
-
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
+import { exportToPDF } from "@/utils/exportCalculation";
 
 interface UpgradeResultProps {
   result: any;
   darkMode: boolean;
   formatCurrency: (amount: number) => string;
+  currentPlan?: string;
+  targetPlan?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
-const UpgradeResult: React.FC<UpgradeResultProps> = ({ result, darkMode, formatCurrency }) => {
+const UpgradeResult: React.FC<UpgradeResultProps> = ({ 
+  result, 
+  darkMode, 
+  formatCurrency,
+  currentPlan = '',
+  targetPlan = '',
+  startDate = '',
+  endDate = ''
+}) => {
   if (!result) return null;
+  
+  const handleExportPDF = () => {
+    exportToPDF({
+      type: 'upgrade',
+      currentPlan,
+      targetPlan,
+      startDate,
+      endDate,
+      usedDays: result.usedDays,
+      totalDays: result.totalDays,
+      moneyPerDay: result.moneyPerDay,
+      usedMoney: result.usedMoney,
+      remainingAmount: result.remainingAmount,
+      newPackageFullAmount: result.newPackageFullAmount,
+      upgradeAmount: result.upgradeAmount,
+    });
+  };
+
   return (
     <Card className={`mt-6 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-blue-50 border-blue-200'}`}>
       <CardHeader>
@@ -62,6 +94,13 @@ const UpgradeResult: React.FC<UpgradeResultProps> = ({ result, darkMode, formatC
           <span>Final Upgrade Cost:</span>
           <span>{formatCurrency(result.upgradeAmount)}</span>
         </div>
+        <Button
+          onClick={handleExportPDF}
+          className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Export as PDF
+        </Button>
       </CardContent>
     </Card>
   );

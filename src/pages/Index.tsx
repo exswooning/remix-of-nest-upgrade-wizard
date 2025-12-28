@@ -755,7 +755,15 @@ const Index = () => {
                   <Calculator className="w-5 h-5 mr-2" />
                   Calculate Upgrade Cost
                 </Button>
-                <UpgradeResult result={result} darkMode={darkMode} formatCurrency={formatCurrency} />
+                <UpgradeResult 
+                  result={result} 
+                  darkMode={darkMode} 
+                  formatCurrency={formatCurrency} 
+                  currentPlan={currentPlan}
+                  targetPlan={targetPlan}
+                  startDate={startDateText}
+                  endDate={endDateText}
+                />
               </TabsContent>
               
               <TabsContent value="prorata" className="mt-6">
