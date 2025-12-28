@@ -6,11 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar, UserPlus } from "lucide-react";
+import { Calendar, UserPlus, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { parseDate, formatDate } from "./dateUtils";
 import { useToast } from "@/hooks/use-toast";
+import { exportToPDF } from "@/utils/exportCalculation";
 
 interface ProRataUserAdditionProps {
   darkMode: boolean;
@@ -384,6 +385,24 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
               <span>Total Pro Rata Cost:</span>
               <span>{formatCurrency(result.totalProRataCost)}</span>
             </div>
+            <Button
+              onClick={() => exportToPDF({
+                type: 'prorata',
+                userCount: result.userCount,
+                pricePerUser: result.pricePerUser,
+                elapsedDays: result.elapsedDays,
+                exactMonths: result.exactMonths,
+                roundedMonths: result.roundedMonths,
+                totalProRataCost: result.totalProRataCost,
+                subscriptionStartDate: subscriptionStartText,
+                userAdditionDate: userAdditionText,
+                product: selectedProduct !== 'custom' ? productOptions.find(p => p.value === selectedProduct)?.label : undefined
+              })}
+              className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export as PDF
+            </Button>
           </CardContent>
         </Card>
       )}
