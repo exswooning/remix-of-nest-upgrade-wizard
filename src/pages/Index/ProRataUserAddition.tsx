@@ -125,6 +125,10 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
     
     // Total Pro Rata Cost = Price per User × Months Rounded Up × Number of Users
     const totalProRataCost = pricePerUser * roundedMonths * userCountNum;
+    
+    // VAT calculation (13%)
+    const vatAmount = totalProRataCost * 0.13;
+    const totalWithVat = totalProRataCost + vatAmount;
 
     setResult({
       userCount: userCountNum,
@@ -132,7 +136,9 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
       elapsedDays,
       exactMonths,
       roundedMonths,
-      totalProRataCost
+      totalProRataCost,
+      vatAmount,
+      totalWithVat
     });
 
     toast({
@@ -382,8 +388,20 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
               </span>
             </div>
             <div className={`flex justify-between items-center p-4 rounded font-bold text-lg ${darkMode ? 'bg-gray-600 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>
-              <span>Total Pro Rata Cost:</span>
+              <span>Subtotal (Before VAT):</span>
               <span>{formatCurrency(result.totalProRataCost)}</span>
+            </div>
+            <div className={`flex justify-between items-center p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
+              <span className={darkMode ? 'text-gray-200' : 'text-gray-600'}>
+                VAT (13%):
+              </span>
+              <span className={`font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                {formatCurrency(result.vatAmount)}
+              </span>
+            </div>
+            <div className={`flex justify-between items-center p-4 rounded font-bold text-lg ${darkMode ? 'bg-emerald-900 text-emerald-300' : 'bg-emerald-200 text-emerald-800'}`}>
+              <span>Total with VAT:</span>
+              <span>{formatCurrency(result.totalWithVat)}</span>
             </div>
             <Button
               onClick={() => exportToPDF({
@@ -394,6 +412,8 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
                 exactMonths: result.exactMonths,
                 roundedMonths: result.roundedMonths,
                 totalProRataCost: result.totalProRataCost,
+                vatAmount: result.vatAmount,
+                totalWithVat: result.totalWithVat,
                 subscriptionStartDate: subscriptionStartText,
                 userAdditionDate: userAdditionText,
                 product: selectedProduct !== 'custom' ? productOptions.find(p => p.value === selectedProduct)?.label : undefined
