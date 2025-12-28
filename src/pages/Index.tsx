@@ -372,8 +372,8 @@ const Index = () => {
       totalDays: 0,
       usedDays: 0
     };
-    const today = new Date();
     const start = new Date(startDate);
+    const end = new Date(endDate);
     const cycle = parseInt(billingCycle);
 
     // Calculate total days based on billing cycle
@@ -395,14 +395,14 @@ const Index = () => {
         totalDays = 30;
     }
 
-    // Calculate used days from start date to today
+    // Calculate used days from start date to end date (upgrade date)
     let usedDays;
-    if (today <= start) {
-      // If today is before or on the start date, no days used yet
+    if (end <= start) {
+      // If end date is before or on the start date, no days used yet
       usedDays = 0;
     } else {
-      // Calculate days used from start to today
-      usedDays = Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      // Calculate days used from start to end date
+      usedDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
       // Cap used days at total days
       usedDays = Math.min(usedDays, totalDays);
     }
