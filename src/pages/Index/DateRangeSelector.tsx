@@ -55,7 +55,7 @@ const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
         </div>
       </div>
       <div className="space-y-2">
-        <Label className={darkMode ? "text-gray-200" : "text-gray-700"}>Billing End Date (DD/MM/YYYY)</Label>
+        <Label className={darkMode ? "text-gray-200" : "text-gray-700"}>Upgrade Date (DD/MM/YYYY)</Label>
         <div className="flex gap-2">
           <Input type="text" placeholder="DD/MM/YYYY" value={endDateText} onChange={e => handleEndDateChange(e.target.value)} className={cn("flex-1", darkMode ? "bg-gray-700 border-gray-600 text-white" : "")} />
           <Button variant="outline" size="sm" onClick={setEndDateToToday} className={cn("shrink-0 px-3", darkMode ? "bg-gray-700 border-gray-600 text-white hover:bg-gray-600" : "")}>
