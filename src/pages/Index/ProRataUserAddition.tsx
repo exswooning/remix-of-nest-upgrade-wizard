@@ -80,19 +80,22 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
     }
   }, [userAdditionDate]);
 
-  // Calculate elapsed months using inclusive calendar month counting
-  // TotalMonths = ((EndYear - StartYear) * 12) + (EndMonth - StartMonth) + 1
+  // Calculate remaining months using forward-looking logic
+  // Renewal Date = Start Date + 1 Year
+  // TotalMonths = ((RenewalYear - AdditionYear) * 12) + (RenewalMonth - AdditionMonth) + 1
   useEffect(() => {
     if (subscriptionStartDate && userAdditionDate) {
-      const start = new Date(subscriptionStartDate);
       const addition = new Date(userAdditionDate);
       
-      if (addition >= start) {
-        const totalMonths = ((addition.getFullYear() - start.getFullYear()) * 12) + (addition.getMonth() - start.getMonth()) + 1;
+      // Derive renewal date as Start Date + 1 Year
+      const renewalDate = new Date(subscriptionStartDate);
+      renewalDate.setFullYear(renewalDate.getFullYear() + 1);
+      
+      if (renewalDate > addition) {
+        const totalMonths = ((renewalDate.getFullYear() - addition.getFullYear()) * 12) + (renewalDate.getMonth() - addition.getMonth()) + 1;
         setElapsedMonths(totalMonths);
         
-        // Keep elapsed days for display purposes
-        const diffTime = addition.getTime() - start.getTime();
+        const diffTime = renewalDate.getTime() - addition.getTime();
         setElapsedDays(Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
       } else {
         setElapsedDays(0);
@@ -306,7 +309,15 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
         <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700 border border-gray-600' : 'bg-blue-50 border border-blue-200'}`}>
           <div className="flex justify-between items-center">
             <span className={darkMode ? 'text-gray-200' : 'text-gray-700'}>
-              Days Elapsed:
+              Renewal Date (Start + 1 Year):
+            </span>
+            <span className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+              {formatDate(new Date(new Date(subscriptionStartDate).setFullYear(subscriptionStartDate.getFullYear() + 1)))}
+            </span>
+          </div>
+          <div className="flex justify-between items-center mt-2">
+            <span className={darkMode ? 'text-gray-200' : 'text-gray-700'}>
+              Days Remaining until Renewal:
             </span>
             <span className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
               {elapsedDays} days
@@ -314,7 +325,7 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
           </div>
           <div className="flex justify-between items-center mt-2">
             <span className={darkMode ? 'text-gray-200' : 'text-gray-700'}>
-              Months Elapsed (rounded up):
+              Months Remaining (Inclusive):
             </span>
             <span className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
               {elapsedMonths} month{elapsedMonths !== 1 ? 's' : ''}
@@ -342,7 +353,7 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
           <CardContent className="space-y-3">
             <div className={`flex justify-between items-center p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
               <span className={darkMode ? 'text-gray-200' : 'text-gray-600'}>
-                Days Elapsed:
+                Days Remaining until Renewal:
               </span>
               <span className={`font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                 {result.elapsedDays} days
@@ -350,7 +361,7 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
             </div>
             <div className={`flex justify-between items-center p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
               <span className={darkMode ? 'text-gray-200' : 'text-gray-600'}>
-                Calendar Months (Inclusive):
+                Months Remaining (Inclusive):
               </span>
               <span className={`font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                 {result.totalMonths} month{result.totalMonths !== 1 ? 's' : ''}
