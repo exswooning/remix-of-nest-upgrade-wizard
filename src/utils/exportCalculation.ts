@@ -6,8 +6,7 @@ interface ProRataExportData {
   userCount: number;
   pricePerUser: number;
   elapsedDays: number;
-  exactMonths: number;
-  roundedMonths: number;
+  totalMonths: number;
   totalProRataCost: number;
   vatAmount: number;
   totalWithVat: number;
@@ -72,8 +71,7 @@ export const exportToPDF = async (data: ExportData) => {
       ['Number of Users', data.userCount.toString()],
       ['Price per User', formatCurrency(data.pricePerUser)],
       ['Days Elapsed', `${data.elapsedDays} days`],
-      ['Exact Months', data.exactMonths.toFixed(2)],
-      ['Months (Rounded Up)', `${data.roundedMonths} month${data.roundedMonths !== 1 ? 's' : ''}`],
+      ['Calendar Months (Inclusive)', `${data.totalMonths} month${data.totalMonths !== 1 ? 's' : ''}`],
     ];
     
     // Draw table header
@@ -101,7 +99,7 @@ export const exportToPDF = async (data: ExportData) => {
     pdf.setFillColor(239, 246, 255);
     pdf.rect(14, yPos, pageWidth - 28, 12, 'F');
     pdf.setFontSize(9);
-    pdf.text(`Calculation: ${formatCurrency(data.pricePerUser)} × ${data.roundedMonths} months × ${data.userCount} user${data.userCount !== 1 ? 's' : ''}`, 20, yPos + 8);
+    pdf.text(`Calculation: ${formatCurrency(data.pricePerUser)} × ${data.totalMonths} months × ${data.userCount} user${data.userCount !== 1 ? 's' : ''}`, 20, yPos + 8);
     yPos += 18;
     
     // Subtotal
