@@ -80,20 +80,20 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
     }
   }, [userAdditionDate]);
 
-  // Calculate elapsed days and months when dates change
+  // Calculate elapsed months using inclusive calendar month counting
+  // TotalMonths = ((EndYear - StartYear) * 12) + (EndMonth - StartMonth) + 1
   useEffect(() => {
     if (subscriptionStartDate && userAdditionDate) {
       const start = new Date(subscriptionStartDate);
       const addition = new Date(userAdditionDate);
       
       if (addition >= start) {
-        const diffTime = addition.getTime() - start.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        setElapsedDays(diffDays);
+        const totalMonths = ((addition.getFullYear() - start.getFullYear()) * 12) + (addition.getMonth() - start.getMonth()) + 1;
+        setElapsedMonths(totalMonths);
         
-        // Convert to months and round up if not a whole number
-        const months = diffDays / 30;
-        setElapsedMonths(Number.isInteger(months) ? months : Math.ceil(months));
+        // Keep elapsed days for display purposes
+        const diffTime = addition.getTime() - start.getTime();
+        setElapsedDays(Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
       } else {
         setElapsedDays(0);
         setElapsedMonths(0);
@@ -119,12 +119,11 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
       return;
     }
 
-    // Calculate exact months (days / 30)
-    const exactMonths = elapsedDays / 30;
-    const roundedMonths = Number.isInteger(exactMonths) ? exactMonths : Math.ceil(exactMonths);
+    // Use inclusive calendar month count directly
+    const totalMonths = elapsedMonths;
     
-    // Total Pro Rata Cost = Price per User × Months Rounded Up × Number of Users
-    const totalProRataCost = pricePerUser * roundedMonths * userCountNum;
+    // Total Pro Rata Cost = Price per User × Months × Number of Users
+    const totalProRataCost = pricePerUser * totalMonths * userCountNum;
     
     // VAT calculation (13%)
     const vatAmount = totalProRataCost * 0.13;
@@ -134,8 +133,7 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
       userCount: userCountNum,
       pricePerUser,
       elapsedDays,
-      exactMonths,
-      roundedMonths,
+      totalMonths,
       totalProRataCost,
       vatAmount,
       totalWithVat
@@ -334,7 +332,7 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
         Calculate Pro Rata Cost
       </Button>
 
-      {result && result.exactMonths !== undefined && (
+      {result && result.totalMonths !== undefined && (
         <Card className={`mt-6 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-green-50 border-green-200'}`}>
           <CardHeader>
             <CardTitle className={`text-lg ${darkMode ? 'text-white' : 'text-green-800'}`}>
@@ -352,18 +350,10 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
             </div>
             <div className={`flex justify-between items-center p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
               <span className={darkMode ? 'text-gray-200' : 'text-gray-600'}>
-                Months (Exact):
+                Calendar Months (Inclusive):
               </span>
               <span className={`font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                {result.exactMonths.toFixed(2)} months
-              </span>
-            </div>
-            <div className={`flex justify-between items-center p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
-              <span className={darkMode ? 'text-gray-200' : 'text-gray-600'}>
-                Months (Rounded Up):
-              </span>
-              <span className={`font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                {result.roundedMonths} month{result.roundedMonths !== 1 ? 's' : ''}
+                {result.totalMonths} month{result.totalMonths !== 1 ? 's' : ''}
               </span>
             </div>
             <div className={`flex justify-between items-center p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
@@ -384,7 +374,7 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
             </div>
             <div className={`p-3 rounded ${darkMode ? 'bg-gray-600' : 'bg-white'}`}>
               <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                Calculation: {formatCurrency(result.pricePerUser)} × {result.roundedMonths} months × {result.userCount} user{result.userCount !== 1 ? 's' : ''}
+                Calculation: {formatCurrency(result.pricePerUser)} × {result.totalMonths} months × {result.userCount} user{result.userCount !== 1 ? 's' : ''}
               </span>
             </div>
             <div className={`flex justify-between items-center p-4 rounded font-bold text-lg ${darkMode ? 'bg-gray-600 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>
@@ -409,8 +399,7 @@ const ProRataUserAddition: React.FC<ProRataUserAdditionProps> = ({ darkMode }) =
                 userCount: result.userCount,
                 pricePerUser: result.pricePerUser,
                 elapsedDays: result.elapsedDays,
-                exactMonths: result.exactMonths,
-                roundedMonths: result.roundedMonths,
+                totalMonths: result.totalMonths,
                 totalProRataCost: result.totalProRataCost,
                 vatAmount: result.vatAmount,
                 totalWithVat: result.totalWithVat,
