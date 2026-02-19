@@ -49,20 +49,6 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label className={`${labelClass} flex items-center gap-1.5`}>
-            <HardDrive className="w-4 h-4" /> Storage (GB)
-          </Label>
-          <Input
-            type="number"
-            min={0}
-            value={storageGB || ''}
-            onChange={e => setStorageGB(Number(e.target.value) || 0)}
-            placeholder="0"
-            className={inputClass}
-          />
-          <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>× Rs. 15/GB</p>
-        </div>
-        <div className="space-y-2">
-          <Label className={`${labelClass} flex items-center gap-1.5`}>
             <Cpu className="w-4 h-4" /> CPU (Cores)
           </Label>
           <Input
@@ -88,6 +74,20 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
             className={inputClass}
           />
           <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>× Rs. 250/GB</p>
+        </div>
+        <div className="space-y-2">
+          <Label className={`${labelClass} flex items-center gap-1.5`}>
+            <HardDrive className="w-4 h-4" /> Storage (GB)
+          </Label>
+          <Input
+            type="number"
+            min={0}
+            value={storageGB || ''}
+            onChange={e => setStorageGB(Number(e.target.value) || 0)}
+            placeholder="0"
+            className={inputClass}
+          />
+          <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>× Rs. 15/GB</p>
         </div>
       </div>
 
