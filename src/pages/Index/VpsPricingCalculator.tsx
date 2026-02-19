@@ -19,13 +19,13 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
   const VAT_RATE = 0.13;
 
   const calculations = useMemo(() => {
-    const grossSubtotal = (storageGB * 15) + (cpuCores * 600) + (ramGB * 250);
-    const discountAmount = grossSubtotal * (discountPct / 100);
-    const monthlySubtotal = grossSubtotal - discountAmount;
+    const monthlySubtotal = (storageGB * 15) + (cpuCores * 600) + (ramGB * 250);
     const monthlyVat = monthlySubtotal * VAT_RATE;
-    const monthlyTotal = monthlySubtotal + monthlyVat;
+    const totalBeforeDiscount = monthlySubtotal + monthlyVat;
+    const discountAmount = totalBeforeDiscount * (discountPct / 100);
+    const monthlyTotal = totalBeforeDiscount - discountAmount;
     const annualTotal = monthlyTotal * 12;
-    return { grossSubtotal, discountAmount, monthlySubtotal, monthlyVat, monthlyTotal, annualTotal };
+    return { monthlySubtotal, monthlyVat, totalBeforeDiscount, discountAmount, monthlyTotal, annualTotal };
   }, [storageGB, cpuCores, ramGB, discountPct]);
 
   const formatCurrency = (amount: number) => {
@@ -105,7 +105,7 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
             placeholder="0"
             className={inputClass}
           />
-          <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>off subtotal</p>
+          <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>off total</p>
         </div>
       </div>
 
@@ -132,8 +132,16 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
           </div>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Gross Subtotal</span>
-              <span className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{formatCurrency(calculations.grossSubtotal)}</span>
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Subtotal</span>
+              <span className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{formatCurrency(calculations.monthlySubtotal)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>VAT (13%)</span>
+              <span className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{formatCurrency(calculations.monthlyVat)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Total (Incl. VAT)</span>
+              <span className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{formatCurrency(calculations.totalBeforeDiscount)}</span>
             </div>
             {discountPct > 0 && (
               <div className="flex justify-between">
@@ -141,16 +149,8 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
                 <span className={darkMode ? 'text-red-400' : 'text-red-600'}>-{formatCurrency(calculations.discountAmount)}</span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Net Subtotal</span>
-              <span className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{formatCurrency(calculations.monthlySubtotal)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>VAT (13%)</span>
-              <span className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{formatCurrency(calculations.monthlyVat)}</span>
-            </div>
             <div className={`flex justify-between pt-2 border-t font-semibold ${darkMode ? 'border-gray-700 text-white' : 'border-gray-300 text-gray-900'}`}>
-              <span>Total Monthly</span>
+              <span>Grand Total</span>
               <span>{formatCurrency(calculations.monthlyTotal)}</span>
             </div>
           </div>
