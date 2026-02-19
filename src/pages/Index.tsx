@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle, FileText } from "lucide-react";
+import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle, FileText, Server } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,6 +19,7 @@ import UsageDurationInfo from "./Index/UsageDurationInfo";
 import CalculationHistorySheet from "./Index/CalculationHistorySheet";
 import ProRataUserAddition from "./Index/ProRataUserAddition";
 import BillingLedger from "./Index/BillingLedger";
+import VpsPricingCalculator from "./Index/VpsPricingCalculator";
 import { parseDate, formatDate } from "./Index/dateUtils";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -697,7 +698,7 @@ const Index = () => {
           
           <CardContent className="space-y-6">
             <Tabs defaultValue="upgrade" className="w-full">
-              <TabsList className={`grid w-full grid-cols-3 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+              <TabsList className={`grid w-full grid-cols-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                 <TabsTrigger 
                   value="upgrade" 
                   className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
@@ -718,6 +719,13 @@ const Index = () => {
                 >
                   <FileText className="w-4 h-4" />
                   Ledger
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="vps" 
+                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                >
+                  <Server className="w-4 h-4" />
+                  VPS
                 </TabsTrigger>
               </TabsList>
               
@@ -780,6 +788,10 @@ const Index = () => {
               
               <TabsContent value="ledger" className="mt-6">
                 <BillingLedger darkMode={darkMode} />
+              </TabsContent>
+              
+              <TabsContent value="vps" className="mt-6">
+                <VpsPricingCalculator darkMode={darkMode} />
               </TabsContent>
             </Tabs>
           </CardContent>
