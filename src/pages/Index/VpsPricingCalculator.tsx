@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { HardDrive, Cpu, MemoryStick, Calendar, CalendarDays } from "lucide-react";
+import { HardDrive, Cpu, MemoryStick, Calendar, CalendarDays, Percent } from "lucide-react";
 
 interface VpsPricingCalculatorProps {
   darkMode: boolean;
@@ -13,17 +13,20 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
   const [storageGB, setStorageGB] = useState(0);
   const [cpuCores, setCpuCores] = useState(0);
   const [ramGB, setRamGB] = useState(0);
+  const [discountPct, setDiscountPct] = useState(0);
   const [showAnnual, setShowAnnual] = useState(false);
 
   const VAT_RATE = 0.13;
 
   const calculations = useMemo(() => {
-    const monthlySubtotal = (storageGB * 15) + (cpuCores * 600) + (ramGB * 250);
+    const grossSubtotal = (storageGB * 15) + (cpuCores * 600) + (ramGB * 250);
+    const discountAmount = grossSubtotal * (discountPct / 100);
+    const monthlySubtotal = grossSubtotal - discountAmount;
     const monthlyVat = monthlySubtotal * VAT_RATE;
     const monthlyTotal = monthlySubtotal + monthlyVat;
     const annualTotal = monthlyTotal * 12;
-    return { monthlySubtotal, monthlyVat, monthlyTotal, annualTotal };
-  }, [storageGB, cpuCores, ramGB]);
+    return { grossSubtotal, discountAmount, monthlySubtotal, monthlyVat, monthlyTotal, annualTotal };
+  }, [storageGB, cpuCores, ramGB, discountPct]);
 
   const formatCurrency = (amount: number) => {
     return `Rs. ${amount.toLocaleString('en-NP', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -46,7 +49,7 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
       </div>
 
       {/* Inputs */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className="space-y-2">
           <Label className={`${labelClass} flex items-center gap-1.5`}>
             <Cpu className="w-4 h-4" /> CPU (Cores)
@@ -89,6 +92,21 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
           />
           <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>× Rs. 15/GB</p>
         </div>
+        <div className="space-y-2">
+          <Label className={`${labelClass} flex items-center gap-1.5`}>
+            <Percent className="w-4 h-4" /> Discount (%)
+          </Label>
+          <Input
+            type="number"
+            min={0}
+            max={100}
+            value={discountPct || ''}
+            onChange={e => setDiscountPct(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+            placeholder="0"
+            className={inputClass}
+          />
+          <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>off subtotal</p>
+        </div>
       </div>
 
       {/* Hero number */}
@@ -114,7 +132,17 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
           </div>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Monthly Subtotal</span>
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Gross Subtotal</span>
+              <span className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{formatCurrency(calculations.grossSubtotal)}</span>
+            </div>
+            {discountPct > 0 && (
+              <div className="flex justify-between">
+                <span className={darkMode ? 'text-red-400' : 'text-red-600'}>Discount ({discountPct}%)</span>
+                <span className={darkMode ? 'text-red-400' : 'text-red-600'}>-{formatCurrency(calculations.discountAmount)}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Net Subtotal</span>
               <span className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{formatCurrency(calculations.monthlySubtotal)}</span>
             </div>
             <div className="flex justify-between">
