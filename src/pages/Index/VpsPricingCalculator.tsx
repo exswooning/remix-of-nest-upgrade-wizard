@@ -119,36 +119,36 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
         </div>
       </div>
 
-      {/* Service & Support */}
-      <div>
-        <p className={sectionTitleClass}>Service & Support</p>
-        <div className="max-w-xs space-y-2">
-          <Label className={`${labelClass} flex items-center gap-1.5`}>
-            <Wrench className="w-4 h-4" /> Monthly Management Fee (NRs.)
-          </Label>
-          <Input
-            type="number"
-            min={0}
-            value={managementFee || ''}
-            onChange={e => setManagementFee(Number(e.target.value) || 0)}
-            placeholder="10000"
-            className={inputClass}
-          />
-          <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Subject to Scope of Service (SoS) agreement. Billed annually.</p>
+      {/* Service & Support + Hero */}
+      <div className="flex items-start gap-4">
+        <div className="flex-1">
+          <p className={sectionTitleClass}>Service & Support</p>
+          <div className="space-y-2">
+            <Label className={`${labelClass} flex items-center gap-1.5`}>
+              <Wrench className="w-4 h-4" /> Monthly Management Fee (NRs.)
+            </Label>
+            <Input
+              type="number"
+              min={0}
+              value={managementFee || ''}
+              onChange={e => setManagementFee(Number(e.target.value) || 0)}
+              placeholder="10000"
+              className={inputClass}
+            />
+            <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Subject to Scope of Service (SoS) agreement. Billed annually.</p>
+          </div>
         </div>
-      </div>
-
-      {/* Hero number */}
-      <div className={`text-center py-4 rounded-lg ${darkMode ? 'bg-blue-950/40 border border-blue-900' : 'bg-blue-50 border border-blue-200'}`}>
-        <p className={`text-xs uppercase tracking-wider mb-1 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-          {showAnnual ? 'Annual Total (Incl. VAT)' : 'Monthly Total (Incl. VAT)'}
-        </p>
-        <p className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-          {formatCurrency(showAnnual ? calculations.annualTotal : calculations.monthlyTotal)}
-        </p>
-        <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-          {showAnnual ? `${formatCurrency(calculations.monthlyTotal)} / month` : `${formatCurrency(calculations.annualTotal)} / year`}
-        </p>
+        <div className={`flex-1 text-center py-4 rounded-lg ${darkMode ? 'bg-blue-950/40 border border-blue-900' : 'bg-blue-50 border border-blue-200'}`}>
+          <p className={`text-xs uppercase tracking-wider mb-1 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+            {showAnnual ? 'Annual Total (Incl. VAT)' : 'Monthly Total (Incl. VAT)'}
+          </p>
+          <p className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            {formatCurrency(showAnnual ? calculations.annualTotal : calculations.monthlyTotal)}
+          </p>
+          <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            {showAnnual ? `${formatCurrency(calculations.monthlyTotal)} / month` : `${formatCurrency(calculations.annualTotal)} / year`}
+          </p>
+        </div>
       </div>
 
       {/* Two-column breakdown */}
