@@ -202,7 +202,7 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
               12 months
             </Badge>
           </div>
-          <div className={`text-2xl font-bold mb-3 ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
+          <div className={`text-3xl font-extrabold text-center mb-3 ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
             {formatCurrency(calculations.annualTotal)}
           </div>
           <p className={`text-xs mb-4 ${darkMode ? 'text-emerald-400/70' : 'text-emerald-600/70'}`}>
