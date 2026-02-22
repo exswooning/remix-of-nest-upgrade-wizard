@@ -3,8 +3,11 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
-import { HardDrive, Cpu, MemoryStick, Calendar, CalendarDays, Percent, Wrench } from "lucide-react";
+import { HardDrive, Cpu, MemoryStick, Calendar, CalendarDays, Percent, Wrench, Download } from "lucide-react";
+import { exportToPDF } from "@/utils/exportCalculation";
+import type { VpsExportData } from "@/utils/exportCalculation";
 
 interface VpsPricingCalculatorProps {
   darkMode: boolean;
@@ -43,15 +46,33 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
   const labelClass = `text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`;
   const sectionTitleClass = `text-xs font-semibold uppercase tracking-wider mb-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`;
 
+  const handleExportPDF = () => {
+    const data: VpsExportData = {
+      type: 'vps',
+      cpuCores,
+      ramGB,
+      storageGB,
+      managementFee,
+      discountPct,
+      ...calculations,
+    };
+    exportToPDF(data);
+  };
+
   return (
     <div className="space-y-6">
-      {/* Toggle */}
+      {/* Toggle + Export */}
       <div className="flex items-center justify-between">
         <Label className={labelClass}>Show primary figure as:</Label>
-        <div className="flex items-center gap-2">
-          <span className={`text-sm ${!showAnnual ? 'font-semibold' : 'opacity-60'} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Monthly</span>
-          <Switch checked={showAnnual} onCheckedChange={setShowAnnual} />
-          <span className={`text-sm ${showAnnual ? 'font-semibold' : 'opacity-60'} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Annual</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className={`text-sm ${!showAnnual ? 'font-semibold' : 'opacity-60'} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Monthly</span>
+            <Switch checked={showAnnual} onCheckedChange={setShowAnnual} />
+            <span className={`text-sm ${showAnnual ? 'font-semibold' : 'opacity-60'} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Annual</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleExportPDF} className="gap-1.5">
+            <Download className="w-3.5 h-3.5" /> PDF
+          </Button>
         </div>
       </div>
 
