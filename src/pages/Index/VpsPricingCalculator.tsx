@@ -231,9 +231,9 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
                     <TableCell className={`py-2 px-3 text-xs text-right font-medium ${darkMode ? 'text-red-400' : 'text-red-600'}`}>-{formatCurrency(calculations.discountAmount * 12)}</TableCell>
                   </TableRow>
                 )}
-                <TableRow className="border-0">
-                  <TableCell className={`py-2 px-3 text-xs font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Final Annual Commitment</TableCell>
-                  <TableCell className={`py-2 px-3 text-xs text-right font-bold ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>{formatCurrency(calculations.annualTotal)}</TableCell>
+                <TableRow className={`border-0 ${darkMode ? 'bg-emerald-900/30' : 'bg-emerald-100/60'}`}>
+                  <TableCell className={`py-3 px-3 text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Final Annual Commitment</TableCell>
+                  <TableCell className={`py-3 px-3 text-sm text-right font-bold ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>{formatCurrency(calculations.annualTotal)}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
