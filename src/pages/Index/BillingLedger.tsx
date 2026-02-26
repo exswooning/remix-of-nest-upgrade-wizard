@@ -1,15 +1,13 @@
-import React, { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
-import { Calendar, Plus, Trash2, FileText, ChevronDown, ChevronUp, Package } from "lucide-react";
+import { Calendar, Plus, X, ArrowRight, Package, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
 import { parseDate, formatDate } from "./dateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -21,7 +19,7 @@ interface SourceProduct {
   billingCycle: string;
   billingStartDateText: string;
   billingStartDate: Date | undefined;
-  priceOverride: string; // empty = use plan price
+  priceOverride: string;
 }
 
 interface LedgerEvent {
@@ -33,7 +31,6 @@ interface LedgerEvent {
   targetPlan: string;
   targetBillingCycle: string;
   targetPriceOverride: string;
-  expanded: boolean;
 }
 
 interface BillingLedgerProps {
@@ -53,10 +50,59 @@ const cycleDays: Record<number, number> = {
   36: 1095,
 };
 
+const tileColors = [
+  { bg: "bg-blue-100 dark:bg-blue-900/40", border: "border-blue-300 dark:border-blue-700", text: "text-blue-700 dark:text-blue-300", accent: "text-blue-600 dark:text-blue-400" },
+  { bg: "bg-purple-100 dark:bg-purple-900/40", border: "border-purple-300 dark:border-purple-700", text: "text-purple-700 dark:text-purple-300", accent: "text-purple-600 dark:text-purple-400" },
+  { bg: "bg-amber-100 dark:bg-amber-900/40", border: "border-amber-300 dark:border-amber-700", text: "text-amber-700 dark:text-amber-300", accent: "text-amber-600 dark:text-amber-400" },
+  { bg: "bg-rose-100 dark:bg-rose-900/40", border: "border-rose-300 dark:border-rose-700", text: "text-rose-700 dark:text-rose-300", accent: "text-rose-600 dark:text-rose-400" },
+  { bg: "bg-teal-100 dark:bg-teal-900/40", border: "border-teal-300 dark:border-teal-700", text: "text-teal-700 dark:text-teal-300", accent: "text-teal-600 dark:text-teal-400" },
+  { bg: "bg-indigo-100 dark:bg-indigo-900/40", border: "border-indigo-300 dark:border-indigo-700", text: "text-indigo-700 dark:text-indigo-300", accent: "text-indigo-600 dark:text-indigo-400" },
+];
+
+/* ─── Animated number ─── */
+const AnimatedNumber: React.FC<{ value: number; darkMode: boolean; negative?: boolean }> = ({ value, darkMode, negative }) => {
+  const [displayed, setDisplayed] = useState(value);
+  const prevRef = useRef(value);
+
+  useEffect(() => {
+    const from = prevRef.current;
+    const to = value;
+    prevRef.current = value;
+    if (from === to) return;
+
+    const duration = 400;
+    const start = performance.now();
+
+    const tick = (now: number) => {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayed(from + (to - from) * eased);
+      if (progress < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [value]);
+
+  const prefix = displayed < 0 ? "-" : "";
+  const formatted = `${prefix}NPR ${Math.abs(displayed).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  return (
+    <span className={cn(
+      "font-mono font-bold transition-colors duration-300",
+      value < 0
+        ? darkMode ? "text-red-400" : "text-red-600"
+        : darkMode ? "text-emerald-400" : "text-emerald-700"
+    )}>
+      {formatted}
+    </span>
+  );
+};
+
 /* ─── Component ─── */
 const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
   const { getPlanData } = useAuth();
   const planData = getPlanData();
+
   const [events, setEvents] = useState<LedgerEvent[]>([]);
 
   const formatCurrency = (val: number) => {
@@ -83,32 +129,21 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
     return plan.price ?? null;
   };
 
-  /* ─── Proration calculation ─── */
+  /* ─── Proration ─── */
   const calcSourceCredit = (src: SourceProduct, upgradeDate: Date | undefined) => {
     if (!upgradeDate || !src.billingStartDate) return null;
-
     const price = src.priceOverride
       ? parseFloat(src.priceOverride)
       : getPlanPrice(src.category, src.plan, src.billingCycle);
     if (!price || price <= 0) return null;
-
     const cycle = parseInt(src.billingCycle) || 12;
     const totalDays = cycleDays[cycle] || 365;
-
     const diffMs = upgradeDate.getTime() - src.billingStartDate.getTime();
     const usedDays = Math.max(0, Math.min(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), totalDays));
     const dailyCost = price / totalDays;
     const usedMoney = usedDays * dailyCost;
     const remaining = price - usedMoney;
-
-    return {
-      price,
-      totalDays,
-      usedDays,
-      dailyCost,
-      usedMoney,
-      remaining: Math.max(0, remaining),
-    };
+    return { price, totalDays, usedDays, dailyCost, usedMoney, remaining: Math.max(0, remaining) };
   };
 
   /* ─── Event CRUD ─── */
@@ -124,7 +159,6 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
         targetPlan: "",
         targetBillingCycle: "12",
         targetPriceOverride: "",
-        expanded: true,
       },
     ]);
   };
@@ -144,9 +178,6 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
       })
     );
   };
-
-  const toggleExpand = (id: string) =>
-    setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, expanded: !e.expanded } : e)));
 
   /* ─── Source product CRUD ─── */
   const addSourceProduct = (eventId: string) => {
@@ -194,7 +225,6 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
               const parsed = parseDate(patch.billingStartDateText!);
               updated.billingStartDate = parsed ?? undefined;
             }
-            // Reset plan when category changes
             if ("category" in patch && patch.category !== s.category) {
               updated.plan = "";
               const cycles = getCyclesForCategory(patch.category!);
@@ -209,21 +239,17 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
     );
   };
 
-  /* ─── Computed totals for an event ─── */
+  /* ─── Computed totals ─── */
   const getEventSummary = (event: LedgerEvent) => {
     const credits = event.sourceProducts.map((src) => {
       const calc = calcSourceCredit(src, event.upgradeDate);
       return { src, calc };
     });
-
     const totalCredit = credits.reduce((sum, c) => sum + (c.calc?.remaining ?? 0), 0);
-
     const targetPrice = event.targetPriceOverride
       ? parseFloat(event.targetPriceOverride)
       : getPlanPrice(event.targetCategory, event.targetPlan, event.targetBillingCycle) ?? 0;
-
     const netCost = targetPrice - totalCredit;
-
     return { credits, totalCredit, targetPrice, netCost };
   };
 
@@ -234,28 +260,26 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
     }, 0);
   }, [events, planData]);
 
-  /* ─── Render helpers ─── */
+  /* ─── Shared input styles ─── */
   const inputClass = darkMode ? "bg-gray-700 border-gray-600 text-white" : "";
-  const cardClass = darkMode ? "bg-gray-800 border-gray-700" : "";
 
   const renderDateInput = (
     value: string,
     onChange: (v: string) => void,
     date: Date | undefined,
     onCalendarSelect: (d: Date) => void,
-    small = false
   ) => (
     <div className="flex gap-1">
       <Input
         placeholder="DD/MM/YYYY"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={cn(small ? "h-8 text-xs" : "", inputClass)}
+        className={cn("h-8 text-xs", inputClass)}
       />
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="icon" className={cn(small ? "h-8 w-8 shrink-0" : "shrink-0", darkMode ? "border-gray-600" : "")}>
-            <Calendar className={small ? "h-3 w-3" : "h-4 w-4"} />
+          <Button variant="outline" size="icon" className={cn("h-8 w-8 shrink-0", darkMode ? "border-gray-600" : "")}>
+            <Calendar className="h-3 w-3" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
@@ -263,74 +287,51 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
             mode="single"
             selected={date}
             onSelect={(d) => { if (d) onCalendarSelect(d); }}
-            className={cn("p-3 pointer-events-auto")}
+            className="p-3 pointer-events-auto"
           />
         </PopoverContent>
       </Popover>
     </div>
   );
 
+  /* ─── RENDER ─── */
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 pb-24">
       {/* Header */}
-      <Card className={cardClass}>
-        <CardHeader className="pb-3">
-          <CardTitle className={`text-lg ${darkMode ? "text-white" : ""}`}>
-            <FileText className="w-5 h-5 inline mr-2" />
-            Multi-Product Upgrade Ledger
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className={`text-sm mb-4 ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-            Consolidate multiple existing plans into one upgrade. Each event calculates remaining credit from source plans and subtracts it from the target plan price.
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className={cn("text-xl font-bold flex items-center gap-2", darkMode ? "text-white" : "text-gray-900")}>
+            <Sparkles className="w-5 h-5 text-amber-500" />
+            Plan Upgrade Pipeline
+          </h2>
+          <p className={cn("text-sm mt-1", darkMode ? "text-gray-400" : "text-gray-500")}>
+            Trade in your old plans → pick a new one → see what you pay.
           </p>
-          <Button onClick={addEvent} className="bg-blue-600 hover:bg-blue-700 text-white">
-            <Plus className="w-4 h-4 mr-1" /> Add Upgrade Event
-          </Button>
-        </CardContent>
-      </Card>
+        </div>
+        <Button onClick={addEvent} className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg">
+          <Plus className="w-4 h-4 mr-1" /> New Upgrade
+        </Button>
+      </div>
 
       {/* Events */}
       {events.map((event, idx) => {
         const summary = getEventSummary(event);
         return (
-          <Card key={event.id} className={cardClass}>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle
-                  className={`text-base cursor-pointer flex items-center gap-2 ${darkMode ? "text-white" : ""}`}
-                  onClick={() => toggleExpand(event.id)}
-                >
-                  {event.expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  Event #{idx + 1}
-                  {event.targetPlan && (
-                    <span className={`text-sm font-normal ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-                      — Target: {event.targetPlan}
-                    </span>
-                  )}
-                </CardTitle>
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`text-sm font-bold font-mono ${
-                      summary.netCost < 0
-                        ? darkMode ? "text-red-400" : "text-red-600"
-                        : darkMode ? "text-green-400" : "text-green-600"
-                    }`}
-                  >
-                    {formatCurrency(summary.netCost)}
-                  </span>
-                  <Button variant="ghost" size="icon" onClick={() => removeEvent(event.id)} className="h-8 w-8 text-destructive hover:text-destructive">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-
-            {event.expanded && (
-              <CardContent className="space-y-5">
-                {/* Upgrade Date */}
-                <div className="space-y-2">
-                  <Label className={darkMode ? "text-gray-200" : ""}>Upgrade Date</Label>
+          <Card key={event.id} className={cn(
+            "overflow-hidden",
+            darkMode ? "bg-gray-800 border-gray-700" : "bg-white"
+          )}>
+            {/* Event header bar */}
+            <div className={cn(
+              "flex items-center justify-between px-4 py-2 border-b",
+              darkMode ? "bg-gray-900/50 border-gray-700" : "bg-gray-50 border-gray-200"
+            )}>
+              <div className="flex items-center gap-3">
+                <span className={cn("text-sm font-bold", darkMode ? "text-white" : "text-gray-800")}>
+                  Upgrade #{idx + 1}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Label className={cn("text-xs", darkMode ? "text-gray-400" : "text-gray-500")}>Switch Date:</Label>
                   {renderDateInput(
                     event.upgradeDateText,
                     (v) => updateEvent(event.id, { upgradeDateText: v }),
@@ -338,145 +339,196 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
                     (d) => updateEvent(event.id, { upgradeDateText: formatDate(d), upgradeDate: d })
                   )}
                 </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => removeEvent(event.id)} className="text-destructive hover:text-destructive h-7 text-xs">
+                <X className="h-3 w-3 mr-1" /> Remove
+              </Button>
+            </div>
 
-                {/* Source Products */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className={`text-sm font-semibold ${darkMode ? "text-gray-200" : ""}`}>
-                      Source Products ({event.sourceProducts.length})
-                    </Label>
-                    <Button variant="outline" size="sm" onClick={() => addSourceProduct(event.id)} className={darkMode ? "border-gray-600" : ""}>
-                      <Plus className="w-3 h-3 mr-1" /> Add Product
-                    </Button>
+            {/* 3-column pipeline */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-0 min-h-[280px]">
+
+              {/* ─── LEFT: Trading In ─── */}
+              <div className={cn("p-4 space-y-3", darkMode ? "bg-gray-800/50" : "bg-slate-50/50")}>
+                <div className="flex items-center justify-between">
+                  <h3 className={cn("text-sm font-bold uppercase tracking-wide", darkMode ? "text-gray-300" : "text-gray-600")}>
+                    🔄 Trading In
+                  </h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => addSourceProduct(event.id)}
+                    className={cn("h-7 text-xs", darkMode ? "border-gray-600" : "")}
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Add Old Plan
+                  </Button>
+                </div>
+
+                {event.sourceProducts.length === 0 && (
+                  <div className={cn(
+                    "flex flex-col items-center justify-center py-8 rounded-xl border-2 border-dashed",
+                    darkMode ? "border-gray-600 text-gray-500" : "border-gray-300 text-gray-400"
+                  )}>
+                    <Package className="w-8 h-8 mb-2 opacity-40" />
+                    <p className="text-xs font-medium">No old plans added yet</p>
+                    <p className="text-xs opacity-60">Click "Add Old Plan" to trade in</p>
                   </div>
+                )}
 
-                  {event.sourceProducts.length === 0 && (
-                    <div className={`text-center py-4 rounded-lg border border-dashed ${darkMode ? "border-gray-600 text-gray-500" : "border-gray-300 text-gray-400"}`}>
-                      <Package className="w-6 h-6 mx-auto mb-1 opacity-50" />
-                      <p className="text-xs">Click "Add Product" to add existing plans to consolidate</p>
-                    </div>
-                  )}
-
+                {/* Source tiles */}
+                <div className="space-y-2">
                   {event.sourceProducts.map((src, srcIdx) => {
                     const credit = calcSourceCredit(src, event.upgradeDate);
+                    const color = tileColors[srcIdx % tileColors.length];
                     return (
-                      <Card key={src.id} className={`${darkMode ? "bg-gray-700 border-gray-600" : "bg-gray-50 border-gray-200"}`}>
-                        <CardContent className="p-3 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className={`text-xs font-semibold ${darkMode ? "text-gray-300" : "text-gray-500"}`}>
-                              Product #{srcIdx + 1}
-                            </span>
-                            <Button variant="ghost" size="icon" onClick={() => removeSourceProduct(event.id, src.id)} className="h-6 w-6 text-destructive">
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
+                      <div
+                        key={src.id}
+                        className={cn(
+                          "rounded-xl border-2 p-3 transition-all duration-300 animate-scale-in",
+                          color.bg, color.border
+                        )}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <span className={cn("text-xs font-bold uppercase tracking-wider", color.text)}>
+                            Plan #{srcIdx + 1}
+                          </span>
+                          <button
+                            onClick={() => removeSourceProduct(event.id, src.id)}
+                            className="text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {/* Category */}
-                            <div className="space-y-1">
-                              <Label className={`text-xs ${darkMode ? "text-gray-300" : ""}`}>Category</Label>
-                              <Select value={src.category} onValueChange={(v) => updateSourceProduct(event.id, src.id, { category: v })}>
-                                <SelectTrigger className={`h-8 text-xs ${inputClass}`}>
-                                  <SelectValue placeholder="Select category" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {Object.entries(planData).map(([key, val]: [string, any]) => (
-                                    <SelectItem key={key} value={key}>{val.name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Select value={src.category} onValueChange={(v) => updateSourceProduct(event.id, src.id, { category: v })}>
+                            <SelectTrigger className={cn("h-7 text-xs", inputClass)}><SelectValue placeholder="Category" /></SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(planData).map(([key, val]: [string, any]) => (
+                                <SelectItem key={key} value={key}>{val.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
 
-                            {/* Plan */}
-                            <div className="space-y-1">
-                              <Label className={`text-xs ${darkMode ? "text-gray-300" : ""}`}>Plan</Label>
-                              <Select value={src.plan} onValueChange={(v) => updateSourceProduct(event.id, src.id, { plan: v })} disabled={!src.category}>
-                                <SelectTrigger className={`h-8 text-xs ${inputClass}`}>
-                                  <SelectValue placeholder="Select plan" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {getPlansForCategory(src.category).map((p: any) => (
-                                    <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                          <Select value={src.plan} onValueChange={(v) => updateSourceProduct(event.id, src.id, { plan: v })} disabled={!src.category}>
+                            <SelectTrigger className={cn("h-7 text-xs", inputClass)}><SelectValue placeholder="Plan" /></SelectTrigger>
+                            <SelectContent>
+                              {getPlansForCategory(src.category).map((p: any) => (
+                                <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
 
-                            {/* Billing Cycle */}
-                            <div className="space-y-1">
-                              <Label className={`text-xs ${darkMode ? "text-gray-300" : ""}`}>Billing Cycle</Label>
-                              <Select value={src.billingCycle} onValueChange={(v) => updateSourceProduct(event.id, src.id, { billingCycle: v })} disabled={!src.category}>
-                                <SelectTrigger className={`h-8 text-xs ${inputClass}`}>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {getCyclesForCategory(src.category).map((c: number) => (
-                                    <SelectItem key={c} value={c.toString()}>{cycleLabels[c] || `${c} months`}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                          <Select value={src.billingCycle} onValueChange={(v) => updateSourceProduct(event.id, src.id, { billingCycle: v })} disabled={!src.category}>
+                            <SelectTrigger className={cn("h-7 text-xs", inputClass)}><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {getCyclesForCategory(src.category).map((c: number) => (
+                                <SelectItem key={c} value={c.toString()}>{cycleLabels[c] || `${c}mo`}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
 
-                            {/* Price Override */}
-                            <div className="space-y-1">
-                              <Label className={`text-xs ${darkMode ? "text-gray-300" : ""}`}>
-                                Price {src.priceOverride ? "(Override)" : getPlanPrice(src.category, src.plan, src.billingCycle) ? `(${formatCurrency(getPlanPrice(src.category, src.plan, src.billingCycle)!)})` : ""}
-                              </Label>
-                              <Input
-                                type="number"
-                                placeholder="Use plan price"
-                                value={src.priceOverride}
-                                onChange={(e) => updateSourceProduct(event.id, src.id, { priceOverride: e.target.value })}
-                                className={`h-8 text-xs ${inputClass}`}
-                              />
-                            </div>
+                          <Input
+                            type="number"
+                            placeholder="Price override"
+                            value={src.priceOverride}
+                            onChange={(e) => updateSourceProduct(event.id, src.id, { priceOverride: e.target.value })}
+                            className={cn("h-7 text-xs", inputClass)}
+                          />
+                        </div>
 
-                            {/* Billing Start Date */}
-                            <div className="space-y-1 sm:col-span-2">
-                              <Label className={`text-xs ${darkMode ? "text-gray-300" : ""}`}>Billing Start Date</Label>
-                              {renderDateInput(
-                                src.billingStartDateText,
-                                (v) => updateSourceProduct(event.id, src.id, { billingStartDateText: v }),
-                                src.billingStartDate,
-                                (d) => updateSourceProduct(event.id, src.id, { billingStartDateText: formatDate(d), billingStartDate: d }),
-                                true
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Credit breakdown */}
-                          {credit && (
-                            <div className={`rounded-md p-2 text-xs space-y-1 ${darkMode ? "bg-gray-800" : "bg-white border border-gray-200"}`}>
-                              <div className="flex justify-between">
-                                <span className={darkMode ? "text-gray-400" : "text-gray-500"}>
-                                  Used: {credit.usedDays}/{credit.totalDays} days
-                                </span>
-                                <span className={darkMode ? "text-gray-400" : "text-gray-500"}>
-                                  Daily: {formatCurrency(credit.dailyCost)}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className={darkMode ? "text-gray-400" : "text-gray-500"}>
-                                  Used: {formatCurrency(credit.usedMoney)}
-                                </span>
-                                <span className={`font-semibold ${darkMode ? "text-green-400" : "text-green-600"}`}>
-                                  Credit: {formatCurrency(credit.remaining)}
-                                </span>
-                              </div>
-                            </div>
+                        <div className="mt-2">
+                          <Label className={cn("text-xs", color.text)}>Started</Label>
+                          {renderDateInput(
+                            src.billingStartDateText,
+                            (v) => updateSourceProduct(event.id, src.id, { billingStartDateText: v }),
+                            src.billingStartDate,
+                            (d) => updateSourceProduct(event.id, src.id, { billingStartDateText: formatDate(d), billingStartDate: d })
                           )}
-                        </CardContent>
-                      </Card>
+                        </div>
+
+                        {/* Credit result */}
+                        {credit && (
+                          <div className={cn("mt-2 rounded-lg p-2 text-xs", darkMode ? "bg-black/20" : "bg-white/70")}>
+                            <div className="flex justify-between">
+                              <span className={darkMode ? "text-gray-400" : "text-gray-500"}>
+                                Used {credit.usedDays}/{credit.totalDays} days
+                              </span>
+                              <span className={cn("font-bold", color.accent)}>
+                                Money Back: {formatCurrency(credit.remaining)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
 
-                {/* Target Plan */}
-                <div className="space-y-3">
-                  <Label className={`text-sm font-semibold ${darkMode ? "text-gray-200" : ""}`}>Target Plan</Label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Total credit */}
+                {summary.totalCredit > 0 && (
+                  <div className={cn(
+                    "rounded-lg p-3 text-center border",
+                    darkMode ? "bg-green-900/20 border-green-800" : "bg-green-50 border-green-200"
+                  )}>
+                    <p className={cn("text-xs uppercase tracking-wide mb-1", darkMode ? "text-green-400" : "text-green-600")}>
+                      Total Money Back
+                    </p>
+                    <p className={cn("text-lg font-bold font-mono", darkMode ? "text-green-300" : "text-green-700")}>
+                      {formatCurrency(summary.totalCredit)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* ─── MIDDLE: Bridge ─── */}
+              <div className={cn(
+                "flex flex-col items-center justify-center px-6 py-4",
+                "border-x",
+                darkMode ? "border-gray-700" : "border-gray-200"
+              )}>
+                <div className={cn(
+                  "flex flex-col items-center gap-2",
+                  darkMode ? "text-gray-400" : "text-gray-400"
+                )}>
+                  <div className="hidden lg:flex flex-col items-center gap-3">
+                    <div className={cn(
+                      "w-12 h-12 rounded-full flex items-center justify-center",
+                      "bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow-lg",
+                      "animate-pulse"
+                    )}>
+                      <ArrowRight className="w-6 h-6" />
+                    </div>
+                    <span className={cn("text-xs font-bold uppercase tracking-widest", darkMode ? "text-gray-500" : "text-gray-400")}>
+                      Upgrade
+                    </span>
+                  </div>
+                  <div className="lg:hidden flex items-center gap-2 py-2">
+                    <div className="h-px w-8 bg-gradient-to-r from-transparent to-blue-500" />
+                    <div className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center",
+                      "bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow-lg"
+                    )}>
+                      <ArrowRight className="w-4 h-4 rotate-90 lg:rotate-0" />
+                    </div>
+                    <div className="h-px w-8 bg-gradient-to-l from-transparent to-purple-500" />
+                  </div>
+                </div>
+              </div>
+
+              {/* ─── RIGHT: New Plan ─── */}
+              <div className={cn("p-4 space-y-4", darkMode ? "bg-gray-800/50" : "bg-emerald-50/30")}>
+                <h3 className={cn("text-sm font-bold uppercase tracking-wide", darkMode ? "text-gray-300" : "text-gray-600")}>
+                  🎯 New Plan
+                </h3>
+
+                <div className={cn(
+                  "rounded-xl border-2 p-4 space-y-3",
+                  darkMode ? "bg-emerald-900/20 border-emerald-700" : "bg-white border-emerald-300"
+                )}>
+                  <div className="grid grid-cols-1 gap-2">
                     <div className="space-y-1">
-                      <Label className={`text-xs ${darkMode ? "text-gray-300" : ""}`}>Category</Label>
+                      <Label className={cn("text-xs", darkMode ? "text-gray-300" : "text-gray-600")}>Category</Label>
                       <Select
                         value={event.targetCategory}
                         onValueChange={(v) => {
@@ -485,9 +537,7 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
                           updateEvent(event.id, { targetCategory: v, targetPlan: "", targetBillingCycle: defCycle });
                         }}
                       >
-                        <SelectTrigger className={`h-8 text-xs ${inputClass}`}>
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
+                        <SelectTrigger className={cn("h-8 text-xs", inputClass)}><SelectValue placeholder="Select category" /></SelectTrigger>
                         <SelectContent>
                           {Object.entries(planData).map(([key, val]: [string, any]) => (
                             <SelectItem key={key} value={key}>{val.name}</SelectItem>
@@ -497,11 +547,9 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
                     </div>
 
                     <div className="space-y-1">
-                      <Label className={`text-xs ${darkMode ? "text-gray-300" : ""}`}>Plan</Label>
+                      <Label className={cn("text-xs", darkMode ? "text-gray-300" : "text-gray-600")}>Plan</Label>
                       <Select value={event.targetPlan} onValueChange={(v) => updateEvent(event.id, { targetPlan: v })} disabled={!event.targetCategory}>
-                        <SelectTrigger className={`h-8 text-xs ${inputClass}`}>
-                          <SelectValue placeholder="Select plan" />
-                        </SelectTrigger>
+                        <SelectTrigger className={cn("h-8 text-xs", inputClass)}><SelectValue placeholder="Select plan" /></SelectTrigger>
                         <SelectContent>
                           {getPlansForCategory(event.targetCategory).map((p: any) => (
                             <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
@@ -511,88 +559,110 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
                     </div>
 
                     <div className="space-y-1">
-                      <Label className={`text-xs ${darkMode ? "text-gray-300" : ""}`}>Cycle</Label>
+                      <Label className={cn("text-xs", darkMode ? "text-gray-300" : "text-gray-600")}>Cycle</Label>
                       <Select value={event.targetBillingCycle} onValueChange={(v) => updateEvent(event.id, { targetBillingCycle: v })} disabled={!event.targetCategory}>
-                        <SelectTrigger className={`h-8 text-xs ${inputClass}`}>
-                          <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger className={cn("h-8 text-xs", inputClass)}><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {getCyclesForCategory(event.targetCategory).map((c: number) => (
-                            <SelectItem key={c} value={c.toString()}>{cycleLabels[c] || `${c} months`}</SelectItem>
+                            <SelectItem key={c} value={c.toString()}>{cycleLabels[c] || `${c}mo`}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
+
+                    <div className="space-y-1">
+                      <Label className={cn("text-xs", darkMode ? "text-gray-300" : "text-gray-600")}>
+                        Price {event.targetPriceOverride ? "(Override)" : summary.targetPrice ? `(${formatCurrency(summary.targetPrice)})` : ""}
+                      </Label>
+                      <Input
+                        type="number"
+                        placeholder="Use plan price"
+                        value={event.targetPriceOverride}
+                        onChange={(e) => updateEvent(event.id, { targetPriceOverride: e.target.value })}
+                        className={cn("h-8 text-xs", inputClass)}
+                      />
+                    </div>
                   </div>
 
-                  {/* Target price override */}
-                  <div className="space-y-1">
-                    <Label className={`text-xs ${darkMode ? "text-gray-300" : ""}`}>
-                      Target Price {event.targetPriceOverride ? "(Override)" : summary.targetPrice ? `(${formatCurrency(summary.targetPrice)})` : ""}
-                    </Label>
-                    <Input
-                      type="number"
-                      placeholder="Use plan price"
-                      value={event.targetPriceOverride}
-                      onChange={(e) => updateEvent(event.id, { targetPriceOverride: e.target.value })}
-                      className={`h-8 text-xs ${inputClass}`}
-                    />
-                  </div>
+                  {/* Target price display */}
+                  {summary.targetPrice > 0 && (
+                    <div className={cn("rounded-lg p-3 text-center", darkMode ? "bg-blue-900/20" : "bg-blue-50")}>
+                      <p className={cn("text-xs uppercase tracking-wide mb-1", darkMode ? "text-blue-400" : "text-blue-600")}>
+                        New Plan Price
+                      </p>
+                      <p className={cn("text-lg font-bold font-mono", darkMode ? "text-blue-300" : "text-blue-700")}>
+                        {formatCurrency(summary.targetPrice)}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Summary */}
-                {(event.sourceProducts.length > 0 || summary.targetPrice > 0) && (
-                  <div className={`rounded-lg p-4 space-y-2 ${darkMode ? "bg-gray-900 border border-gray-700" : "bg-blue-50 border border-blue-200"}`}>
-                    <div className="flex justify-between text-sm">
-                      <span className={darkMode ? "text-gray-300" : "text-gray-600"}>Total Credit (from {event.sourceProducts.length} product{event.sourceProducts.length !== 1 ? "s" : ""}):</span>
-                      <span className={`font-semibold ${darkMode ? "text-green-400" : "text-green-600"}`}>{formatCurrency(summary.totalCredit)}</span>
+                {/* Total to Pay */}
+                {(summary.totalCredit > 0 || summary.targetPrice > 0) && (
+                  <div className={cn(
+                    "rounded-xl p-4 text-center border-2",
+                    summary.netCost < 0
+                      ? darkMode ? "bg-red-900/20 border-red-700" : "bg-red-50 border-red-300"
+                      : darkMode ? "bg-emerald-900/30 border-emerald-600" : "bg-emerald-50 border-emerald-300"
+                  )}>
+                    <p className={cn(
+                      "text-xs uppercase tracking-wide mb-1 font-bold",
+                      darkMode ? "text-gray-300" : "text-gray-600"
+                    )}>
+                      💰 Total to Pay
+                    </p>
+                    <div className="text-2xl">
+                      <AnimatedNumber value={summary.netCost} darkMode={darkMode} />
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className={darkMode ? "text-gray-300" : "text-gray-600"}>Target Plan Price:</span>
-                      <span className={`font-semibold ${darkMode ? "text-blue-400" : "text-blue-600"}`}>{formatCurrency(summary.targetPrice)}</span>
-                    </div>
-                    <hr className={darkMode ? "border-gray-700" : "border-blue-200"} />
-                    <div className="flex justify-between text-base font-bold">
-                      <span className={darkMode ? "text-white" : "text-gray-800"}>Net Upgrade Cost:</span>
-                      <span className={summary.netCost < 0 ? (darkMode ? "text-red-400" : "text-red-600") : (darkMode ? "text-emerald-400" : "text-emerald-700")}>
-                        {formatCurrency(summary.netCost)}
-                      </span>
-                    </div>
+                    {summary.totalCredit > 0 && (
+                      <p className={cn("text-xs mt-1", darkMode ? "text-gray-400" : "text-gray-500")}>
+                        After {formatCurrency(summary.totalCredit)} money back
+                      </p>
+                    )}
                   </div>
                 )}
-              </CardContent>
-            )}
+              </div>
+            </div>
           </Card>
         );
       })}
 
-      {/* Grand Total */}
-      {events.length > 1 && (
-        <Card className={`${darkMode ? "bg-gray-900 border-gray-700" : "bg-emerald-50 border-emerald-200"}`}>
-          <CardContent className="py-4">
-            <div className="flex justify-between items-center text-lg font-bold">
-              <span className={darkMode ? "text-white" : "text-gray-800"}>Grand Total ({events.length} events):</span>
-              <span className={`font-mono ${grandTotal < 0 ? (darkMode ? "text-red-400" : "text-red-600") : (darkMode ? "text-green-400" : "text-green-600")}`}>
-                {formatCurrency(grandTotal)}
-              </span>
-            </div>
+      {/* Empty state */}
+      {events.length === 0 && (
+        <Card className={cn(
+          "overflow-hidden",
+          darkMode ? "bg-gray-800 border-gray-700" : ""
+        )}>
+          <CardContent className="py-16 text-center">
+            <div className="text-4xl mb-3">🔄</div>
+            <p className={cn("text-lg font-bold mb-1", darkMode ? "text-gray-300" : "text-gray-600")}>
+              Ready to upgrade?
+            </p>
+            <p className={cn("text-sm mb-4", darkMode ? "text-gray-500" : "text-gray-400")}>
+              Click "New Upgrade" to trade in old plans and pick a shiny new one.
+            </p>
+            <Button onClick={addEvent} className="bg-blue-600 hover:bg-blue-700 text-white">
+              <Plus className="w-4 h-4 mr-1" /> New Upgrade
+            </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Empty state */}
-      {events.length === 0 && (
-        <Card className={cardClass}>
-          <CardContent className="py-12 text-center">
-            <FileText className={`w-12 h-12 mx-auto mb-3 ${darkMode ? "text-gray-600" : "text-gray-300"}`} />
-            <p className={`text-lg font-medium ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-              No upgrade events yet
-            </p>
-            <p className={`text-sm ${darkMode ? "text-gray-500" : "text-gray-400"}`}>
-              Click "Add Upgrade Event" to consolidate multiple plans into a single upgrade.
-            </p>
-          </CardContent>
-        </Card>
+      {/* ─── Grand Total Footer ─── */}
+      {events.length > 0 && (
+        <div className={cn(
+          "fixed bottom-0 left-0 right-0 z-50 border-t shadow-2xl",
+          darkMode ? "bg-gray-900 border-gray-700" : "bg-white border-gray-200"
+        )}>
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+            <span className={cn("text-sm font-bold uppercase tracking-wide", darkMode ? "text-gray-300" : "text-gray-600")}>
+              Grand Total ({events.length} upgrade{events.length !== 1 ? "s" : ""})
+            </span>
+            <div className="text-2xl">
+              <AnimatedNumber value={grandTotal} darkMode={darkMode} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
