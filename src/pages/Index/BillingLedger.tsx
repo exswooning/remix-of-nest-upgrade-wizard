@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar, Plus, X, ArrowRight, ChevronRight, Sparkles, Download, GripVertical } from "lucide-react";
+import { Calendar, Plus, X, ArrowDown, ChevronDown, Sparkles, Download, FileSpreadsheet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { parseDate, formatDate } from "./dateUtils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,17 +29,6 @@ interface BillingLedgerProps {
 
 const cycleLabels: Record<number, string> = { 1: "Monthly", 12: "Annually", 36: "3 Years" };
 const cycleDaysMap: Record<number, number> = { 1: 30, 6: 180, 12: 365, 36: 1095 };
-
-const nodeColors = [
-  { bg: "bg-blue-500/10", border: "border-blue-400/50", text: "text-blue-600 dark:text-blue-400", badge: "bg-blue-600" },
-  { bg: "bg-violet-500/10", border: "border-violet-400/50", text: "text-violet-600 dark:text-violet-400", badge: "bg-violet-600" },
-  { bg: "bg-amber-500/10", border: "border-amber-400/50", text: "text-amber-600 dark:text-amber-400", badge: "bg-amber-600" },
-  { bg: "bg-rose-500/10", border: "border-rose-400/50", text: "text-rose-600 dark:text-rose-400", badge: "bg-rose-600" },
-  { bg: "bg-teal-500/10", border: "border-teal-400/50", text: "text-teal-600 dark:text-teal-400", badge: "bg-teal-600" },
-  { bg: "bg-indigo-500/10", border: "border-indigo-400/50", text: "text-indigo-600 dark:text-indigo-400", badge: "bg-indigo-600" },
-  { bg: "bg-emerald-500/10", border: "border-emerald-400/50", text: "text-emerald-600 dark:text-emerald-400", badge: "bg-emerald-600" },
-  { bg: "bg-pink-500/10", border: "border-pink-400/50", text: "text-pink-600 dark:text-pink-400", badge: "bg-pink-600" },
-];
 
 /* ─── Animated number ─── */
 const AnimatedNumber: React.FC<{ value: number; className?: string }> = ({ value, className }) => {
@@ -122,7 +111,6 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
     const fromCycle = parseInt(fromNode.billingCycle) || 12;
     const totalDays = cycleDaysMap[fromCycle] || 365;
 
-    // Use the "to" node's date as the upgrade date, and the "from" node's date as start
     const startDate = fromNode.date;
     const upgradeDate = toNode.date;
     if (!startDate || !upgradeDate) return null;
@@ -180,97 +168,256 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
     return upgrades.reduce((sum, u) => sum + (u?.upgradeCost ?? 0), 0);
   }, [upgrades]);
 
-  /* ─── PDF Export ─── */
+  /* ─── Excel-style PDF Export ─── */
   const exportPDF = () => {
-    const pdf = new jsPDF("p", "mm", "a4");
+    const pdf = new jsPDF("l", "mm", "a4"); // landscape for table
     const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+    const margin = 12;
+    const tableW = pw - margin * 2;
 
-    pdf.setFillColor(30, 64, 175);
-    pdf.rect(0, 0, pw, 26, "F");
+    // Colors
+    const headerBg = [37, 99, 235]; // blue-600
+    const altRowBg = [241, 245, 249]; // slate-100
+    const borderColor = [203, 213, 225]; // slate-300
+    const successBg = [220, 252, 231]; // green-100
+    const dangerBg = [254, 226, 226]; // red-100
+    const totalBg = [30, 58, 138]; // blue-900
+
+    // ─── Title area ───
+    pdf.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
+    pdf.rect(0, 0, pw, 18, "F");
     pdf.setTextColor(255, 255, 255);
-    pdf.setFontSize(15);
+    pdf.setFontSize(13);
     pdf.setFont("helvetica", "bold");
-    pdf.text("Plan Upgrade Chain", pw / 2, 16, { align: "center" });
+    pdf.text("PLAN UPGRADE CHAIN — BILLING LEDGER", pw / 2, 12, { align: "center" });
 
-    pdf.setTextColor(0, 0, 0);
-    pdf.setFontSize(9);
+    pdf.setTextColor(100, 116, 139);
+    pdf.setFontSize(8);
     pdf.setFont("helvetica", "normal");
-    pdf.text(`Generated: ${new Date().toLocaleDateString("en-GB")}`, 14, 34);
+    pdf.text(`Generated: ${new Date().toLocaleDateString("en-GB")} at ${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`, margin, 26);
+    pdf.text(`Total Plans: ${nodes.length} | Upgrades: ${nodes.length - 1}`, pw - margin, 26, { align: "right" });
 
-    let y = 42;
+    let y = 32;
 
-    // Plan chain
+    // ─── SECTION 1: Plan Details Table ───
+    pdf.setFontSize(9);
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(30, 58, 138);
+    pdf.text("PLAN DETAILS", margin, y);
+    y += 4;
+
+    // Table headers
+    const planCols = [
+      { label: "#", w: 8 },
+      { label: "Plan Name", w: 50 },
+      { label: "Category", w: 45 },
+      { label: "Billing Cycle", w: 30 },
+      { label: "Plan Price", w: 35 },
+      { label: "Date", w: 28 },
+      { label: "Role", w: 30 },
+    ];
+    const planTableW = planCols.reduce((s, c) => s + c.w, 0);
+
+    // Draw header row
+    let x = margin;
+    const rowH = 8;
+    pdf.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
+    pdf.rect(margin, y, planTableW, rowH, "F");
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(7.5);
+    pdf.setFont("helvetica", "bold");
+    planCols.forEach((col) => {
+      pdf.text(col.label, x + 2, y + 5.5);
+      x += col.w;
+    });
+    y += rowH;
+
+    // Draw data rows
     nodes.forEach((node, idx) => {
-      if (y > 250) { pdf.addPage(); y = 20; }
+      if (y > ph - 25) { pdf.addPage(); y = 15; }
+
+      const isAlt = idx % 2 === 1;
+      if (isAlt) {
+        pdf.setFillColor(altRowBg[0], altRowBg[1], altRowBg[2]);
+        pdf.rect(margin, y, planTableW, rowH, "F");
+      }
+
+      // Border
+      pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+      pdf.rect(margin, y, planTableW, rowH, "S");
 
       const price = getNodePrice(node);
-      const color = nodeColors[idx % nodeColors.length];
+      const isFirst = idx === 0;
+      const isLast = idx === nodes.length - 1 && nodes.length > 1;
 
-      pdf.setFillColor(240, 240, 245);
-      pdf.roundedRect(14, y, pw - 28, 18, 3, 3, "F");
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(10);
-      pdf.text(`Plan ${idx + 1}: ${node.plan || "Not selected"}`, 20, y + 7);
+      const rowData = [
+        `${idx + 1}`,
+        node.plan || "—",
+        node.category ? (planData[node.category]?.name || node.category) : "—",
+        cycleLabels[parseInt(node.billingCycle)] || "—",
+        price > 0 ? formatCurrency(price) : "—",
+        node.dateText || "—",
+        isFirst ? "Starting Plan" : isLast ? "Final Plan" : `Step ${idx + 1}`,
+      ];
+
+      x = margin;
+      pdf.setTextColor(30, 41, 59);
+      pdf.setFontSize(7);
       pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(9);
-      const details = [
-        node.category ? planData[node.category]?.name : "",
-        cycleLabels[parseInt(node.billingCycle)] || "",
-        price > 0 ? formatCurrency(price) : "",
-        node.dateText ? `Date: ${node.dateText}` : "",
-      ].filter(Boolean).join(" • ");
-      pdf.text(details, 20, y + 14);
-      y += 22;
-
-      // Upgrade cost between this and next
-      if (idx < nodes.length - 1) {
-        const upgrade = upgrades[idx];
-        if (upgrade) {
-          pdf.setFontSize(8);
-          pdf.setFont("helvetica", "normal");
-          pdf.text(`  Used ${upgrade.usedDays}/${upgrade.totalDays} days • Money Back: ${formatCurrency(upgrade.remaining)}`, 22, y + 4);
-          y += 6;
-          
-          const costColor = upgrade.upgradeCost < 0 ? [220, 50, 50] : [16, 150, 100];
-          pdf.setFillColor(costColor[0], costColor[1], costColor[2]);
-          pdf.roundedRect(20, y, pw - 40, 10, 2, 2, "F");
-          pdf.setTextColor(255, 255, 255);
+      planCols.forEach((col, ci) => {
+        const text = rowData[ci];
+        if (ci === 4 && price > 0) {
           pdf.setFont("helvetica", "bold");
-          pdf.setFontSize(9);
-          pdf.text(`Upgrade Cost: ${formatCurrency(upgrade.upgradeCost)}`, pw / 2, y + 7, { align: "center" });
-          pdf.setTextColor(0, 0, 0);
-          y += 14;
-
-          // Arrow
-          pdf.setFontSize(10);
-          pdf.text("↓", pw / 2, y + 4, { align: "center" });
-          y += 8;
-        } else {
-          pdf.setFontSize(8);
-          pdf.setTextColor(150, 150, 150);
-          pdf.text("(incomplete data for calculation)", pw / 2, y + 4, { align: "center" });
-          pdf.setTextColor(0, 0, 0);
-          y += 10;
         }
-      }
+        pdf.text(text, x + 2, y + 5.5, { maxWidth: col.w - 4 });
+        pdf.setFont("helvetica", "normal");
+        // Column borders
+        if (ci > 0) {
+          pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+          pdf.line(x, y, x, y + rowH);
+        }
+        x += col.w;
+      });
+      y += rowH;
     });
 
-    // Grand total
-    y += 4;
-    if (y > 260) { pdf.addPage(); y = 20; }
-    pdf.setFillColor(30, 64, 175);
-    pdf.roundedRect(14, y, pw - 28, 14, 3, 3, "F");
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFontSize(12);
-    pdf.setFont("helvetica", "bold");
-    pdf.text(`Grand Total: ${formatCurrency(grandTotal)}`, pw / 2, y + 9, { align: "center" });
+    y += 8;
 
-    pdf.setTextColor(128, 128, 128);
-    pdf.setFontSize(7);
+    // ─── SECTION 2: Upgrade Calculations Table ───
+    if (nodes.length > 1) {
+      if (y > ph - 50) { pdf.addPage(); y = 15; }
+
+      pdf.setFontSize(9);
+      pdf.setFont("helvetica", "bold");
+      pdf.setTextColor(30, 58, 138);
+      pdf.text("UPGRADE CALCULATIONS", margin, y);
+      y += 4;
+
+      const upgCols = [
+        { label: "Upgrade", w: 14 },
+        { label: "From Plan", w: 38 },
+        { label: "From Price", w: 28 },
+        { label: "To Plan", w: 38 },
+        { label: "To Price", w: 28 },
+        { label: "Days Used", w: 22 },
+        { label: "Total Days", w: 22 },
+        { label: "Used Amount", w: 30 },
+        { label: "Money Back", w: 30 },
+        { label: "Upgrade Cost", w: 32 },
+      ];
+      const upgTableW = upgCols.reduce((s, c) => s + c.w, 0);
+
+      // Header
+      x = margin;
+      pdf.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
+      pdf.rect(margin, y, upgTableW, rowH, "F");
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(6.5);
+      pdf.setFont("helvetica", "bold");
+      upgCols.forEach((col) => {
+        pdf.text(col.label, x + 1.5, y + 5.5);
+        x += col.w;
+      });
+      y += rowH;
+
+      // Upgrade rows
+      for (let i = 0; i < nodes.length - 1; i++) {
+        if (y > ph - 25) { pdf.addPage(); y = 15; }
+
+        const upgrade = upgrades[i];
+        const fromNode = nodes[i];
+        const toNode = nodes[i + 1];
+        const isAlt = i % 2 === 1;
+
+        if (upgrade) {
+          const costBg = upgrade.upgradeCost < 0 ? dangerBg : successBg;
+          if (isAlt) {
+            pdf.setFillColor(altRowBg[0], altRowBg[1], altRowBg[2]);
+          } else {
+            pdf.setFillColor(255, 255, 255);
+          }
+          pdf.rect(margin, y, upgTableW, rowH, "F");
+          pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+          pdf.rect(margin, y, upgTableW, rowH, "S");
+
+          const upgRowData = [
+            `${i + 1} → ${i + 2}`,
+            fromNode.plan || "—",
+            formatCurrency(upgrade.fromPrice),
+            toNode.plan || "—",
+            formatCurrency(upgrade.toPrice),
+            `${upgrade.usedDays}`,
+            `${upgrade.totalDays}`,
+            formatCurrency(upgrade.usedMoney),
+            formatCurrency(upgrade.remaining),
+            formatCurrency(upgrade.upgradeCost),
+          ];
+
+          x = margin;
+          pdf.setTextColor(30, 41, 59);
+          pdf.setFontSize(6.5);
+          pdf.setFont("helvetica", "normal");
+          upgCols.forEach((col, ci) => {
+            // Highlight the cost cell
+            if (ci === 9) {
+              pdf.setFillColor(costBg[0], costBg[1], costBg[2]);
+              pdf.rect(x, y, col.w, rowH, "F");
+              pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+              pdf.rect(x, y, col.w, rowH, "S");
+              pdf.setFont("helvetica", "bold");
+              pdf.setTextColor(upgrade.upgradeCost < 0 ? 185 : 22, upgrade.upgradeCost < 0 ? 28 : 101, upgrade.upgradeCost < 0 ? 28 : 52);
+            }
+            // Money back highlight
+            if (ci === 8) {
+              pdf.setFont("helvetica", "bold");
+              pdf.setTextColor(22, 101, 52);
+            }
+            pdf.text(upgRowData[ci], x + 1.5, y + 5.5, { maxWidth: col.w - 3 });
+            pdf.setFont("helvetica", "normal");
+            pdf.setTextColor(30, 41, 59);
+            if (ci > 0) {
+              pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+              pdf.line(x, y, x, y + rowH);
+            }
+            x += col.w;
+          });
+          y += rowH;
+        } else {
+          pdf.setFillColor(255, 255, 255);
+          pdf.rect(margin, y, upgTableW, rowH, "F");
+          pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+          pdf.rect(margin, y, upgTableW, rowH, "S");
+          pdf.setTextColor(148, 163, 184);
+          pdf.setFontSize(7);
+          pdf.text(`${i + 1} → ${i + 2}`, margin + 2, y + 5.5);
+          pdf.text("Incomplete data — fill in both plans and dates", margin + 60, y + 5.5);
+          y += rowH;
+        }
+      }
+
+      // Grand total row
+      y += 1;
+      pdf.setFillColor(totalBg[0], totalBg[1], totalBg[2]);
+      pdf.rect(margin, y, upgTableW, 10, "F");
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(9);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("GRAND TOTAL", margin + 4, y + 7);
+      pdf.text(formatCurrency(grandTotal), margin + upgTableW - 4, y + 7, { align: "right" });
+      y += 14;
+    }
+
+    // ─── Footer ───
+    pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+    pdf.line(margin, ph - 12, pw - margin, ph - 12);
+    pdf.setTextColor(148, 163, 184);
+    pdf.setFontSize(6.5);
     pdf.setFont("helvetica", "normal");
-    pdf.text("System-generated upgrade chain document.", pw / 2, 287, { align: "center" });
+    pdf.text("Auto-generated billing ledger • Plan Upgrade Chain Calculator", margin, ph - 8);
+    pdf.text(`Page 1 of ${pdf.getNumberOfPages()}`, pw - margin, ph - 8, { align: "right" });
 
-    pdf.save(`upgrade-chain-${new Date().toISOString().split("T")[0]}.pdf`);
+    pdf.save(`billing-ledger-${new Date().toISOString().split("T")[0]}.pdf`);
   };
 
   const inputClass = darkMode ? "bg-gray-700 border-gray-600 text-white" : "";
@@ -308,37 +455,42 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
 
   /* ─── Render a plan node card ─── */
   const renderPlanNode = (node: PlanNode, idx: number) => {
-    const color = nodeColors[idx % nodeColors.length];
     const price = getNodePrice(node);
     const isFirst = idx === 0;
-    const isLast = idx === nodes.length - 1;
+    const isLast = idx === nodes.length - 1 && nodes.length > 1;
 
     return (
-      <div key={node.id} className="flex flex-col items-stretch">
-        {/* Plan Card */}
+      <div key={node.id} className="w-full">
         <Card className={cn(
-          "relative overflow-hidden border-2 transition-all duration-200 hover:shadow-lg",
-          color.border,
-          darkMode ? "bg-gray-800/80" : "bg-white"
+          "relative overflow-hidden transition-all duration-200 hover:shadow-md",
+          darkMode
+            ? "bg-card border-border"
+            : "bg-card border-border"
         )}>
-          {/* Top accent bar */}
-          <div className={cn("h-1.5 w-full", color.badge)} />
-
-          <CardContent className="p-4 space-y-3">
-            {/* Header row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white", color.badge)}>
+          <CardContent className="p-0">
+            {/* Card Header */}
+            <div className={cn(
+              "flex items-center justify-between px-4 py-2.5 border-b",
+              darkMode ? "bg-muted/30 border-border" : "bg-muted/50 border-border"
+            )}>
+              <div className="flex items-center gap-2.5">
+                <div className={cn(
+                  "w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold text-primary-foreground",
+                  isFirst ? "bg-blue-600" : isLast ? "bg-emerald-600" : "bg-violet-600"
+                )}>
                   {idx + 1}
                 </div>
-                <div>
-                  <p className={cn("text-xs font-semibold uppercase tracking-wider", color.text)}>
-                    {isFirst ? "Starting Plan" : isLast && nodes.length > 1 ? "Final Plan" : `Plan ${idx + 1}`}
-                  </p>
+                <div className="flex items-center gap-2">
+                  <span className={cn("text-sm font-semibold", darkMode ? "text-foreground" : "text-foreground")}>
+                    {isFirst ? "Starting Plan" : isLast ? "Final Plan" : `Plan ${idx + 1}`}
+                  </span>
                   {node.plan && (
-                    <p className={cn("text-sm font-bold", darkMode ? "text-white" : "text-gray-900")}>
+                    <span className={cn(
+                      "text-xs px-2 py-0.5 rounded-md font-medium",
+                      darkMode ? "bg-primary/10 text-primary" : "bg-primary/5 text-primary"
+                    )}>
                       {node.plan}
-                    </p>
+                    </span>
                   )}
                 </div>
               </div>
@@ -347,89 +499,101 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
                   variant="ghost"
                   size="sm"
                   onClick={() => removeNode(node.id)}
-                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-3 w-3" />
                 </Button>
               )}
             </div>
 
-            {/* Fields */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className={cn("text-[10px] uppercase tracking-wider", darkMode ? "text-gray-400" : "text-gray-500")}>Category</Label>
-                <Select
-                  value={node.category}
-                  onValueChange={(v) => {
-                    const cycles = getCyclesForCategory(v);
-                    const defCycle = cycles.includes(12) ? "12" : cycles[0]?.toString() || "12";
-                    updateNode(node.id, { category: v, plan: "", billingCycle: defCycle });
-                  }}
-                >
-                  <SelectTrigger className={cn("h-8 text-xs", inputClass)}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(planData).map(([key, val]: [string, any]) => (
-                      <SelectItem key={key} value={key}>{val.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* Card Body */}
+            <div className="p-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {/* Category */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Category</Label>
+                  <Select
+                    value={node.category}
+                    onValueChange={(v) => {
+                      const cycles = getCyclesForCategory(v);
+                      const defCycle = cycles.includes(12) ? "12" : cycles[0]?.toString() || "12";
+                      updateNode(node.id, { category: v, plan: "", billingCycle: defCycle });
+                    }}
+                  >
+                    <SelectTrigger className={cn("h-8 text-xs", inputClass)}><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(planData).map(([key, val]: [string, any]) => (
+                        <SelectItem key={key} value={key}>{val.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Plan */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Plan</Label>
+                  <Select value={node.plan} onValueChange={(v) => updateNode(node.id, { plan: v })} disabled={!node.category}>
+                    <SelectTrigger className={cn("h-8 text-xs", inputClass)}><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      {getPlansForCategory(node.category).map((p: any) => (
+                        <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Cycle */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Cycle</Label>
+                  <Select value={node.billingCycle} onValueChange={(v) => updateNode(node.id, { billingCycle: v })} disabled={!node.category}>
+                    <SelectTrigger className={cn("h-8 text-xs", inputClass)}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {getCyclesForCategory(node.category).map((c: number) => (
+                        <SelectItem key={c} value={c.toString()}>{cycleLabels[c] || `${c}mo`}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Date */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                    {isFirst ? "Start Date" : "Upgrade Date"}
+                  </Label>
+                  {renderDateInput(
+                    node.dateText,
+                    (v) => updateNode(node.id, { dateText: v }),
+                    node.date,
+                    (d) => updateNode(node.id, { dateText: formatDate(d), date: d })
+                  )}
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label className={cn("text-[10px] uppercase tracking-wider", darkMode ? "text-gray-400" : "text-gray-500")}>Plan</Label>
-                <Select value={node.plan} onValueChange={(v) => updateNode(node.id, { plan: v })} disabled={!node.category}>
-                  <SelectTrigger className={cn("h-8 text-xs", inputClass)}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>
-                    {getPlansForCategory(node.category).map((p: any) => (
-                      <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className={cn("text-[10px] uppercase tracking-wider", darkMode ? "text-gray-400" : "text-gray-500")}>Cycle</Label>
-                <Select value={node.billingCycle} onValueChange={(v) => updateNode(node.id, { billingCycle: v })} disabled={!node.category}>
-                  <SelectTrigger className={cn("h-8 text-xs", inputClass)}><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {getCyclesForCategory(node.category).map((c: number) => (
-                      <SelectItem key={c} value={c.toString()}>{cycleLabels[c] || `${c}mo`}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className={cn("text-[10px] uppercase tracking-wider", darkMode ? "text-gray-400" : "text-gray-500")}>
-                  Price Override
-                </Label>
-                <Input
-                  type="number"
-                  placeholder={price > 0 ? formatCurrency(price) : "Price"}
-                  value={node.priceOverride}
-                  onChange={(e) => updateNode(node.id, { priceOverride: e.target.value })}
-                  className={cn("h-8 text-xs", inputClass)}
-                />
+
+              {/* Price row */}
+              <div className="mt-3 flex items-center gap-3">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Price Override</Label>
+                  <Input
+                    type="number"
+                    placeholder={price > 0 ? `Auto: ${formatCurrency(price)}` : "Enter price"}
+                    value={node.priceOverride}
+                    onChange={(e) => updateNode(node.id, { priceOverride: e.target.value })}
+                    className={cn("h-8 text-xs", inputClass)}
+                  />
+                </div>
+                {price > 0 && (
+                  <div className={cn(
+                    "px-4 py-2 rounded-lg text-center min-w-[130px]",
+                    darkMode ? "bg-muted/50" : "bg-muted/70"
+                  )}>
+                    <p className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">Price</p>
+                    <p className={cn("text-base font-bold font-mono", darkMode ? "text-foreground" : "text-foreground")}>
+                      {formatCurrency(price)}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
-
-            {/* Date */}
-            <div className="space-y-1">
-              <Label className={cn("text-[10px] uppercase tracking-wider", darkMode ? "text-gray-400" : "text-gray-500")}>
-                {isFirst ? "Billing Start Date" : "Upgrade Date"}
-              </Label>
-              {renderDateInput(
-                node.dateText,
-                (v) => updateNode(node.id, { dateText: v }),
-                node.date,
-                (d) => updateNode(node.id, { dateText: formatDate(d), date: d })
-              )}
-            </div>
-
-            {/* Price display */}
-            {price > 0 && (
-              <div className={cn("rounded-lg p-2 text-center", color.bg)}>
-                <p className={cn("text-[10px] uppercase tracking-wider mb-0.5", color.text)}>Plan Price</p>
-                <p className={cn("text-lg font-bold font-mono", color.text)}>{formatCurrency(price)}</p>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
@@ -439,58 +603,77 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
   /* ─── Render upgrade cost connector ─── */
   const renderUpgradeConnector = (idx: number) => {
     const upgrade = upgrades[idx];
+    const fromNode = nodes[idx];
+    const toNode = nodes[idx + 1];
 
     return (
-      <div key={`conn-${idx}`} className="flex flex-col items-center py-2">
-        {/* Connector line */}
-        <div className="w-px h-4 bg-gradient-to-b from-muted-foreground/30 to-muted-foreground/60" />
-        
-        {/* Upgrade cost card */}
+      <div key={`conn-${idx}`} className="flex flex-col items-center w-full py-1">
+        {/* Top line */}
         <div className={cn(
-          "rounded-xl border px-5 py-3 text-center shadow-sm min-w-[220px]",
-          darkMode ? "bg-gray-800/60 border-gray-700" : "bg-muted/50 border-border"
+          "w-0.5 h-3 rounded-full",
+          darkMode ? "bg-muted-foreground/20" : "bg-border"
+        )} />
+
+        {/* Connector card */}
+        <div className={cn(
+          "w-full max-w-md rounded-lg border px-4 py-2.5 relative",
+          darkMode ? "bg-muted/20 border-border" : "bg-muted/40 border-border"
         )}>
           {upgrade ? (
-            <>
-              <div className="flex items-center justify-center gap-2 mb-1.5">
-                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className={cn("text-[10px] font-bold uppercase tracking-widest", darkMode ? "text-gray-400" : "text-gray-500")}>
-                  Upgrade {idx + 1} → {idx + 2}
-                </span>
-                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+            <div className="space-y-1.5">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <ArrowDown className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Upgrade {idx + 1} → {idx + 2}
+                  </span>
+                </div>
               </div>
-              <div className={cn("text-xs mb-1", darkMode ? "text-gray-400" : "text-gray-500")}>
-                Used {upgrade.usedDays}/{upgrade.totalDays} days • Money Back: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(upgrade.remaining)}</span>
+
+              {/* Details grid */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-[9px] text-muted-foreground uppercase">Used</p>
+                  <p className={cn("text-xs font-semibold font-mono", darkMode ? "text-foreground" : "text-foreground")}>
+                    {upgrade.usedDays}/{upgrade.totalDays} days
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] text-muted-foreground uppercase">Money Back</p>
+                  <p className="text-xs font-semibold font-mono text-emerald-600 dark:text-emerald-400">
+                    {formatCurrency(upgrade.remaining)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] text-muted-foreground uppercase">Cost</p>
+                  <AnimatedNumber
+                    value={upgrade.upgradeCost}
+                    className={cn(
+                      "text-xs",
+                      upgrade.upgradeCost < 0
+                        ? "text-destructive"
+                        : "text-emerald-600 dark:text-emerald-400"
+                    )}
+                  />
+                </div>
               </div>
-              <div className={cn(
-                "rounded-lg px-4 py-1.5 inline-block",
-                upgrade.upgradeCost < 0
-                  ? "bg-red-100 dark:bg-red-900/30"
-                  : "bg-emerald-100 dark:bg-emerald-900/30"
-              )}>
-                <span className={cn("text-xs font-semibold", darkMode ? "text-gray-400" : "text-gray-500")}>
-                  Cost:{" "}
-                </span>
-                <AnimatedNumber
-                  value={upgrade.upgradeCost}
-                  className={cn(
-                    "text-sm",
-                    upgrade.upgradeCost < 0
-                      ? "text-red-600 dark:text-red-400"
-                      : "text-emerald-700 dark:text-emerald-400"
-                  )}
-                />
-              </div>
-            </>
+            </div>
           ) : (
-            <p className={cn("text-xs italic", darkMode ? "text-gray-500" : "text-gray-400")}>
-              Fill in both plans & dates to see cost
-            </p>
+            <div className="flex items-center justify-center gap-2 py-1">
+              <ArrowDown className="w-3 h-3 text-muted-foreground/50" />
+              <p className="text-xs italic text-muted-foreground">
+                Fill in both plans & dates to calculate
+              </p>
+            </div>
           )}
         </div>
 
-        {/* Connector line */}
-        <div className="w-px h-4 bg-gradient-to-b from-muted-foreground/60 to-muted-foreground/30" />
+        {/* Bottom line */}
+        <div className={cn(
+          "w-0.5 h-3 rounded-full",
+          darkMode ? "bg-muted-foreground/20" : "bg-border"
+        )} />
       </div>
     );
   };
@@ -498,27 +681,28 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
   return (
     <div className="space-y-2 pb-24">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
         <div>
-          <h2 className={cn("text-xl font-bold flex items-center gap-2", darkMode ? "text-white" : "text-gray-900")}>
-            <Sparkles className="w-5 h-5 text-amber-500" />
+          <h2 className="text-lg font-bold flex items-center gap-2 text-foreground">
+            <Sparkles className="w-4 h-4 text-amber-500" />
             Plan Upgrade Chain
           </h2>
-          <p className={cn("text-sm mt-1", darkMode ? "text-gray-400" : "text-gray-500")}>
-            Start with your current plan and add upgrades. Costs are calculated between each consecutive plan.
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Build your upgrade path. Costs auto-calculate between each consecutive plan.
           </p>
         </div>
         <div className="flex gap-2">
           {nodes.length > 1 && (
-            <Button onClick={exportPDF} variant="outline" className={cn(darkMode ? "border-gray-600 text-gray-300 hover:bg-gray-800" : "")}>
-              <Download className="w-4 h-4 mr-1" /> Export PDF
+            <Button onClick={exportPDF} variant="outline" size="sm" className="gap-1.5">
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Export PDF
             </Button>
           )}
         </div>
       </div>
 
-      {/* Chain visualization */}
-      <div className="flex flex-col items-center max-w-lg mx-auto">
+      {/* Chain */}
+      <div className="flex flex-col items-center max-w-xl mx-auto gap-0">
         {nodes.map((node, idx) => (
           <React.Fragment key={node.id}>
             {renderPlanNode(node, idx)}
@@ -526,18 +710,19 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
           </React.Fragment>
         ))}
 
-        {/* Add next plan button */}
-        <div className="flex flex-col items-center pt-3">
-          <div className="w-px h-6 bg-gradient-to-b from-muted-foreground/30 to-transparent" />
+        {/* Add button */}
+        <div className="flex flex-col items-center pt-2">
+          <div className={cn(
+            "w-0.5 h-5 rounded-full",
+            darkMode ? "bg-muted-foreground/20" : "bg-border"
+          )} />
           <Button
             onClick={addNode}
             variant="outline"
-            className={cn(
-              "rounded-full px-6 border-dashed border-2 hover:border-solid transition-all",
-              darkMode ? "border-gray-600 hover:border-blue-500 hover:bg-blue-900/20" : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
-            )}
+            size="sm"
+            className="rounded-full px-5 border-dashed border-2 gap-1.5 hover:border-solid transition-all text-muted-foreground hover:text-foreground"
           >
-            <Plus className="w-4 h-4 mr-1" />
+            <Plus className="w-3.5 h-3.5" />
             Add Next Plan
           </Button>
         </div>
@@ -546,23 +731,23 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
       {/* Grand Total Footer */}
       {nodes.length > 1 && (
         <div className={cn(
-          "fixed bottom-0 left-0 right-0 z-50 border-t shadow-2xl",
-          darkMode ? "bg-gray-900 border-gray-700" : "bg-white border-border"
+          "fixed bottom-0 left-0 right-0 z-50 border-t shadow-xl backdrop-blur-sm",
+          darkMode ? "bg-background/95 border-border" : "bg-background/95 border-border"
         )}>
-          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className={cn("text-sm font-bold uppercase tracking-wide", darkMode ? "text-gray-300" : "text-gray-600")}>
+          <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Grand Total
               </span>
-              <span className={cn("text-xs px-2 py-0.5 rounded-full", darkMode ? "bg-gray-800 text-gray-400" : "bg-muted text-muted-foreground")}>
-                {nodes.length} plans • {nodes.length - 1} upgrade{nodes.length - 1 !== 1 ? "s" : ""}
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
+                {nodes.length} plans · {nodes.length - 1} upgrade{nodes.length - 1 !== 1 ? "s" : ""}
               </span>
             </div>
             <AnimatedNumber
               value={grandTotal}
               className={cn(
-                "text-2xl",
-                grandTotal < 0 ? "text-red-600 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400"
+                "text-xl",
+                grandTotal < 0 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
               )}
             />
           </div>
