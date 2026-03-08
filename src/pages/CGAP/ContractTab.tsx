@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock } from 'lucide-react';
+import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ImageIcon, X, Stamp } from 'lucide-react';
 import { numberToWords, periodToText, formatNepaliNumber } from '@/utils/cgapAutoFill';
 
 const ACCENT = '#4F7FFF';
@@ -46,6 +46,33 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [step, setStep] = useState(-1);
   const [done, setDone] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Signature & stamp uploads
+  const [signatures, setSignatures] = useState<Record<string, { file: File; preview: string } | null>>({
+    clientSignature: null,
+    clientStamp: null,
+    spSignature: null,
+    spStamp: null,
+  });
+  const sigRefs = {
+    clientSignature: useRef<HTMLInputElement>(null),
+    clientStamp: useRef<HTMLInputElement>(null),
+    spSignature: useRef<HTMLInputElement>(null),
+    spStamp: useRef<HTMLInputElement>(null),
+  };
+
+  const handleSigUpload = (key: string, file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 2 * 1024 * 1024) return;
+    const preview = URL.createObjectURL(file);
+    setSignatures(prev => ({ ...prev, [key]: { file, preview } }));
+  };
+
+  const removeSig = (key: string) => {
+    if (signatures[key]?.preview) URL.revokeObjectURL(signatures[key]!.preview);
+    setSignatures(prev => ({ ...prev, [key]: null }));
+  };
 
   // Auto-fill paymentWords when paymentAmount changes
   useEffect(() => {
@@ -172,7 +199,34 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     </div>
   );
 
-  // Auto-generated placeholders that match the PDF header/body
+  const renderSigStampRow = (sigKey: string, stampKey: string, sigLabel: string, stampLabel: string) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+      {[{ key: sigKey, label: sigLabel, icon: <ImageIcon className="w-5 h-5" /> }, { key: stampKey, label: stampLabel, icon: <Stamp className="w-5 h-5" /> }].map(({ key, label, icon }) => (
+        <div key={key} className={`${card} relative`}>
+          <Label className={labelCls}>{label} (PNG)</Label>
+          {signatures[key] ? (
+            <div className="relative mt-2">
+              <img src={signatures[key]!.preview} alt={label} className="max-h-24 rounded-lg border object-contain" style={{ borderColor: `${ACCENT}44` }} />
+              <button onClick={() => removeSig(key)} className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ) : (
+            <div
+              onClick={() => (sigRefs as any)[key]?.current?.click()}
+              className={`mt-2 flex flex-col items-center justify-center py-4 rounded-lg cursor-pointer transition-all hover:opacity-80 border-2 border-dashed ${dm ? 'border-gray-700 bg-gray-800/50' : 'border-gray-300 bg-gray-100'}`}
+            >
+              <span className={dm ? 'text-gray-600' : 'text-gray-400'}>{icon}</span>
+              <p className={`text-xs mt-1.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Click to upload</p>
+            </div>
+          )}
+          <input ref={(sigRefs as any)[key]} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => handleSigUpload(key, e.target.files?.[0])} />
+        </div>
+      ))}
+    </div>
+  );
+
+
   const autoPlaceholders = [
     { label: 'Contract ID', tag: '<<CONTRACTID>>', desc: 'ABV-NNBS-DD-MM-YY-N' },
     { label: 'Date (ordinal)', tag: '<<DATE>>', desc: 'e.g. "22nd"' },
@@ -223,12 +277,14 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {clientSignatoryFields.map(renderField)}
       </div>
+      {renderSigStampRow('clientSignature', 'clientStamp', 'Client Signature', 'Client Stamp')}
 
       {/* Service Provider Signatory Section */}
       {sectionHeader('For the Service Provider', 'Nest Nepal signing party and witness (Page 7)')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {spSignatoryFields.map(renderField)}
       </div>
+      {renderSigStampRow('spSignature', 'spStamp', 'SP Signature', 'SP Stamp')}
 
       {/* Invoice Upload — Annex C */}
       <div className={card}>
