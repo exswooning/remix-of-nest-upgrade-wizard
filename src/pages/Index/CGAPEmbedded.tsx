@@ -25,6 +25,9 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
           <TabsTrigger value="amendment" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-purple-900/50 data-[state=active]:text-purple-300' : 'data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700'}`}>
             <Zap className="w-3.5 h-3.5" /> Amendment
           </TabsTrigger>
+          <TabsTrigger value="database" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-green-900/50 data-[state=active]:text-green-300' : 'data-[state=active]:bg-green-100 data-[state=active]:text-green-700'}`}>
+            <Database className="w-3.5 h-3.5" /> Database
+          </TabsTrigger>
           <TabsTrigger value="settings" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
             <Settings className="w-3.5 h-3.5" /> Settings
           </TabsTrigger>
