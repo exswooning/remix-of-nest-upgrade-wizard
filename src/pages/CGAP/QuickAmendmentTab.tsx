@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock, FileText } from 'lucide-react';
 import { extractCompanyAbv, getTodayISO } from '@/utils/cgapAutoFill';
-import { CONTRACT_SECTIONS, searchSections } from '@/utils/contractSections';
+import { CONTRACT_SECTIONS, searchSections, type ContractSection } from '@/utils/contractSections';
 
 const ACCENT = '#A78BFA';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
