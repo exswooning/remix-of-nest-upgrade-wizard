@@ -700,34 +700,41 @@ const Index = () => {
           
           <CardContent className="space-y-6">
             <Tabs defaultValue="upgrade" className="w-full">
-              <TabsList className={`grid w-full grid-cols-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+              <TabsList className={`grid w-full grid-cols-5 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                 <TabsTrigger 
                   value="upgrade" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
-                  <ArrowUpCircle className="w-4 h-4" />
+                  <ArrowUpCircle className="w-3.5 h-3.5" />
                   Upgrade
                 </TabsTrigger>
                 <TabsTrigger 
                   value="prorata" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
-                  <UserPlus className="w-4 h-4" />
+                  <UserPlus className="w-3.5 h-3.5" />
                   Pro Rata
                 </TabsTrigger>
                 <TabsTrigger 
                   value="ledger" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
-                  <FileText className="w-4 h-4" />
+                  <FileText className="w-3.5 h-3.5" />
                   Ledger
                 </TabsTrigger>
                 <TabsTrigger 
                   value="vps" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
-                  <Server className="w-4 h-4" />
+                  <Server className="w-3.5 h-3.5" />
                   VPS
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="cgap" 
+                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-blue-900 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}
+                >
+                  <FileCheck className="w-3.5 h-3.5" />
+                  CGAP
                 </TabsTrigger>
               </TabsList>
               
