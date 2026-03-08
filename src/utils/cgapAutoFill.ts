@@ -68,6 +68,15 @@ export function getTodayISO(): string {
   return new Date().toISOString().split('T')[0];
 }
 
+// Generate abbreviation from company name (first letter of each significant word)
+export function generateAbbreviation(companyName: string): string {
+  if (!companyName.trim()) return '';
+  const skip = new Set(['pvt', 'pvt.', 'ltd', 'ltd.', 'private', 'limited', 'co', 'co.', 'and', 'the', 'of', 'for', 'in', 'a', 'an']);
+  const words = companyName.trim().split(/\s+/).filter(w => !skip.has(w.toLowerCase()));
+  if (words.length === 0) return companyName.trim().charAt(0).toUpperCase();
+  return words.map(w => w.charAt(0).toUpperCase()).join('');
+}
+
 // Format number with commas (Nepali style: 1,00,000)
 export function formatNepaliNumber(num: number): string {
   if (isNaN(num)) return '';
