@@ -1,16 +1,72 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCGAP } from '@/contexts/CGAPContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock } from 'lucide-react';
+import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock, FileText } from 'lucide-react';
 import { extractCompanyAbv, getTodayISO } from '@/utils/cgapAutoFill';
+import { CONTRACT_SECTIONS, searchSections } from '@/utils/contractSections';
 
 const ACCENT = '#A78BFA';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
 
 interface ChangeRow { clause: string; original: string; replacement: string; }
+
+// Section picker dropdown component
+const SectionPicker: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  darkMode: boolean;
+  inputCls: string;
+  accent: string;
+}> = ({ value, onChange, darkMode, inputCls, accent }) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value);
+  const ref = useRef<HTMLDivElement>(null);
+  const results = searchSections(query);
+
+  useEffect(() => { setQuery(value); }, [value]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="relative">
+        <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-40" />
+        <Input
+          value={query}
+          onChange={e => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="Type section # (e.g. 3A, 12, Annex B)"
+          className={`${inputCls} pl-9`}
+        />
+      </div>
+      {open && results.length > 0 && (
+        <div className={`absolute z-50 w-full mt-1 max-h-48 overflow-auto rounded-lg border shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          {results.map(s => (
+            <button
+              key={s.id}
+              onClick={() => { onChange(`Section ${s.label} — ${s.title} (Page ${s.page})`); setQuery(`Section ${s.label} — ${s.title} (Page ${s.page})`); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}
+            >
+              <Badge variant="secondary" className="font-mono text-[10px] shrink-0" style={{ color: accent }}>{s.label}</Badge>
+              <span className="truncate">{s.title}</span>
+              <span className={`ml-auto text-[10px] shrink-0 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>p.{s.page}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface QuickAmendmentTabProps { darkMode?: boolean; }
 
 const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false }) => {
@@ -21,14 +77,13 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
   const [sigName, setSigName] = useState('');
   const [sigTitle, setSigTitle] = useState('');
   const [witName, setWitName] = useState('');
-  const [witTitle, setWitTitle] = useState('');
+  const [witDesignation, setWitDesignation] = useState('');
   const [changes, setChanges] = useState<ChangeRow[]>([{ clause: '', original: '', replacement: '' }]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [step, setStep] = useState(-1);
   const [done, setDone] = useState(false);
   const [generatedId, setGeneratedId] = useState('');
 
-  // Auto-extract company abbreviation
   useEffect(() => {
     setCompanyAbv(extractCompanyAbv(contractId));
   }, [contractId]);
@@ -56,7 +111,7 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
     setDone(false);
     const id = generateAddendumId(contractId); setGeneratedId(id);
     for (let i = 0; i < STEPS.length; i++) { setStep(i); await new Promise(r => setTimeout(r, 700)); }
-    addAddendumLog({ timestamp: new Date().toISOString(), companyAbv, addendumId: id, originalContractId: contractId, fields: { effectiveDate, sigName, sigTitle, witName, witTitle, changes: JSON.stringify(changes) } });
+    addAddendumLog({ timestamp: new Date().toISOString(), companyAbv, addendumId: id, originalContractId: contractId, fields: { effectiveDate, sigName, sigTitle, witName, witDesignation, changes: JSON.stringify(changes) } });
     setDone(true);
   };
 
@@ -67,7 +122,7 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
   };
 
   const sectionHeader = (title: string, subtitle: string) => (
-    <div className={`flex items-center gap-2 pt-2 pb-1`}>
+    <div className="flex items-center gap-2 pt-2 pb-1">
       <div className="w-1 h-5 rounded-full" style={{ background: ACCENT }} />
       <div>
         <h3 className={`text-sm font-semibold ${dm ? 'text-gray-200' : 'text-gray-700'}`}>{title}</h3>
@@ -89,7 +144,7 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
         <div className="md:col-span-2">
           <Label className={labelCls}>Original Contract ID <span className="text-red-500">*</span></Label>
           <Input value={contractId} onChange={e => { setContractId(e.target.value); if (e.target.value.trim()) setErrors(prev => ({ ...prev, contractId: false })); }}
-            placeholder="e.g. ABC-NNBS-03-03-26-1" className={inputCls(!!errors.contractId)} />
+            placeholder="e.g. WMA-NNBS-03-03-26-1" className={inputCls(!!errors.contractId)} />
           {errors.contractId && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
         </div>
         <div>
@@ -115,10 +170,13 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
         </div>
       </div>
 
-      {/* Change Rows */}
+      {/* Change Rows with Section Picker */}
       <div className={card}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className={`text-sm font-medium ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Changes (up to 3)</h3>
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h3 className={`text-sm font-medium ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Changes (up to 3)</h3>
+            <p className={`text-[10px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Type a section number to search (e.g. "3A", "15", "Annex")</p>
+          </div>
           {changes.length < 3 && (
             <Button variant="outline" size="sm" onClick={addRow} className="gap-1 text-xs" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
               <Plus className="w-3 h-3" /> Add
@@ -132,9 +190,24 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
                 <span className="text-xs font-medium" style={{ color: ACCENT }}>Change {i + 1}</span>
                 {changes.length > 1 && <button onClick={() => removeRow(i)} className="p-1 text-red-500"><Trash2 className="w-3 h-3" /></button>}
               </div>
-              <Input placeholder="Page / Clause" value={row.clause} onChange={e => updateRow(i, 'clause', e.target.value)} className={inputCls(false)} />
-              <textarea placeholder="Original Text" rows={2} value={row.original} onChange={e => updateRow(i, 'original', e.target.value)} className={inputCls(false)} />
-              <textarea placeholder="Replacement Text" rows={2} value={row.replacement} onChange={e => updateRow(i, 'replacement', e.target.value)} className={inputCls(false)} />
+              <div>
+                <Label className={`${labelCls} text-[10px] mb-1`}>Section / Clause Reference</Label>
+                <SectionPicker
+                  value={row.clause}
+                  onChange={val => updateRow(i, 'clause', val)}
+                  darkMode={dm}
+                  inputCls={inputCls(false)}
+                  accent={ACCENT}
+                />
+              </div>
+              <div>
+                <Label className={`${labelCls} text-[10px] mb-1`}>Original Text</Label>
+                <textarea placeholder="Text from the original contract..." rows={2} value={row.original} onChange={e => updateRow(i, 'original', e.target.value)} className={inputCls(false)} />
+              </div>
+              <div>
+                <Label className={`${labelCls} text-[10px] mb-1`}>Replacement Text</Label>
+                <textarea placeholder="New text that replaces the original..." rows={2} value={row.replacement} onChange={e => updateRow(i, 'replacement', e.target.value)} className={inputCls(false)} />
+              </div>
             </div>
           ))}
         </div>
@@ -158,8 +231,8 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
           <Input value={witName} onChange={e => setWitName(e.target.value)} className={inputCls(false)} />
         </div>
         <div>
-          <Label className={labelCls}>Witness Title</Label>
-          <Input value={witTitle} onChange={e => setWitTitle(e.target.value)} className={inputCls(false)} />
+          <Label className={labelCls}>Witness Designation</Label>
+          <Input value={witDesignation} onChange={e => setWitDesignation(e.target.value)} className={inputCls(false)} />
         </div>
       </div>
 
