@@ -14,7 +14,90 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      contracts: {
+        Row: {
+          advance_percent: number | null
+          client_company_name: string
+          client_coordinator: string | null
+          client_location: string | null
+          company_abv: string
+          contract_id: string
+          contract_period: string | null
+          contract_period_num: number | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_signed: boolean
+          num_users: number | null
+          payment_amount: number | null
+          payment_words: string | null
+          signatory_name: string | null
+          signatory_title: string | null
+          signed_at: string | null
+          signed_by: string | null
+          sp_signatory_name: string | null
+          sp_signatory_title: string | null
+          sp_witness_designation: string | null
+          sp_witness_name: string | null
+          witness_designation: string | null
+          witness_name: string | null
+        }
+        Insert: {
+          advance_percent?: number | null
+          client_company_name: string
+          client_coordinator?: string | null
+          client_location?: string | null
+          company_abv: string
+          contract_id: string
+          contract_period?: string | null
+          contract_period_num?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_signed?: boolean
+          num_users?: number | null
+          payment_amount?: number | null
+          payment_words?: string | null
+          signatory_name?: string | null
+          signatory_title?: string | null
+          signed_at?: string | null
+          signed_by?: string | null
+          sp_signatory_name?: string | null
+          sp_signatory_title?: string | null
+          sp_witness_designation?: string | null
+          sp_witness_name?: string | null
+          witness_designation?: string | null
+          witness_name?: string | null
+        }
+        Update: {
+          advance_percent?: number | null
+          client_company_name?: string
+          client_coordinator?: string | null
+          client_location?: string | null
+          company_abv?: string
+          contract_id?: string
+          contract_period?: string | null
+          contract_period_num?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_signed?: boolean
+          num_users?: number | null
+          payment_amount?: number | null
+          payment_words?: string | null
+          signatory_name?: string | null
+          signatory_title?: string | null
+          signed_at?: string | null
+          signed_by?: string | null
+          sp_signatory_name?: string | null
+          sp_signatory_title?: string | null
+          sp_witness_designation?: string | null
+          sp_witness_name?: string | null
+          witness_designation?: string | null
+          witness_name?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

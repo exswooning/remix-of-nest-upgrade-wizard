@@ -3,8 +3,9 @@ import ContractTab from '@/pages/CGAP/ContractTab';
 import AddendumTab from '@/pages/CGAP/AddendumTab';
 import QuickAmendmentTab from '@/pages/CGAP/QuickAmendmentTab';
 import SettingsTab from '@/pages/CGAP/SettingsTab';
+import ContractsDatabase from '@/pages/CGAP/ContractsDatabase';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, FilePlus, Zap, Settings } from 'lucide-react';
+import { FileText, FilePlus, Zap, Settings, Database } from 'lucide-react';
 
 interface CGAPEmbeddedProps {
   darkMode: boolean;
@@ -14,7 +15,7 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
   return (
     <div className="space-y-4">
       <Tabs defaultValue="contract" className="w-full">
-        <TabsList className={`grid w-full grid-cols-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+        <TabsList className={`grid w-full grid-cols-5 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
           <TabsTrigger value="contract" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-blue-900/50 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}>
             <FileText className="w-3.5 h-3.5" /> Contract
           </TabsTrigger>
@@ -23,6 +24,9 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
           </TabsTrigger>
           <TabsTrigger value="amendment" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-purple-900/50 data-[state=active]:text-purple-300' : 'data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700'}`}>
             <Zap className="w-3.5 h-3.5" /> Amendment
+          </TabsTrigger>
+          <TabsTrigger value="database" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-green-900/50 data-[state=active]:text-green-300' : 'data-[state=active]:bg-green-100 data-[state=active]:text-green-700'}`}>
+            <Database className="w-3.5 h-3.5" /> Database
           </TabsTrigger>
           <TabsTrigger value="settings" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
             <Settings className="w-3.5 h-3.5" /> Settings
@@ -37,6 +41,9 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
         </TabsContent>
         <TabsContent value="amendment" className="mt-4">
           <QuickAmendmentTab darkMode={darkMode} />
+        </TabsContent>
+        <TabsContent value="database" className="mt-4">
+          <ContractsDatabase darkMode={darkMode} />
         </TabsContent>
         <TabsContent value="settings" className="mt-4">
           <SettingsTab darkMode={darkMode} />

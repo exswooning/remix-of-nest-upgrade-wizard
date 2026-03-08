@@ -1,12 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useCGAP } from '@/contexts/CGAPContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ImageIcon, X, Stamp } from 'lucide-react';
+import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock } from 'lucide-react';
 import { numberToWords, periodToText, formatNepaliNumber, generateAbbreviation, getTodayISO } from '@/utils/cgapAutoFill';
+import { useToast } from '@/hooks/use-toast';
 
 const ACCENT = '#4F7FFF';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
@@ -30,13 +33,14 @@ const TEST_DATA: Record<string, string> = {
   spWitnessDesignation: 'Technical Lead',
 };
 
-// Fields that are auto-computed from other fields
 const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriod', 'companyAbv']);
 
 interface ContractTabProps { darkMode?: boolean; }
 
 const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const { fieldMappings, generateContractId, addContractLog } = useCGAP();
+  const { isAdmin, currentUsername } = useAuth();
+  const { toast } = useToast();
   const [fields, setFields] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [showMapping, setShowMapping] = useState(false);
@@ -46,33 +50,6 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [step, setStep] = useState(-1);
   const [done, setDone] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  // Signature & stamp uploads
-  const [signatures, setSignatures] = useState<Record<string, { file: File; preview: string } | null>>({
-    clientSignature: null,
-    clientStamp: null,
-    spSignature: null,
-    spStamp: null,
-  });
-  const sigRefs = {
-    clientSignature: useRef<HTMLInputElement>(null),
-    clientStamp: useRef<HTMLInputElement>(null),
-    spSignature: useRef<HTMLInputElement>(null),
-    spStamp: useRef<HTMLInputElement>(null),
-  };
-
-  const handleSigUpload = (key: string, file: File | undefined) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) return;
-    if (file.size > 2 * 1024 * 1024) return;
-    const preview = URL.createObjectURL(file);
-    setSignatures(prev => ({ ...prev, [key]: { file, preview } }));
-  };
-
-  const removeSig = (key: string) => {
-    if (signatures[key]?.preview) URL.revokeObjectURL(signatures[key]!.preview);
-    setSignatures(prev => ({ ...prev, [key]: null }));
-  };
 
   // Auto-fill companyAbv from clientCompanyName
   useEffect(() => {
@@ -123,6 +100,39 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     if (file && file.type === 'application/pdf' && file.size <= 2 * 1024 * 1024) setInvoiceFile(file);
   };
 
+  const saveToDatabase = async (contractId: string) => {
+    const { error } = await supabase.from('contracts').insert({
+      contract_id: contractId,
+      company_abv: fields.companyAbv || '',
+      client_company_name: fields.clientCompanyName || '',
+      client_location: fields.clientLocation || null,
+      client_coordinator: fields.clientCoordinator || null,
+      contract_period: fields.contractPeriod || null,
+      contract_period_num: fields.contractPeriodNum ? parseInt(fields.contractPeriodNum) : null,
+      num_users: fields.numUsers ? parseInt(fields.numUsers) : null,
+      payment_amount: fields.paymentAmount ? parseFloat(fields.paymentAmount) : null,
+      payment_words: fields.paymentWords || null,
+      advance_percent: fields.advancePercent ? parseFloat(fields.advancePercent) : null,
+      signatory_name: fields.signatoryName || null,
+      signatory_title: fields.signatoryTitle || null,
+      witness_name: fields.witnessName || null,
+      witness_designation: fields.witnessDesignation || null,
+      sp_signatory_name: fields.spSignatoryName || null,
+      sp_signatory_title: fields.spSignatoryTitle || null,
+      sp_witness_name: fields.spWitnessName || null,
+      sp_witness_designation: fields.spWitnessDesignation || null,
+      is_signed: false,
+      created_by: currentUsername || 'unknown',
+    } as any);
+
+    if (error) {
+      console.error('Error saving contract:', error);
+      toast({ title: 'Warning', description: 'Contract generated but failed to save to database.', variant: 'destructive' });
+    } else {
+      toast({ title: 'Saved', description: 'Contract saved to database.' });
+    }
+  };
+
   const runGeneration = async () => {
     if (!validate()) return;
     setDone(false);
@@ -130,6 +140,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     setGeneratedId(id);
     for (let i = 0; i < STEPS.length; i++) { setStep(i); await new Promise(r => setTimeout(r, 800)); }
     addContractLog({ timestamp: new Date().toISOString(), companyAbv: fields.companyAbv || '', contractId: id, fields: { ...fields } });
+    await saveToDatabase(id);
     setDone(true);
   };
 
@@ -151,7 +162,6 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const inputCls = (hasError: boolean, isAuto?: boolean) =>
     `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border ${hasError ? '!border-red-500' : ''} ${isAuto ? 'opacity-75 cursor-not-allowed' : ''}`;
 
-  // Group fields matching the PDF contract structure
   const companyFields = fieldMappings.filter(f => ['companyAbv', 'clientCompanyName', 'clientLocation', 'clientCoordinator'].includes(f.id));
   const contractFields = fieldMappings.filter(f => ['contractPeriodNum', 'contractPeriod', 'numUsers'].includes(f.id));
   const paymentFields = fieldMappings.filter(f => ['paymentAmount', 'paymentWords', 'advancePercent'].includes(f.id));
@@ -205,34 +215,6 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     </div>
   );
 
-  const renderSigStampRow = (sigKey: string, stampKey: string, sigLabel: string, stampLabel: string) => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-      {[{ key: sigKey, label: sigLabel, icon: <ImageIcon className="w-5 h-5" /> }, { key: stampKey, label: stampLabel, icon: <Stamp className="w-5 h-5" /> }].map(({ key, label, icon }) => (
-        <div key={key} className={`${card} relative`}>
-          <Label className={labelCls}>{label} (PNG)</Label>
-          {signatures[key] ? (
-            <div className="relative mt-2">
-              <img src={signatures[key]!.preview} alt={label} className="max-h-24 rounded-lg border object-contain" style={{ borderColor: `${ACCENT}44` }} />
-              <button onClick={() => removeSig(key)} className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center">
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ) : (
-            <div
-              onClick={() => (sigRefs as any)[key]?.current?.click()}
-              className={`mt-2 flex flex-col items-center justify-center py-4 rounded-lg cursor-pointer transition-all hover:opacity-80 border-2 border-dashed ${dm ? 'border-gray-700 bg-gray-800/50' : 'border-gray-300 bg-gray-100'}`}
-            >
-              <span className={dm ? 'text-gray-600' : 'text-gray-400'}>{icon}</span>
-              <p className={`text-xs mt-1.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Click to upload</p>
-            </div>
-          )}
-          <input ref={(sigRefs as any)[key]} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => handleSigUpload(key, e.target.files?.[0])} />
-        </div>
-      ))}
-    </div>
-  );
-
-
   const autoPlaceholders = [
     { label: 'Contract ID', tag: '<<CONTRACTID>>', desc: 'ABV-NNBS-DD-MM-YY-N' },
     { label: 'Date (ordinal)', tag: '<<DATE>>', desc: 'e.g. "22nd"' },
@@ -283,14 +265,12 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {clientSignatoryFields.map(renderField)}
       </div>
-      {renderSigStampRow('clientSignature', 'clientStamp', 'Client Signature', 'Client Stamp')}
 
       {/* Service Provider Signatory Section */}
       {sectionHeader('For the Service Provider', 'Nest Nepal signing party and witness (Page 7)')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {spSignatoryFields.map(renderField)}
       </div>
-      {renderSigStampRow('spSignature', 'spStamp', 'SP Signature', 'SP Stamp')}
 
       {/* Invoice Upload — Annex C */}
       <div className={card}>
