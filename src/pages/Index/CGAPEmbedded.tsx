@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import ContractTab from '@/pages/CGAP/ContractTab';
 import AddendumTab from '@/pages/CGAP/AddendumTab';
 import QuickAmendmentTab from '@/pages/CGAP/QuickAmendmentTab';
@@ -30,16 +30,16 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
         </TabsList>
 
         <TabsContent value="contract" className="mt-4">
-          <ContractTab />
+          <ContractTab darkMode={darkMode} />
         </TabsContent>
         <TabsContent value="addendum" className="mt-4">
-          <AddendumTab />
+          <AddendumTab darkMode={darkMode} />
         </TabsContent>
         <TabsContent value="amendment" className="mt-4">
-          <QuickAmendmentTab />
+          <QuickAmendmentTab darkMode={darkMode} />
         </TabsContent>
         <TabsContent value="settings" className="mt-4">
-          <SettingsTab />
+          <SettingsTab darkMode={darkMode} />
         </TabsContent>
       </Tabs>
     </div>

@@ -1,37 +1,30 @@
 import React, { useState } from 'react';
 import { useCGAP } from '@/contexts/CGAPContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Trash2, Save, Info } from 'lucide-react';
 
-const SettingsTab: React.FC = () => {
+interface SettingsTabProps { darkMode?: boolean; }
+
+const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
   const { fieldMappings, setFieldMappings, addendumTemplateId, setAddendumTemplateId } = useCGAP();
   const [localMappings, setLocalMappings] = useState(fieldMappings);
   const [templateId, setTemplateId] = useState(addendumTemplateId);
   const [saved, setSaved] = useState(false);
 
+  const dm = darkMode;
+  const card = `rounded-xl p-6 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
+  const inputCls = `px-2 py-1.5 rounded text-sm outline-none ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border`;
+
   const updateMapping = (idx: number, key: 'label' | 'placeholder' | 'required', val: string | boolean) => {
     setLocalMappings(prev => prev.map((m, i) => i === idx ? { ...m, [key]: val } : m));
   };
-
-  const addField = () => {
-    const id = `custom_${Date.now()}`;
-    setLocalMappings(prev => [...prev, { id, label: 'New Field', placeholder: '<<NEWFIELD>>', required: false }]);
-  };
-
-  const deleteField = (idx: number) => {
-    setLocalMappings(prev => prev.filter((_, i) => i !== idx));
-  };
-
-  const saveMappings = () => {
-    setFieldMappings(localMappings);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const saveTemplate = () => {
-    setAddendumTemplateId(templateId);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
+  const addField = () => setLocalMappings(prev => [...prev, { id: `custom_${Date.now()}`, label: 'New Field', placeholder: '<<NEWFIELD>>', required: false }]);
+  const deleteField = (idx: number) => setLocalMappings(prev => prev.filter((_, i) => i !== idx));
+  const saveMappings = () => { setFieldMappings(localMappings); setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const saveTemplate = () => { setAddendumTemplateId(templateId); setSaved(true); setTimeout(() => setSaved(false), 2000); };
 
   const AUTO_PLACEHOLDERS = [
     { tag: '<<CONTRACTID>>', desc: 'Auto-generated contract ID (ABV-NNBS-DD-MM-YY-N)' },
@@ -46,43 +39,32 @@ const SettingsTab: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-8">
-      {/* Section A: Field → Placeholder Mapping */}
-      <div className="rounded-xl p-6" style={{ background: '#1C1C1C', border: '1px solid #2A2A2A' }}>
-        <h3 className="text-lg font-semibold mb-1" style={{ color: '#fff' }}>Contract Field → Placeholder Mapping</h3>
-        <p className="text-xs mb-5" style={{ color: '#666' }}>Edit field labels and their template placeholder tags. Changes update the Contract form immediately.</p>
+    <div className="space-y-6">
+      {/* Section A */}
+      <div className={card}>
+        <h3 className={`text-lg font-semibold mb-1 ${dm ? 'text-white' : 'text-gray-800'}`}>Contract Field → Placeholder Mapping</h3>
+        <p className={`text-xs mb-5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Edit field labels and their template placeholder tags.</p>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm" style={{ fontFamily: 'Inter, sans-serif' }}>
+          <table className="w-full text-sm">
             <thead>
-              <tr style={{ borderBottom: '1px solid #2A2A2A' }}>
-                <th className="text-left py-2 px-2 text-xs uppercase tracking-wider" style={{ color: '#666' }}>Field Label</th>
-                <th className="text-left py-2 px-2 text-xs uppercase tracking-wider" style={{ color: '#666' }}>Placeholder</th>
-                <th className="text-center py-2 px-2 text-xs uppercase tracking-wider" style={{ color: '#666' }}>Required</th>
+              <tr className={dm ? 'border-gray-800' : 'border-gray-200'} style={{ borderBottomWidth: 1, borderBottomStyle: 'solid' }}>
+                <th className={`text-left py-2 px-2 text-xs uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Field Label</th>
+                <th className={`text-left py-2 px-2 text-xs uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Placeholder</th>
+                <th className={`text-center py-2 px-2 text-xs uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Req.</th>
                 <th className="py-2 px-2 w-10"></th>
               </tr>
             </thead>
             <tbody>
               {localMappings.map((m, i) => (
-                <tr key={m.id} style={{ borderBottom: '1px solid #1A1A1A' }}>
-                  <td className="py-2 px-2">
-                    <input value={m.label} onChange={e => updateMapping(i, 'label', e.target.value)}
-                      className="w-full px-2 py-1.5 rounded text-sm outline-none"
-                      style={{ background: '#161616', border: '1px solid #2A2A2A', color: '#fff' }} />
-                  </td>
-                  <td className="py-2 px-2">
-                    <input value={m.placeholder} onChange={e => updateMapping(i, 'placeholder', e.target.value)}
-                      className="w-full px-2 py-1.5 rounded text-sm outline-none"
-                      style={{ background: '#161616', border: '1px solid #2A2A2A', color: '#A78BFA', fontFamily: 'monospace' }} />
-                  </td>
+                <tr key={m.id} className={dm ? 'border-gray-800' : 'border-gray-200'} style={{ borderBottomWidth: 1, borderBottomStyle: 'solid' }}>
+                  <td className="py-2 px-2"><input value={m.label} onChange={e => updateMapping(i, 'label', e.target.value)} className={`w-full ${inputCls}`} /></td>
+                  <td className="py-2 px-2"><input value={m.placeholder} onChange={e => updateMapping(i, 'placeholder', e.target.value)} className={`w-full ${inputCls} font-mono`} style={{ color: '#A78BFA' }} /></td>
                   <td className="py-2 px-2 text-center">
-                    <input type="checkbox" checked={m.required} onChange={e => updateMapping(i, 'required', e.target.checked)}
-                      className="w-4 h-4 rounded" style={{ accentColor: '#4F7FFF' }} />
+                    <Checkbox checked={m.required} onCheckedChange={val => updateMapping(i, 'required', !!val)} />
                   </td>
                   <td className="py-2 px-2">
-                    <button onClick={() => deleteField(i)} className="p-1 rounded hover:opacity-70" style={{ color: '#ef4444' }}>
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <button onClick={() => deleteField(i)} className="p-1 text-red-500 hover:opacity-70"><Trash2 className="w-4 h-4" /></button>
                   </td>
                 </tr>
               ))}
@@ -91,44 +73,34 @@ const SettingsTab: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3 mt-4">
-          <button onClick={addField} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium"
-            style={{ background: '#222', color: '#ccc', border: '1px solid #2A2A2A' }}>
-            <Plus className="w-3 h-3" /> Add Field
-          </button>
-          <button onClick={saveMappings} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
-            style={{ background: '#4F7FFF', color: '#fff' }}>
-            <Save className="w-3 h-3" /> Save Mappings
-          </button>
-          {saved && <span className="text-xs" style={{ color: '#22c55e' }}>✓ Saved</span>}
+          <Button variant="outline" size="sm" onClick={addField} className="gap-1.5"><Plus className="w-3 h-3" /> Add Field</Button>
+          <Button size="sm" onClick={saveMappings} className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"><Save className="w-3 h-3" /> Save</Button>
+          {saved && <span className="text-xs text-green-500">✓ Saved</span>}
         </div>
       </div>
 
-      {/* Section B: Addendum Template ID */}
-      <div className="rounded-xl p-6" style={{ background: '#1C1C1C', border: '1px solid #2A2A2A' }}>
-        <h3 className="text-lg font-semibold mb-1" style={{ color: '#fff' }}>Addendum Template ID</h3>
-        <p className="text-xs mb-4" style={{ color: '#666' }}>Paste the Google Doc ID for the addendum template.</p>
+      {/* Section B */}
+      <div className={card}>
+        <h3 className={`text-lg font-semibold mb-1 ${dm ? 'text-white' : 'text-gray-800'}`}>Addendum Template ID</h3>
+        <p className={`text-xs mb-4 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Paste the Google Doc ID for the addendum template.</p>
         <div className="flex gap-3">
-          <input value={templateId} onChange={e => setTemplateId(e.target.value)} placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
-            className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
-            style={{ background: '#161616', border: '1px solid #2A2A2A', color: '#fff', fontFamily: 'monospace' }} />
-          <button onClick={saveTemplate} className="px-4 py-2 rounded-lg text-xs font-semibold"
-            style={{ background: '#4F7FFF', color: '#fff' }}>
-            <Save className="w-4 h-4" />
-          </button>
+          <Input value={templateId} onChange={e => setTemplateId(e.target.value)} placeholder="e.g. 1BxiMVs0XRA5nF..."
+            className={`flex-1 font-mono ${dm ? 'bg-gray-800 border-gray-700 text-white' : ''}`} />
+          <Button size="sm" onClick={saveTemplate} className="bg-blue-600 hover:bg-blue-700 text-white"><Save className="w-4 h-4" /></Button>
         </div>
       </div>
 
-      {/* Auto-generated Placeholders Reference */}
-      <div className="rounded-xl p-6" style={{ background: '#161616', border: '1px solid #2A2A2A' }}>
+      {/* Auto-generated reference */}
+      <div className={`rounded-xl p-6 ${dm ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-100 border-gray-200'} border`}>
         <div className="flex items-center gap-2 mb-4">
-          <Info className="w-4 h-4" style={{ color: '#888' }} />
-          <h3 className="text-sm font-medium" style={{ color: '#888' }}>Auto-Generated Placeholders (read-only)</h3>
+          <Info className={`w-4 h-4 ${dm ? 'text-gray-500' : 'text-gray-400'}`} />
+          <h3 className={`text-sm font-medium ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Auto-Generated Placeholders (read-only)</h3>
         </div>
         <div className="space-y-1">
           {AUTO_PLACEHOLDERS.map(p => (
-            <div key={p.tag} className="flex items-center justify-between py-1.5" style={{ borderBottom: '1px solid #1A1A1A' }}>
-              <code className="px-2 py-0.5 rounded text-xs" style={{ background: '#0D0D0D', color: '#A78BFA', fontFamily: 'monospace' }}>{p.tag}</code>
-              <span className="text-xs" style={{ color: '#666' }}>{p.desc}</span>
+            <div key={p.tag} className={`flex items-center justify-between py-1.5 ${dm ? 'border-gray-800' : 'border-gray-200'} border-b`}>
+              <Badge variant="secondary" className="font-mono text-xs" style={{ color: '#A78BFA' }}>{p.tag}</Badge>
+              <span className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{p.desc}</span>
             </div>
           ))}
         </div>
