@@ -16,7 +16,7 @@ interface ChangeRow { clause: string; original: string; replacement: string; }
 // Section picker dropdown component
 const SectionPicker: React.FC<{
   value: string;
-  onChange: (val: string) => void;
+  onChange: (val: string, section?: ContractSection) => void;
   darkMode: boolean;
   inputCls: string;
   accent: string;
@@ -53,7 +53,12 @@ const SectionPicker: React.FC<{
           {results.map(s => (
             <button
               key={s.id}
-              onClick={() => { onChange(`Section ${s.label} — ${s.title} (Page ${s.page})`); setQuery(`Section ${s.label} — ${s.title} (Page ${s.page})`); setOpen(false); }}
+              onClick={() => {
+                const formatted = `Section ${s.label} — ${s.title} (Page ${s.page})`;
+                onChange(formatted, s);
+                setQuery(formatted);
+                setOpen(false);
+              }}
               className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}
             >
               <Badge variant="secondary" className="font-mono text-[10px] shrink-0" style={{ color: accent }}>{s.label}</Badge>
