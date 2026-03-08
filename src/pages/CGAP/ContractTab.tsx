@@ -250,12 +250,14 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {clientSignatoryFields.map(renderField)}
       </div>
+      {renderSigStampRow('clientSignature', 'clientStamp', 'Client Signature', 'Client Stamp')}
 
       {/* Service Provider Signatory Section */}
       {sectionHeader('For the Service Provider', 'Nest Nepal signing party and witness (Page 7)')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {spSignatoryFields.map(renderField)}
       </div>
+      {renderSigStampRow('spSignature', 'spStamp', 'SP Signature', 'SP Stamp')}
 
       {/* Invoice Upload — Annex C */}
       <div className={card}>
