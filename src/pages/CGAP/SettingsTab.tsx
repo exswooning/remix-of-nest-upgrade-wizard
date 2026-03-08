@@ -27,15 +27,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
   const saveTemplate = () => { setAddendumTemplateId(templateId); setSaved(true); setTimeout(() => setSaved(false), 2000); };
 
   const AUTO_PLACEHOLDERS = [
-    { tag: '<<CONTRACTID>>', desc: 'Auto-generated contract ID (ABV-NNBS-DD-MM-YY-N)' },
-    { tag: '<<ADDENDUMID>>', desc: 'Auto-generated addendum ID (CONTRACT_ID#AN)' },
-    { tag: '<<DD>>', desc: 'Current day (2-digit)' },
-    { tag: '<<MM>>', desc: 'Current month (2-digit)' },
-    { tag: '<<YY>>', desc: 'Current year (2-digit)' },
-    { tag: '<<DAYDATE>>', desc: 'Full day + ordinal (e.g. "3rd")' },
-    { tag: '<<MONTH>>', desc: 'Full month name (e.g. "March")' },
+    { tag: '<<CONTRACTID>>', desc: 'Contract ID (ABV-NNBS-DD-MM-YY-N)' },
+    { tag: '<<ADDENDUMID>>', desc: 'Addendum ID (CONTRACT_ID#AN)' },
+    { tag: '<<DATE>>', desc: 'Ordinal day (e.g. "22nd")' },
+    { tag: '<<DAYDATE>>', desc: 'Day number (e.g. "22")' },
+    { tag: '<<MONTH>>', desc: 'Full month name (e.g. "February")' },
     { tag: '<<YEAR>>', desc: 'Full year (e.g. "2026")' },
-    { tag: '<<VERSION>>', desc: 'Addendum version number' },
+    { tag: '<<DD>>', desc: 'Day 2-digit (e.g. "08")' },
+    { tag: '<<MM>>', desc: 'Month 2-digit (e.g. "03")' },
+    { tag: '<<YY>>', desc: 'Year 2-digit (e.g. "26")' },
+    { tag: '<<VERSION>>', desc: 'Contract sequence number' },
   ];
 
   return (
