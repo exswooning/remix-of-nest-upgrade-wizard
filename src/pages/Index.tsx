@@ -674,14 +674,7 @@ const Index = () => {
             <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               Welcome, {currentUser}
             </span>
-            <Button 
-              onClick={() => navigate('/cgap')} 
-              className={`flex items-center gap-2 ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-              size="sm"
-            >
-              <FileCheck className="w-4 h-4" />
-              CGAP
-            </Button>
+            
             {isAdmin && <>
                 <UserManagement darkMode={darkMode} />
                 <PriceManagement darkMode={darkMode} />
