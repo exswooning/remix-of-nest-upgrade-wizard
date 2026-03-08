@@ -31,7 +31,7 @@ const TEST_DATA: Record<string, string> = {
 };
 
 // Fields that are auto-computed from other fields
-const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriod']);
+const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriod', 'companyAbv']);
 
 interface ContractTabProps { darkMode?: boolean; }
 
