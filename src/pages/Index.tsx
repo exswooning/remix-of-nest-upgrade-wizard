@@ -308,6 +308,7 @@ interface CalculationResult {
   username?: string;
 }
 const Index = () => {
+  const navigate = useNavigate();
   const {
     currentUser,
     currentUsername,
