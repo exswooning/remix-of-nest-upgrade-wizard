@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle, FileText, Server, FileCheck } from "lucide-react";
+import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle, FileText, Server, FileCheck, History } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -687,40 +687,29 @@ const Index = () => {
         </div>
         
         <Card className={`max-w-2xl mx-auto ${darkMode ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-200'} shadow-xl`}>
-          <CardHeader>
-            <div className="flex justify-between items-start">
-              <div>
-                <CardTitle className={darkMode ? 'text-white' : 'text-gray-800'}>
-                  UCAP
-                </CardTitle>
-              </div>
-              <CalculationHistorySheet darkMode={darkMode} formatCurrency={formatCurrency} calculationHistory={calculationHistory} clearHistory={clearCalculationHistory} exportHistory={exportCalculationHistory} isAdmin={isAdmin} />
-            </div>
-          </CardHeader>
-          
-          <CardContent className="space-y-6">
+          <CardContent className="pt-6 space-y-6">
             {/* Top-level toggle: UCAP vs CGAP */}
             <Tabs defaultValue="ucap" className="w-full">
-              <TabsList className={`grid w-full grid-cols-2 mb-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+              <TabsList className={`grid w-full grid-cols-2 h-12 mb-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                 <TabsTrigger 
                   value="ucap" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                  className={`flex items-center gap-2 text-base font-semibold py-3 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
-                  <Calculator className="w-4 h-4" />
+                  <Calculator className="w-5 h-5" />
                   UCAP
                 </TabsTrigger>
                 <TabsTrigger 
                   value="cgap" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-blue-900 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}
+                  className={`flex items-center gap-2 text-base font-semibold py-3 ${darkMode ? 'data-[state=active]:bg-blue-900 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}
                 >
-                  <FileCheck className="w-4 h-4" />
+                  <FileCheck className="w-5 h-5" />
                   CGAP
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="ucap">
                 <Tabs defaultValue="upgrade" className="w-full">
-                  <TabsList className={`grid w-full grid-cols-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                  <TabsList className={`grid w-full grid-cols-5 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                     <TabsTrigger value="upgrade" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
                       <ArrowUpCircle className="w-3.5 h-3.5" /> Upgrade
                     </TabsTrigger>
@@ -732,6 +721,9 @@ const Index = () => {
                     </TabsTrigger>
                     <TabsTrigger value="vps" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
                       <Server className="w-3.5 h-3.5" /> VPS
+                    </TabsTrigger>
+                    <TabsTrigger value="history" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
+                      <History className="w-3.5 h-3.5" /> History
                     </TabsTrigger>
                   </TabsList>
                   
@@ -778,6 +770,10 @@ const Index = () => {
                   
                   <TabsContent value="vps" className="mt-6">
                     <VpsPricingCalculator darkMode={darkMode} />
+                  </TabsContent>
+
+                  <TabsContent value="history" className="mt-6">
+                    <CalculationHistorySheet darkMode={darkMode} formatCurrency={formatCurrency} calculationHistory={calculationHistory} clearHistory={clearCalculationHistory} exportHistory={exportCalculationHistory} isAdmin={isAdmin} />
                   </TabsContent>
                 </Tabs>
               </TabsContent>
