@@ -12,17 +12,26 @@ const ACCENT = '#4F7FFF';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
 
 const TEST_DATA: Record<string, string> = {
-  companyAbv: 'ABC', prevContractId: 'ABC-NNBS-01-01-25-1',
-  clientCompany: 'Acme Corporation Pvt. Ltd.', clientLocation: 'Kathmandu, Nepal',
-  clientCoordinator: 'Ram Sharma', contractPeriodNum: '12',
-  numUsers: '25', paymentAmount: '150000',
-  advancePercent: '50',
-  signatoryName: 'Shyam Prasad', signatoryTitle: 'Managing Director',
-  witnessName: 'Hari Bahadur', witnessTitle: 'Operations Manager',
+  companyAbv: 'WMA',
+  clientCompanyName: 'Acme Corporation Pvt. Ltd.',
+  clientLocation: 'Kathmandu, Nepal',
+  clientCoordinator: 'Ram Sharma',
+  contractPeriodNum: '12',
+  numUsers: '25',
+  paymentAmount: '150000',
+  advancePercent: '100',
+  signatoryName: 'Shyam Prasad',
+  signatoryTitle: 'Managing Director',
+  witnessName: 'Hari Bahadur',
+  witnessDesignation: 'Operations Manager',
+  spSignatoryName: 'Aryan Shrestha',
+  spSignatoryTitle: 'Director',
+  spWitnessName: 'Suman KC',
+  spWitnessDesignation: 'Technical Lead',
 };
 
-// Fields that are auto-computed
-const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriodText']);
+// Fields that are auto-computed from other fields
+const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriod']);
 
 interface ContractTabProps { darkMode?: boolean; }
 
@@ -48,14 +57,14 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     }
   }, [fields.paymentAmount]);
 
-  // Auto-fill contractPeriodText when contractPeriodNum changes
+  // Auto-fill contractPeriod (text) when contractPeriodNum changes
   useEffect(() => {
     const text = periodToText(fields.contractPeriodNum || '');
-    setFields(prev => ({ ...prev, contractPeriodText: text }));
+    setFields(prev => ({ ...prev, contractPeriod: text }));
   }, [fields.contractPeriodNum]);
 
   const set = (id: string, val: string) => {
-    if (AUTO_FIELDS.has(id)) return; // prevent manual editing of auto fields
+    if (AUTO_FIELDS.has(id)) return;
     setFields(prev => ({ ...prev, [id]: val }));
     if (val.trim()) setErrors(prev => ({ ...prev, [id]: false }));
   };
@@ -109,11 +118,12 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const inputCls = (hasError: boolean, isAuto?: boolean) =>
     `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border ${hasError ? '!border-red-500' : ''} ${isAuto ? 'opacity-75 cursor-not-allowed' : ''}`;
 
-  // Group fields for better visual sections
-  const companyFields = fieldMappings.filter(f => ['companyAbv', 'prevContractId', 'clientCompany', 'clientLocation', 'clientCoordinator'].includes(f.id));
-  const contractFields = fieldMappings.filter(f => ['contractPeriodNum', 'contractPeriodText', 'numUsers'].includes(f.id));
+  // Group fields matching the PDF contract structure
+  const companyFields = fieldMappings.filter(f => ['companyAbv', 'clientCompanyName', 'clientLocation', 'clientCoordinator'].includes(f.id));
+  const contractFields = fieldMappings.filter(f => ['contractPeriodNum', 'contractPeriod', 'numUsers'].includes(f.id));
   const paymentFields = fieldMappings.filter(f => ['paymentAmount', 'paymentWords', 'advancePercent'].includes(f.id));
-  const signatoryFields = fieldMappings.filter(f => ['signatoryName', 'signatoryTitle', 'witnessName', 'witnessTitle'].includes(f.id));
+  const clientSignatoryFields = fieldMappings.filter(f => ['signatoryName', 'signatoryTitle', 'witnessName', 'witnessDesignation'].includes(f.id));
+  const spSignatoryFields = fieldMappings.filter(f => ['spSignatoryName', 'spSignatoryTitle', 'spWitnessName', 'spWitnessDesignation'].includes(f.id));
 
   const renderField = (f: typeof fieldMappings[0]) => {
     const isAuto = AUTO_FIELDS.has(f.id);
@@ -121,7 +131,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     const isAmount = f.id === 'paymentAmount';
 
     return (
-      <div key={f.id} className={f.id === 'clientCompany' ? 'md:col-span-2' : ''}>
+      <div key={f.id} className={f.id === 'clientCompanyName' ? 'md:col-span-2' : ''}>
         <Label className={`${labelCls} flex items-center gap-1.5`}>
           {f.label} {f.required && <span className="text-red-500">*</span>}
           {isAuto && (
@@ -144,7 +154,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         </div>
         {isAmount && fields.paymentAmount && !isNaN(parseFloat(fields.paymentAmount)) && (
           <p className={`text-xs mt-1 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
-            Formatted: NPR {formatNepaliNumber(parseFloat(fields.paymentAmount))}
+            Formatted: NRs. {formatNepaliNumber(parseFloat(fields.paymentAmount))}/-
           </p>
         )}
         {errors[f.id] && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
@@ -162,6 +172,19 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     </div>
   );
 
+  // Auto-generated placeholders that match the PDF header/body
+  const autoPlaceholders = [
+    { label: 'Contract ID', tag: '<<CONTRACTID>>', desc: 'ABV-NNBS-DD-MM-YY-N' },
+    { label: 'Date (ordinal)', tag: '<<DATE>>', desc: 'e.g. "22nd"' },
+    { label: 'Day/Date (DD)', tag: '<<DAYDATE>>', desc: 'e.g. "22"' },
+    { label: 'Month Name', tag: '<<MONTH>>', desc: 'e.g. "February"' },
+    { label: 'Year', tag: '<<YEAR>>', desc: 'e.g. "2026"' },
+    { label: 'DD', tag: '<<DD>>', desc: '2-digit day' },
+    { label: 'MM', tag: '<<MM>>', desc: '2-digit month' },
+    { label: 'YY', tag: '<<YY>>', desc: '2-digit year' },
+    { label: 'Version', tag: '<<VERSION>>', desc: 'Contract sequence number' },
+  ];
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -169,7 +192,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         <div>
           <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>New Contract</h2>
           <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
-            Fields marked <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1 py-0.5 rounded" style={{ background: `${ACCENT}22`, color: ACCENT }}><Wand2 className="w-2.5 h-2.5" />AUTO</span> are auto-generated
+            Google Workspace Business Starter Services Agreement
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={fillTest} className="gap-1.5" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
@@ -177,33 +200,40 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         </Button>
       </div>
 
-      {/* Company Section */}
-      {sectionHeader('Company Details', 'Client and company information')}
+      {/* Company & Client Section */}
+      {sectionHeader('Client Details', 'Client company and coordinator from Section 4A of the contract')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {companyFields.map(renderField)}
       </div>
 
-      {/* Contract Section */}
-      {sectionHeader('Contract Terms', 'Period text auto-fills from the number')}
+      {/* Contract Terms Section */}
+      {sectionHeader('Contract Terms', 'Section 2A — Period text auto-fills from months')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {contractFields.map(renderField)}
       </div>
 
       {/* Payment Section */}
-      {sectionHeader('Payment Details', 'Amount in words auto-fills from numerals')}
+      {sectionHeader('Payment', 'Section 3A — Ceiling amount; words auto-fill from numerals')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {paymentFields.map(renderField)}
       </div>
 
-      {/* Signatory Section */}
-      {sectionHeader('Signatories', 'Contract signing parties')}
+      {/* Client Signatory Section */}
+      {sectionHeader('For the Client', 'Signing party and witness (Page 7)')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {signatoryFields.map(renderField)}
+        {clientSignatoryFields.map(renderField)}
       </div>
 
-      {/* Invoice Upload */}
+      {/* Service Provider Signatory Section */}
+      {sectionHeader('For the Service Provider', 'Nest Nepal signing party and witness (Page 7)')}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {spSignatoryFields.map(renderField)}
+      </div>
+
+      {/* Invoice Upload — Annex C */}
       <div className={card}>
-        <h3 className={`text-sm font-medium mb-3 ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Proforma Invoice (optional)</h3>
+        <h3 className={`text-sm font-medium mb-1 ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Annex C: Proforma Invoice</h3>
+        <p className={`text-xs mb-3 ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Duly attached with the agreement (optional)</p>
         <div
           onDragOver={e => e.preventDefault()} onDrop={handleFileDrop}
           onClick={() => fileRef.current?.click()}
@@ -227,16 +257,17 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         )}
       </div>
 
-      {/* Auto-fields summary */}
+      {/* Auto-generated fields summary */}
       <div className={`rounded-xl p-4 ${dm ? 'bg-gray-900/60 border-gray-800' : 'bg-blue-50/50 border-blue-100'} border`}>
         <h4 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>
           Auto-Generated at Creation
         </h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {['Contract ID', 'Day/Date', 'Month', 'Year', 'DD', 'MM', 'YY', 'Full Date'].map(label => (
-            <div key={label} className={`flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md ${dm ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500'}`}>
-              <Wand2 className="w-3 h-3" style={{ color: ACCENT }} />
-              {label}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+          {autoPlaceholders.map(p => (
+            <div key={p.tag} className={`flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md ${dm ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500'}`}>
+              <Wand2 className="w-3 h-3 flex-shrink-0" style={{ color: ACCENT }} />
+              <span className="truncate">{p.label}</span>
+              <span className={`ml-auto text-[10px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>{p.desc}</span>
             </div>
           ))}
         </div>
@@ -246,12 +277,13 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       <Collapsible open={showMapping} onOpenChange={setShowMapping}>
         <CollapsibleTrigger asChild>
           <button className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium ${dm ? 'bg-gray-900 border-gray-800 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-500'} border`}>
-            <span>Placeholder Mapping</span>
+            <span>Full Placeholder Mapping</span>
             {showMapping ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent className={`mt-1 rounded-xl px-4 pb-3 pt-2 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`}>
           <div className="space-y-1">
+            <p className={`text-[10px] uppercase tracking-wider font-semibold pb-1 ${dm ? 'text-gray-600' : 'text-gray-400'}`}>User-Entered Fields</p>
             {fieldMappings.map(f => (
               <div key={f.id} className={`flex justify-between text-xs py-1 ${dm ? 'border-gray-800' : 'border-gray-200'} border-b`}>
                 <span className={`${dm ? 'text-gray-400' : 'text-gray-500'} flex items-center gap-1`}>
@@ -261,13 +293,14 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
                 <Badge variant="secondary" className="font-mono text-xs" style={{ color: ACCENT }}>{f.placeholder}</Badge>
               </div>
             ))}
-            {['<<CONTRACTID>>', '<<DD>>', '<<MM>>', '<<YY>>', '<<DAYDATE>>', '<<MONTH>>', '<<YEAR>>'].map(p => (
-              <div key={p} className={`flex justify-between text-xs py-1 ${dm ? 'border-gray-800' : 'border-gray-200'} border-b`}>
+            <p className={`text-[10px] uppercase tracking-wider font-semibold pt-3 pb-1 ${dm ? 'text-gray-600' : 'text-gray-400'}`}>System-Generated Fields</p>
+            {autoPlaceholders.map(p => (
+              <div key={p.tag} className={`flex justify-between text-xs py-1 ${dm ? 'border-gray-800' : 'border-gray-200'} border-b`}>
                 <span className={`${dm ? 'text-gray-400' : 'text-gray-500'} flex items-center gap-1`}>
-                  {p.replace(/[<>]/g, '')}
+                  {p.label}
                   <Wand2 className="w-2.5 h-2.5" style={{ color: ACCENT }} />
                 </span>
-                <Badge variant="secondary" className="font-mono text-xs" style={{ color: ACCENT }}>{p}</Badge>
+                <Badge variant="secondary" className="font-mono text-xs" style={{ color: ACCENT }}>{p.tag}</Badge>
               </div>
             ))}
           </div>
