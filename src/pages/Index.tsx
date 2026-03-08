@@ -27,6 +27,7 @@ import UserManagement from "@/components/UserManagement";
 import PriceManagement from "@/components/PriceManagement";
 import MathSettings from "@/components/MathSettings";
 import { calculateUpgradeWithSettings } from "@/utils/calculationEngine";
+import CGAPEmbedded from "./Index/CGAPEmbedded";
 // Updated plan data structure with cycle-specific pricing
 const planData = {
   "shared-hosting": {
