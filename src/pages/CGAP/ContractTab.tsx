@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ImageIcon, X, Stamp } from 'lucide-react';
-import { numberToWords, periodToText, formatNepaliNumber } from '@/utils/cgapAutoFill';
+import { numberToWords, periodToText, formatNepaliNumber, generateAbbreviation, getTodayISO } from '@/utils/cgapAutoFill';
 
 const ACCENT = '#4F7FFF';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
