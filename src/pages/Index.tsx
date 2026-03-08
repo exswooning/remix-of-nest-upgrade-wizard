@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle, FileText, Server } from "lucide-react";
+import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle, FileText, Server, FileCheck } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -307,6 +308,7 @@ interface CalculationResult {
   username?: string;
 }
 const Index = () => {
+  const navigate = useNavigate();
   const {
     currentUser,
     currentUsername,
@@ -673,6 +675,14 @@ const Index = () => {
             <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               Welcome, {currentUser}
             </span>
+            <Button 
+              onClick={() => navigate('/cgap')} 
+              className={`flex items-center gap-2 ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+              size="sm"
+            >
+              <FileCheck className="w-4 h-4" />
+              CGAP
+            </Button>
             {isAdmin && <>
                 <UserManagement darkMode={darkMode} />
                 <PriceManagement darkMode={darkMode} />
