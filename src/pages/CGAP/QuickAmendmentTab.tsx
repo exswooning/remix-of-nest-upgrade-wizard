@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock, FileText } from 'lucide-react';
 import { extractCompanyAbv, getTodayISO } from '@/utils/cgapAutoFill';
-import { CONTRACT_SECTIONS, searchSections } from '@/utils/contractSections';
+import { CONTRACT_SECTIONS, searchSections, type ContractSection } from '@/utils/contractSections';
 
 const ACCENT = '#A78BFA';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
@@ -16,7 +16,7 @@ interface ChangeRow { clause: string; original: string; replacement: string; }
 // Section picker dropdown component
 const SectionPicker: React.FC<{
   value: string;
-  onChange: (val: string) => void;
+  onChange: (val: string, section?: ContractSection) => void;
   darkMode: boolean;
   inputCls: string;
   accent: string;
@@ -53,7 +53,12 @@ const SectionPicker: React.FC<{
           {results.map(s => (
             <button
               key={s.id}
-              onClick={() => { onChange(`Section ${s.label} — ${s.title} (Page ${s.page})`); setQuery(`Section ${s.label} — ${s.title} (Page ${s.page})`); setOpen(false); }}
+              onClick={() => {
+                const formatted = `Section ${s.label} — ${s.title} (Page ${s.page})`;
+                onChange(formatted, s);
+                setQuery(formatted);
+                setOpen(false);
+              }}
               className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}
             >
               <Badge variant="secondary" className="font-mono text-[10px] shrink-0" style={{ color: accent }}>{s.label}</Badge>
@@ -194,7 +199,12 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
                 <Label className={`${labelCls} text-[10px] mb-1`}>Section / Clause Reference</Label>
                 <SectionPicker
                   value={row.clause}
-                  onChange={val => updateRow(i, 'clause', val)}
+                  onChange={(val, section) => {
+                    updateRow(i, 'clause', val);
+                    if (section?.clauseText) {
+                      updateRow(i, 'original', section.clauseText);
+                    }
+                  }}
                   darkMode={dm}
                   inputCls={inputCls(false)}
                   accent={ACCENT}

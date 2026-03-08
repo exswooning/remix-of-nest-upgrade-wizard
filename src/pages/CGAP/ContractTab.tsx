@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ImageIcon, X, Stamp } from 'lucide-react';
-import { numberToWords, periodToText, formatNepaliNumber } from '@/utils/cgapAutoFill';
+import { numberToWords, periodToText, formatNepaliNumber, generateAbbreviation, getTodayISO } from '@/utils/cgapAutoFill';
 
 const ACCENT = '#4F7FFF';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
@@ -31,7 +31,7 @@ const TEST_DATA: Record<string, string> = {
 };
 
 // Fields that are auto-computed from other fields
-const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriod']);
+const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriod', 'companyAbv']);
 
 interface ContractTabProps { darkMode?: boolean; }
 
@@ -73,6 +73,12 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     if (signatures[key]?.preview) URL.revokeObjectURL(signatures[key]!.preview);
     setSignatures(prev => ({ ...prev, [key]: null }));
   };
+
+  // Auto-fill companyAbv from clientCompanyName
+  useEffect(() => {
+    const abv = generateAbbreviation(fields.clientCompanyName || '');
+    setFields(prev => ({ ...prev, companyAbv: abv }));
+  }, [fields.clientCompanyName]);
 
   // Auto-fill paymentWords when paymentAmount changes
   useEffect(() => {
