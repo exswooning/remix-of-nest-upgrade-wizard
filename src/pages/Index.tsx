@@ -802,6 +802,10 @@ const Index = () => {
               <TabsContent value="vps" className="mt-6">
                 <VpsPricingCalculator darkMode={darkMode} />
               </TabsContent>
+
+              <TabsContent value="cgap" className="mt-6">
+                <CGAPEmbedded darkMode={darkMode} />
+              </TabsContent>
             </Tabs>
           </CardContent>
         </Card>
