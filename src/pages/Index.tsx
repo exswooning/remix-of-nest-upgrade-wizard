@@ -771,6 +771,10 @@ const Index = () => {
                   <TabsContent value="vps" className="mt-6">
                     <VpsPricingCalculator darkMode={darkMode} />
                   </TabsContent>
+
+                  <TabsContent value="history" className="mt-6">
+                    <CalculationHistorySheet darkMode={darkMode} formatCurrency={formatCurrency} calculationHistory={calculationHistory} clearHistory={clearCalculationHistory} exportHistory={exportCalculationHistory} isAdmin={isAdmin} />
+                  </TabsContent>
                 </Tabs>
               </TabsContent>
 
