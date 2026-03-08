@@ -687,18 +687,7 @@ const Index = () => {
         </div>
         
         <Card className={`max-w-2xl mx-auto ${darkMode ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-200'} shadow-xl`}>
-          <CardHeader>
-            <div className="flex justify-between items-start">
-              <div>
-                <CardTitle className={darkMode ? 'text-white' : 'text-gray-800'}>
-                  UCAP
-                </CardTitle>
-              </div>
-              <CalculationHistorySheet darkMode={darkMode} formatCurrency={formatCurrency} calculationHistory={calculationHistory} clearHistory={clearCalculationHistory} exportHistory={exportCalculationHistory} isAdmin={isAdmin} />
-            </div>
-          </CardHeader>
-          
-          <CardContent className="space-y-6">
+          <CardContent className="pt-6 space-y-6">
             {/* Top-level toggle: UCAP vs CGAP */}
             <Tabs defaultValue="ucap" className="w-full">
               <TabsList className={`grid w-full grid-cols-2 mb-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
