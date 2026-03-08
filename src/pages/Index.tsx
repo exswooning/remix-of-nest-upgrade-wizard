@@ -699,111 +699,90 @@ const Index = () => {
           </CardHeader>
           
           <CardContent className="space-y-6">
-            <Tabs defaultValue="upgrade" className="w-full">
-              <TabsList className={`grid w-full grid-cols-5 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+            {/* Top-level toggle: UCAP vs CGAP */}
+            <Tabs defaultValue="ucap" className="w-full">
+              <TabsList className={`grid w-full grid-cols-2 mb-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                 <TabsTrigger 
-                  value="upgrade" 
-                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                  value="ucap" 
+                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
-                  <ArrowUpCircle className="w-3.5 h-3.5" />
-                  Upgrade
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="prorata" 
-                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  Pro Rata
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="ledger" 
-                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  Ledger
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="vps" 
-                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
-                >
-                  <Server className="w-3.5 h-3.5" />
-                  VPS
+                  <Calculator className="w-4 h-4" />
+                  UCAP
                 </TabsTrigger>
                 <TabsTrigger 
                   value="cgap" 
-                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-blue-900 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}
+                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-blue-900 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}
                 >
-                  <FileCheck className="w-3.5 h-3.5" />
+                  <FileCheck className="w-4 h-4" />
                   CGAP
                 </TabsTrigger>
               </TabsList>
-              
-              <TabsContent value="upgrade" className="mt-6 space-y-6">
-                <PlanSelectorSection 
-                  category={category} 
-                  setCategory={setCategory} 
-                  currentPlan={currentPlan} 
-                  setCurrentPlan={setCurrentPlan} 
-                  billingCycle={billingCycle} 
-                  setBillingCycle={setBillingCycle} 
-                  darkMode={darkMode} 
-                  targetCategory={targetCategory} 
-                  setTargetCategory={setTargetCategory} 
-                  targetPlan={targetPlan} 
-                  setTargetPlan={setTargetPlan} 
-                  targetBillingCycle={targetBillingCycle} 
-                  setTargetBillingCycle={setTargetBillingCycle} 
-                  currentPlanPriceOverride={currentPlanPriceOverride} 
-                  setCurrentPlanPriceOverride={setCurrentPlanPriceOverride} 
-                  targetPlanPriceOverride={targetPlanPriceOverride} 
-                  setTargetPlanPriceOverride={setTargetPlanPriceOverride}
-                  currentPlanTaxEnabled={currentPlanTaxEnabled}
-                  setCurrentPlanTaxEnabled={setCurrentPlanTaxEnabled}
-                  currentPlanTaxRate={currentPlanTaxRate}
-                  setCurrentPlanTaxRate={setCurrentPlanTaxRate}
-                  targetPlanTaxEnabled={targetPlanTaxEnabled}
-                  setTargetPlanTaxEnabled={setTargetPlanTaxEnabled}
-                  targetPlanTaxRate={targetPlanTaxRate}
-                  setTargetPlanTaxRate={setTargetPlanTaxRate}
-                  currentPlanDiscountEnabled={currentPlanDiscountEnabled}
-                  setCurrentPlanDiscountEnabled={setCurrentPlanDiscountEnabled}
-                  currentPlanDiscountRate={currentPlanDiscountRate}
-                  setCurrentPlanDiscountRate={setCurrentPlanDiscountRate}
-                  targetPlanDiscountEnabled={targetPlanDiscountEnabled}
-                  setTargetPlanDiscountEnabled={setTargetPlanDiscountEnabled}
-                  targetPlanDiscountRate={targetPlanDiscountRate}
-                  setTargetPlanDiscountRate={setTargetPlanDiscountRate}
-                />
-                <DateRangeSelector darkMode={darkMode} startDateText={startDateText} endDateText={endDateText} handleStartDateChange={handleStartDateChange} handleEndDateChange={handleEndDateChange} startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} calculateDaysFromDates={calculateDaysFromDates} />
-                <UsageDurationInfo darkMode={darkMode} calculateDaysFromDates={calculateDaysFromDates} startDate={startDate} endDate={endDate} billingCycle={billingCycle} cycleLabels={cycleLabels} />
-                <Button onClick={calculateUpgrade} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-lg font-semibold" size="lg">
-                  <Calculator className="w-5 h-5 mr-2" />
-                  Calculate Upgrade Cost
-                </Button>
-                <UpgradeResult 
-                  result={result} 
-                  darkMode={darkMode} 
-                  formatCurrency={formatCurrency} 
-                  currentPlan={currentPlan}
-                  targetPlan={targetPlan}
-                  startDate={startDateText}
-                  endDate={endDateText}
-                />
-              </TabsContent>
-              
-              <TabsContent value="prorata" className="mt-6">
-                <ProRataUserAddition darkMode={darkMode} />
-              </TabsContent>
-              
-              <TabsContent value="ledger" className="mt-6">
-                <BillingLedger darkMode={darkMode} />
-              </TabsContent>
-              
-              <TabsContent value="vps" className="mt-6">
-                <VpsPricingCalculator darkMode={darkMode} />
+
+              <TabsContent value="ucap">
+                <Tabs defaultValue="upgrade" className="w-full">
+                  <TabsList className={`grid w-full grid-cols-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                    <TabsTrigger value="upgrade" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
+                      <ArrowUpCircle className="w-3.5 h-3.5" /> Upgrade
+                    </TabsTrigger>
+                    <TabsTrigger value="prorata" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
+                      <UserPlus className="w-3.5 h-3.5" /> Pro Rata
+                    </TabsTrigger>
+                    <TabsTrigger value="ledger" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
+                      <FileText className="w-3.5 h-3.5" /> Ledger
+                    </TabsTrigger>
+                    <TabsTrigger value="vps" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
+                      <Server className="w-3.5 h-3.5" /> VPS
+                    </TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="upgrade" className="mt-6 space-y-6">
+                    <PlanSelectorSection 
+                      category={category} setCategory={setCategory}
+                      currentPlan={currentPlan} setCurrentPlan={setCurrentPlan}
+                      billingCycle={billingCycle} setBillingCycle={setBillingCycle}
+                      darkMode={darkMode}
+                      targetCategory={targetCategory} setTargetCategory={setTargetCategory}
+                      targetPlan={targetPlan} setTargetPlan={setTargetPlan}
+                      targetBillingCycle={targetBillingCycle} setTargetBillingCycle={setTargetBillingCycle}
+                      currentPlanPriceOverride={currentPlanPriceOverride} setCurrentPlanPriceOverride={setCurrentPlanPriceOverride}
+                      targetPlanPriceOverride={targetPlanPriceOverride} setTargetPlanPriceOverride={setTargetPlanPriceOverride}
+                      currentPlanTaxEnabled={currentPlanTaxEnabled} setCurrentPlanTaxEnabled={setCurrentPlanTaxEnabled}
+                      currentPlanTaxRate={currentPlanTaxRate} setCurrentPlanTaxRate={setCurrentPlanTaxRate}
+                      targetPlanTaxEnabled={targetPlanTaxEnabled} setTargetPlanTaxEnabled={setTargetPlanTaxEnabled}
+                      targetPlanTaxRate={targetPlanTaxRate} setTargetPlanTaxRate={setTargetPlanTaxRate}
+                      currentPlanDiscountEnabled={currentPlanDiscountEnabled} setCurrentPlanDiscountEnabled={setCurrentPlanDiscountEnabled}
+                      currentPlanDiscountRate={currentPlanDiscountRate} setCurrentPlanDiscountRate={setCurrentPlanDiscountRate}
+                      targetPlanDiscountEnabled={targetPlanDiscountEnabled} setTargetPlanDiscountEnabled={setTargetPlanDiscountEnabled}
+                      targetPlanDiscountRate={targetPlanDiscountRate} setTargetPlanDiscountRate={setTargetPlanDiscountRate}
+                    />
+                    <DateRangeSelector darkMode={darkMode} startDateText={startDateText} endDateText={endDateText} handleStartDateChange={handleStartDateChange} handleEndDateChange={handleEndDateChange} startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} calculateDaysFromDates={calculateDaysFromDates} />
+                    <UsageDurationInfo darkMode={darkMode} calculateDaysFromDates={calculateDaysFromDates} startDate={startDate} endDate={endDate} billingCycle={billingCycle} cycleLabels={cycleLabels} />
+                    <Button onClick={calculateUpgrade} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-lg font-semibold" size="lg">
+                      <Calculator className="w-5 h-5 mr-2" />
+                      Calculate Upgrade Cost
+                    </Button>
+                    <UpgradeResult 
+                      result={result} darkMode={darkMode} formatCurrency={formatCurrency}
+                      currentPlan={currentPlan} targetPlan={targetPlan}
+                      startDate={startDateText} endDate={endDateText}
+                    />
+                  </TabsContent>
+                  
+                  <TabsContent value="prorata" className="mt-6">
+                    <ProRataUserAddition darkMode={darkMode} />
+                  </TabsContent>
+                  
+                  <TabsContent value="ledger" className="mt-6">
+                    <BillingLedger darkMode={darkMode} />
+                  </TabsContent>
+                  
+                  <TabsContent value="vps" className="mt-6">
+                    <VpsPricingCalculator darkMode={darkMode} />
+                  </TabsContent>
+                </Tabs>
               </TabsContent>
 
-              <TabsContent value="cgap" className="mt-6">
+              <TabsContent value="cgap">
                 <CGAPEmbedded darkMode={darkMode} />
               </TabsContent>
             </Tabs>
