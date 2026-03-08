@@ -5,7 +5,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle, FileText, Server, FileCheck } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,6 +27,7 @@ import UserManagement from "@/components/UserManagement";
 import PriceManagement from "@/components/PriceManagement";
 import MathSettings from "@/components/MathSettings";
 import { calculateUpgradeWithSettings } from "@/utils/calculationEngine";
+import CGAPEmbedded from "./Index/CGAPEmbedded";
 // Updated plan data structure with cycle-specific pricing
 const planData = {
   "shared-hosting": {
@@ -308,7 +308,6 @@ interface CalculationResult {
   username?: string;
 }
 const Index = () => {
-  const navigate = useNavigate();
   const {
     currentUser,
     currentUsername,
@@ -675,14 +674,7 @@ const Index = () => {
             <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               Welcome, {currentUser}
             </span>
-            <Button 
-              onClick={() => navigate('/cgap')} 
-              className={`flex items-center gap-2 ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-              size="sm"
-            >
-              <FileCheck className="w-4 h-4" />
-              CGAP
-            </Button>
+            
             {isAdmin && <>
                 <UserManagement darkMode={darkMode} />
                 <PriceManagement darkMode={darkMode} />
@@ -708,34 +700,41 @@ const Index = () => {
           
           <CardContent className="space-y-6">
             <Tabs defaultValue="upgrade" className="w-full">
-              <TabsList className={`grid w-full grid-cols-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+              <TabsList className={`grid w-full grid-cols-5 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                 <TabsTrigger 
                   value="upgrade" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
-                  <ArrowUpCircle className="w-4 h-4" />
+                  <ArrowUpCircle className="w-3.5 h-3.5" />
                   Upgrade
                 </TabsTrigger>
                 <TabsTrigger 
                   value="prorata" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
-                  <UserPlus className="w-4 h-4" />
+                  <UserPlus className="w-3.5 h-3.5" />
                   Pro Rata
                 </TabsTrigger>
                 <TabsTrigger 
                   value="ledger" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
-                  <FileText className="w-4 h-4" />
+                  <FileText className="w-3.5 h-3.5" />
                   Ledger
                 </TabsTrigger>
                 <TabsTrigger 
                   value="vps" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
-                  <Server className="w-4 h-4" />
+                  <Server className="w-3.5 h-3.5" />
                   VPS
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="cgap" 
+                  className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-blue-900 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}
+                >
+                  <FileCheck className="w-3.5 h-3.5" />
+                  CGAP
                 </TabsTrigger>
               </TabsList>
               
@@ -802,6 +801,10 @@ const Index = () => {
               
               <TabsContent value="vps" className="mt-6">
                 <VpsPricingCalculator darkMode={darkMode} />
+              </TabsContent>
+
+              <TabsContent value="cgap" className="mt-6">
+                <CGAPEmbedded darkMode={darkMode} />
               </TabsContent>
             </Tabs>
           </CardContent>
