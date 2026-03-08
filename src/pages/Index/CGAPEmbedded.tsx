@@ -42,6 +42,9 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
         <TabsContent value="amendment" className="mt-4">
           <QuickAmendmentTab darkMode={darkMode} />
         </TabsContent>
+        <TabsContent value="database" className="mt-4">
+          <ContractsDatabase darkMode={darkMode} />
+        </TabsContent>
         <TabsContent value="settings" className="mt-4">
           <SettingsTab darkMode={darkMode} />
         </TabsContent>
