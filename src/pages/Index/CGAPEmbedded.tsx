@@ -3,8 +3,9 @@ import ContractTab from '@/pages/CGAP/ContractTab';
 import AddendumTab from '@/pages/CGAP/AddendumTab';
 import QuickAmendmentTab from '@/pages/CGAP/QuickAmendmentTab';
 import SettingsTab from '@/pages/CGAP/SettingsTab';
+import ContractsDatabase from '@/pages/CGAP/ContractsDatabase';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, FilePlus, Zap, Settings } from 'lucide-react';
+import { FileText, FilePlus, Zap, Settings, Database } from 'lucide-react';
 
 interface CGAPEmbeddedProps {
   darkMode: boolean;
