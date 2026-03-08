@@ -47,6 +47,33 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [done, setDone] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Signature & stamp uploads
+  const [signatures, setSignatures] = useState<Record<string, { file: File; preview: string } | null>>({
+    clientSignature: null,
+    clientStamp: null,
+    spSignature: null,
+    spStamp: null,
+  });
+  const sigRefs = {
+    clientSignature: useRef<HTMLInputElement>(null),
+    clientStamp: useRef<HTMLInputElement>(null),
+    spSignature: useRef<HTMLInputElement>(null),
+    spStamp: useRef<HTMLInputElement>(null),
+  };
+
+  const handleSigUpload = (key: string, file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 2 * 1024 * 1024) return;
+    const preview = URL.createObjectURL(file);
+    setSignatures(prev => ({ ...prev, [key]: { file, preview } }));
+  };
+
+  const removeSig = (key: string) => {
+    if (signatures[key]?.preview) URL.revokeObjectURL(signatures[key]!.preview);
+    setSignatures(prev => ({ ...prev, [key]: null }));
+  };
+
   // Auto-fill paymentWords when paymentAmount changes
   useEffect(() => {
     const amount = parseFloat(fields.paymentAmount || '');
