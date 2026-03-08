@@ -265,7 +265,12 @@ const AddendumTab: React.FC<AddendumTabProps> = ({ darkMode = false }) => {
                 <Label className={`${labelCls} text-[10px] mb-1`}>Section / Clause Reference</Label>
                 <SectionPicker
                   value={row.clause}
-                  onChange={val => updateRow(i, 'clause', val)}
+                  onChange={(val, section) => {
+                    updateRow(i, 'clause', val);
+                    if (section?.clauseText) {
+                      updateRow(i, 'original', section.clauseText);
+                    }
+                  }}
                   darkMode={dm}
                   inputCls={inputCls(false)}
                   accent={ACCENT}
