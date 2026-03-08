@@ -1,34 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCGAP } from '@/contexts/CGAPContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Plus, Trash2, ChevronDown, ChevronUp, Download, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock } from 'lucide-react';
+import { extractCompanyAbv, getTodayISO } from '@/utils/cgapAutoFill';
 
 const ACCENT = '#F59E0B';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
 
 interface AmendmentRow { clause: string; original: string; replacement: string; }
 
-const REQUIRED = ['companyAbv', 'originalContractId', 'serviceName', 'originalIssueDate', 'effectiveDate', 'clientCompany', 'clientLocation', 'clientCoordinator', 'signatoryName', 'signatoryTitle'];
+const REQUIRED = ['originalContractId', 'serviceName', 'originalIssueDate', 'effectiveDate', 'clientCompany', 'clientLocation', 'clientCoordinator', 'signatoryName', 'signatoryTitle'];
+const AUTO_FIELDS = new Set(['companyAbv', 'effectiveDate']);
+
 const FIELDS = [
-  { id: 'companyAbv', label: 'Company ABV', span: false },
-  { id: 'originalContractId', label: 'Original Contract ID', span: false },
-  { id: 'serviceName', label: 'Service / Procurement Name', span: true },
-  { id: 'originalIssueDate', label: 'Original Contract Issue Date', span: false },
-  { id: 'effectiveDate', label: 'Effective Date', span: false },
-  { id: 'clientCompany', label: 'Client Company Name', span: true },
-  { id: 'clientLocation', label: 'Client Location', span: false },
-  { id: 'clientCoordinator', label: 'Client Coordinator', span: false },
-  { id: 'deliveryTerms', label: 'Delivery Terms', span: true },
-  { id: 'billingTerms', label: 'Billing Terms', span: true },
-  { id: 'invoicingTerms', label: 'Invoicing Terms', span: true },
-  { id: 'signatoryName', label: 'Signatory Name', span: false },
-  { id: 'signatoryTitle', label: 'Signatory Title', span: false },
-  { id: 'witnessName', label: 'Witness Name', span: false },
-  { id: 'witnessTitle', label: 'Witness Title', span: false },
+  { id: 'originalContractId', label: 'Original Contract ID', span: true, group: 'contract' },
+  { id: 'companyAbv', label: 'Company ABV', span: false, group: 'contract', auto: true },
+  { id: 'serviceName', label: 'Service / Procurement Name', span: true, group: 'contract' },
+  { id: 'originalIssueDate', label: 'Original Contract Issue Date', span: false, group: 'contract' },
+  { id: 'effectiveDate', label: 'Effective Date', span: false, group: 'contract', auto: true },
+  { id: 'clientCompany', label: 'Client Company Name', span: true, group: 'client' },
+  { id: 'clientLocation', label: 'Client Location', span: false, group: 'client' },
+  { id: 'clientCoordinator', label: 'Client Coordinator', span: false, group: 'client' },
+  { id: 'deliveryTerms', label: 'Delivery Terms', span: true, group: 'terms' },
+  { id: 'billingTerms', label: 'Billing Terms', span: true, group: 'terms' },
+  { id: 'invoicingTerms', label: 'Invoicing Terms', span: true, group: 'terms' },
+  { id: 'signatoryName', label: 'Signatory Name', span: false, group: 'signatory' },
+  { id: 'signatoryTitle', label: 'Signatory Title', span: false, group: 'signatory' },
+  { id: 'witnessName', label: 'Witness Name', span: false, group: 'signatory' },
+  { id: 'witnessTitle', label: 'Witness Title', span: false, group: 'signatory' },
 ];
 
 const MAPPING_ITEMS = [
@@ -50,11 +53,18 @@ const MAPPING_ITEMS = [
   { label: 'Date auto-fields', tag: '<<DD>> <<MM>> <<YY>>' },
 ];
 
+const SECTIONS: { key: string; title: string; subtitle: string }[] = [
+  { key: 'contract', title: 'Contract Reference', subtitle: 'Company ABV auto-fills from contract ID; effective date defaults to today' },
+  { key: 'client', title: 'Client Information', subtitle: 'Client company and contact details' },
+  { key: 'terms', title: 'Terms (optional)', subtitle: 'Delivery, billing, and invoicing terms' },
+  { key: 'signatory', title: 'Signatories', subtitle: 'Contract signing parties' },
+];
+
 interface AddendumTabProps { darkMode?: boolean; }
 
 const AddendumTab: React.FC<AddendumTabProps> = ({ darkMode = false }) => {
   const { generateAddendumId, addAddendumLog } = useCGAP();
-  const [fields, setFields] = useState<Record<string, string>>({});
+  const [fields, setFields] = useState<Record<string, string>>({ effectiveDate: getTodayISO() });
   const [amendments, setAmendments] = useState<AmendmentRow[]>([{ clause: '', original: '', replacement: '' }]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [showMapping, setShowMapping] = useState(false);
@@ -62,13 +72,31 @@ const AddendumTab: React.FC<AddendumTabProps> = ({ darkMode = false }) => {
   const [done, setDone] = useState(false);
   const [generatedId, setGeneratedId] = useState('');
 
+  // Auto-extract companyAbv from originalContractId
+  useEffect(() => {
+    const abv = extractCompanyAbv(fields.originalContractId || '');
+    setFields(prev => ({ ...prev, companyAbv: abv }));
+  }, [fields.originalContractId]);
+
   const dm = darkMode;
   const card = `rounded-xl p-5 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
   const labelCls = `text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`;
-  const inputCls = (err: boolean) => `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border ${err ? '!border-red-500' : ''}`;
+  const inputCls = (err: boolean, isAuto?: boolean) =>
+    `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border ${err ? '!border-red-500' : ''} ${isAuto ? 'opacity-75 cursor-not-allowed' : ''}`;
 
-  const set = (id: string, val: string) => { setFields(prev => ({ ...prev, [id]: val })); if (val.trim()) setErrors(prev => ({ ...prev, [id]: false })); };
-  const validate = () => { const errs: Record<string, boolean> = {}; REQUIRED.forEach(id => { if (!fields[id]?.trim()) errs[id] = true; }); setErrors(errs); return Object.keys(errs).length === 0; };
+  const set = (id: string, val: string) => {
+    if (id === 'companyAbv') return; // auto-only
+    setFields(prev => ({ ...prev, [id]: val }));
+    if (val.trim()) setErrors(prev => ({ ...prev, [id]: false }));
+  };
+
+  const validate = () => {
+    const errs: Record<string, boolean> = {};
+    REQUIRED.forEach(id => { if (!fields[id]?.trim()) errs[id] = true; });
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const addRow = () => { if (amendments.length < 3) setAmendments(prev => [...prev, { clause: '', original: '', replacement: '' }]); };
   const removeRow = (i: number) => setAmendments(prev => prev.filter((_, idx) => idx !== i));
   const updateRow = (i: number, key: keyof AmendmentRow, val: string) => setAmendments(prev => prev.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
@@ -89,6 +117,50 @@ const AddendumTab: React.FC<AddendumTabProps> = ({ darkMode = false }) => {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${generatedId || 'addendum'}.pdf`; a.click();
   };
 
+  const sectionHeader = (title: string, subtitle: string) => (
+    <div className={`flex items-center gap-2 pt-2 pb-1`}>
+      <div className="w-1 h-5 rounded-full" style={{ background: ACCENT }} />
+      <div>
+        <h3 className={`text-sm font-semibold ${dm ? 'text-gray-200' : 'text-gray-700'}`}>{title}</h3>
+        <p className={`text-[10px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>{subtitle}</p>
+      </div>
+    </div>
+  );
+
+  const renderField = (f: typeof FIELDS[0]) => {
+    const isAuto = f.auto || f.id === 'companyAbv';
+    const isDate = f.id.includes('Date') || f.id === 'effectiveDate';
+    const isTextarea = ['deliveryTerms', 'billingTerms', 'invoicingTerms'].includes(f.id);
+
+    return (
+      <div key={f.id} className={f.span ? 'md:col-span-2' : ''}>
+        <Label className={`${labelCls} flex items-center gap-1.5`}>
+          {f.label} {REQUIRED.includes(f.id) && <span className="text-red-500">*</span>}
+          {isAuto && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${ACCENT}22`, color: ACCENT }}>
+              <Wand2 className="w-2.5 h-2.5" /> AUTO
+            </span>
+          )}
+        </Label>
+        <div className="relative">
+          {isTextarea ? (
+            <textarea rows={2} value={fields[f.id] || ''} onChange={e => set(f.id, e.target.value)} className={inputCls(!!errors[f.id])} />
+          ) : (
+            <Input
+              type={isDate ? 'date' : 'text'}
+              value={fields[f.id] || ''}
+              onChange={e => set(f.id, e.target.value)}
+              readOnly={isAuto && f.id === 'companyAbv'}
+              className={inputCls(!!errors[f.id], isAuto && f.id === 'companyAbv')}
+            />
+          )}
+          {isAuto && f.id === 'companyAbv' && <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-40" />}
+        </div>
+        {errors[f.id] && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -101,20 +173,15 @@ const AddendumTab: React.FC<AddendumTabProps> = ({ darkMode = false }) => {
         )}
       </div>
 
-      {/* Form */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {FIELDS.map(f => (
-          <div key={f.id} className={f.span ? 'md:col-span-2' : ''}>
-            <Label className={labelCls}>{f.label} {REQUIRED.includes(f.id) && <span className="text-red-500">*</span>}</Label>
-            {['deliveryTerms', 'billingTerms', 'invoicingTerms'].includes(f.id) ? (
-              <textarea rows={2} value={fields[f.id] || ''} onChange={e => set(f.id, e.target.value)} className={inputCls(!!errors[f.id])} />
-            ) : (
-              <Input type={f.id.includes('Date') ? 'date' : 'text'} value={fields[f.id] || ''} onChange={e => set(f.id, e.target.value)} className={inputCls(!!errors[f.id])} />
-            )}
-            {errors[f.id] && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
+      {/* Grouped form sections */}
+      {SECTIONS.map(section => (
+        <div key={section.key}>
+          {sectionHeader(section.title, section.subtitle)}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
+            {FIELDS.filter(f => f.group === section.key).map(renderField)}
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
 
       {/* Amendment Table */}
       <div className={card}>

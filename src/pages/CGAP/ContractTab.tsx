@@ -1,11 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useCGAP } from '@/contexts/CGAPContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText } from 'lucide-react';
+import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock } from 'lucide-react';
+import { numberToWords, periodToText, formatNepaliNumber } from '@/utils/cgapAutoFill';
 
 const ACCENT = '#4F7FFF';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
@@ -13,12 +14,15 @@ const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
 const TEST_DATA: Record<string, string> = {
   companyAbv: 'ABC', prevContractId: 'ABC-NNBS-01-01-25-1',
   clientCompany: 'Acme Corporation Pvt. Ltd.', clientLocation: 'Kathmandu, Nepal',
-  clientCoordinator: 'Ram Sharma', contractPeriodText: 'One Year',
-  contractPeriodNum: '12 Months', numUsers: '25', paymentAmount: '150000',
-  paymentWords: 'One Lakh Fifty Thousand Only', advancePercent: '50',
+  clientCoordinator: 'Ram Sharma', contractPeriodNum: '12',
+  numUsers: '25', paymentAmount: '150000',
+  advancePercent: '50',
   signatoryName: 'Shyam Prasad', signatoryTitle: 'Managing Director',
   witnessName: 'Hari Bahadur', witnessTitle: 'Operations Manager',
 };
+
+// Fields that are auto-computed
+const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriodText']);
 
 interface ContractTabProps { darkMode?: boolean; }
 
@@ -34,14 +38,34 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [done, setDone] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Auto-fill paymentWords when paymentAmount changes
+  useEffect(() => {
+    const amount = parseFloat(fields.paymentAmount || '');
+    if (!isNaN(amount) && amount > 0) {
+      setFields(prev => ({ ...prev, paymentWords: numberToWords(amount) }));
+    } else {
+      setFields(prev => ({ ...prev, paymentWords: '' }));
+    }
+  }, [fields.paymentAmount]);
+
+  // Auto-fill contractPeriodText when contractPeriodNum changes
+  useEffect(() => {
+    const text = periodToText(fields.contractPeriodNum || '');
+    setFields(prev => ({ ...prev, contractPeriodText: text }));
+  }, [fields.contractPeriodNum]);
+
   const set = (id: string, val: string) => {
+    if (AUTO_FIELDS.has(id)) return; // prevent manual editing of auto fields
     setFields(prev => ({ ...prev, [id]: val }));
     if (val.trim()) setErrors(prev => ({ ...prev, [id]: false }));
   };
 
   const validate = () => {
     const errs: Record<string, boolean> = {};
-    fieldMappings.forEach(f => { if (f.required && !fields[f.id]?.trim()) errs[f.id] = true; });
+    fieldMappings.forEach(f => {
+      if (f.required && !AUTO_FIELDS.has(f.id) && !fields[f.id]?.trim()) errs[f.id] = true;
+      if (f.required && AUTO_FIELDS.has(f.id) && !fields[f.id]?.trim()) errs[f.id] = true;
+    });
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -74,12 +98,69 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     a.download = `${generatedId || 'contract'}.pdf`; a.click();
   };
 
-  const fillTest = () => { setFields(TEST_DATA); setErrors({}); };
+  const fillTest = () => {
+    setFields(TEST_DATA);
+    setErrors({});
+  };
 
   const dm = darkMode;
   const card = `rounded-xl p-5 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
   const labelCls = `text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`;
-  const inputCls = (hasError: boolean) => `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border ${hasError ? '!border-red-500' : ''}`;
+  const inputCls = (hasError: boolean, isAuto?: boolean) =>
+    `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border ${hasError ? '!border-red-500' : ''} ${isAuto ? 'opacity-75 cursor-not-allowed' : ''}`;
+
+  // Group fields for better visual sections
+  const companyFields = fieldMappings.filter(f => ['companyAbv', 'prevContractId', 'clientCompany', 'clientLocation', 'clientCoordinator'].includes(f.id));
+  const contractFields = fieldMappings.filter(f => ['contractPeriodNum', 'contractPeriodText', 'numUsers'].includes(f.id));
+  const paymentFields = fieldMappings.filter(f => ['paymentAmount', 'paymentWords', 'advancePercent'].includes(f.id));
+  const signatoryFields = fieldMappings.filter(f => ['signatoryName', 'signatoryTitle', 'witnessName', 'witnessTitle'].includes(f.id));
+
+  const renderField = (f: typeof fieldMappings[0]) => {
+    const isAuto = AUTO_FIELDS.has(f.id);
+    const isNumber = ['contractPeriodNum', 'numUsers', 'advancePercent'].includes(f.id);
+    const isAmount = f.id === 'paymentAmount';
+
+    return (
+      <div key={f.id} className={f.id === 'clientCompany' ? 'md:col-span-2' : ''}>
+        <Label className={`${labelCls} flex items-center gap-1.5`}>
+          {f.label} {f.required && <span className="text-red-500">*</span>}
+          {isAuto && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${ACCENT}22`, color: ACCENT }}>
+              <Wand2 className="w-2.5 h-2.5" /> AUTO
+            </span>
+          )}
+        </Label>
+        <div className="relative">
+          <Input
+            value={fields[f.id] || ''}
+            onChange={e => set(f.id, e.target.value)}
+            placeholder={isAuto ? 'Auto-generated' : f.placeholder}
+            readOnly={isAuto}
+            type={isNumber || isAmount ? 'number' : 'text'}
+            min={isNumber || isAmount ? 0 : undefined}
+            className={inputCls(!!errors[f.id], isAuto)}
+          />
+          {isAuto && <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-40" />}
+        </div>
+        {isAmount && fields.paymentAmount && !isNaN(parseFloat(fields.paymentAmount)) && (
+          <p className={`text-xs mt-1 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+            Formatted: NPR {formatNepaliNumber(parseFloat(fields.paymentAmount))}
+          </p>
+        )}
+        {errors[f.id] && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
+      </div>
+    );
+  };
+
+  const sectionHeader = (title: string, subtitle: string) => (
+    <div className={`flex items-center gap-2 pt-2 pb-1 ${dm ? 'border-gray-800' : 'border-gray-200'}`}>
+      <div className="w-1 h-5 rounded-full" style={{ background: ACCENT }} />
+      <div>
+        <h3 className={`text-sm font-semibold ${dm ? 'text-gray-200' : 'text-gray-700'}`}>{title}</h3>
+        <p className={`text-[10px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>{subtitle}</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-5">
@@ -87,28 +168,37 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>New Contract</h2>
-          <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Fill in the details to generate a contract document</p>
+          <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+            Fields marked <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1 py-0.5 rounded" style={{ background: `${ACCENT}22`, color: ACCENT }}><Wand2 className="w-2.5 h-2.5" />AUTO</span> are auto-generated
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={fillTest} className="gap-1.5" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
           <Sparkles className="w-3 h-3" /> Test Data
         </Button>
       </div>
 
-      {/* Form */}
+      {/* Company Section */}
+      {sectionHeader('Company Details', 'Client and company information')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {fieldMappings.map(f => (
-          <div key={f.id} className={f.id === 'clientCompany' ? 'md:col-span-2' : ''}>
-            <Label className={labelCls}>
-              {f.label} {f.required && <span className="text-red-500">*</span>}
-            </Label>
-            <Input
-              value={fields[f.id] || ''} onChange={e => set(f.id, e.target.value)}
-              placeholder={f.placeholder}
-              className={inputCls(!!errors[f.id])}
-            />
-            {errors[f.id] && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
-          </div>
-        ))}
+        {companyFields.map(renderField)}
+      </div>
+
+      {/* Contract Section */}
+      {sectionHeader('Contract Terms', 'Period text auto-fills from the number')}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {contractFields.map(renderField)}
+      </div>
+
+      {/* Payment Section */}
+      {sectionHeader('Payment Details', 'Amount in words auto-fills from numerals')}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {paymentFields.map(renderField)}
+      </div>
+
+      {/* Signatory Section */}
+      {sectionHeader('Signatories', 'Contract signing parties')}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {signatoryFields.map(renderField)}
       </div>
 
       {/* Invoice Upload */}
@@ -137,6 +227,21 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         )}
       </div>
 
+      {/* Auto-fields summary */}
+      <div className={`rounded-xl p-4 ${dm ? 'bg-gray-900/60 border-gray-800' : 'bg-blue-50/50 border-blue-100'} border`}>
+        <h4 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>
+          Auto-Generated at Creation
+        </h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {['Contract ID', 'Day/Date', 'Month', 'Year', 'DD', 'MM', 'YY', 'Full Date'].map(label => (
+            <div key={label} className={`flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md ${dm ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500'}`}>
+              <Wand2 className="w-3 h-3" style={{ color: ACCENT }} />
+              {label}
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Placeholder Mapping */}
       <Collapsible open={showMapping} onOpenChange={setShowMapping}>
         <CollapsibleTrigger asChild>
@@ -149,13 +254,19 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           <div className="space-y-1">
             {fieldMappings.map(f => (
               <div key={f.id} className={`flex justify-between text-xs py-1 ${dm ? 'border-gray-800' : 'border-gray-200'} border-b`}>
-                <span className={dm ? 'text-gray-400' : 'text-gray-500'}>{f.label}</span>
+                <span className={`${dm ? 'text-gray-400' : 'text-gray-500'} flex items-center gap-1`}>
+                  {f.label}
+                  {AUTO_FIELDS.has(f.id) && <Wand2 className="w-2.5 h-2.5" style={{ color: ACCENT }} />}
+                </span>
                 <Badge variant="secondary" className="font-mono text-xs" style={{ color: ACCENT }}>{f.placeholder}</Badge>
               </div>
             ))}
             {['<<CONTRACTID>>', '<<DD>>', '<<MM>>', '<<YY>>', '<<DAYDATE>>', '<<MONTH>>', '<<YEAR>>'].map(p => (
               <div key={p} className={`flex justify-between text-xs py-1 ${dm ? 'border-gray-800' : 'border-gray-200'} border-b`}>
-                <span className={dm ? 'text-gray-400' : 'text-gray-500'}>{p.replace(/[<>]/g, '')} (auto)</span>
+                <span className={`${dm ? 'text-gray-400' : 'text-gray-500'} flex items-center gap-1`}>
+                  {p.replace(/[<>]/g, '')}
+                  <Wand2 className="w-2.5 h-2.5" style={{ color: ACCENT }} />
+                </span>
                 <Badge variant="secondary" className="font-mono text-xs" style={{ color: ACCENT }}>{p}</Badge>
               </div>
             ))}
