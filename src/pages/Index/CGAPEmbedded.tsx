@@ -15,7 +15,7 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
   return (
     <div className="space-y-4">
       <Tabs defaultValue="contract" className="w-full">
-        <TabsList className={`grid w-full grid-cols-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+        <TabsList className={`grid w-full grid-cols-5 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
           <TabsTrigger value="contract" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-blue-900/50 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}>
             <FileText className="w-3.5 h-3.5" /> Contract
           </TabsTrigger>
