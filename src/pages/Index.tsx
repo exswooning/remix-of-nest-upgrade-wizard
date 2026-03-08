@@ -690,19 +690,19 @@ const Index = () => {
           <CardContent className="pt-6 space-y-6">
             {/* Top-level toggle: UCAP vs CGAP */}
             <Tabs defaultValue="ucap" className="w-full">
-              <TabsList className={`grid w-full grid-cols-2 mb-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+              <TabsList className={`grid w-full grid-cols-2 h-12 mb-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                 <TabsTrigger 
                   value="ucap" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
+                  className={`flex items-center gap-2 text-base font-semibold py-3 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
-                  <Calculator className="w-4 h-4" />
+                  <Calculator className="w-5 h-5" />
                   UCAP
                 </TabsTrigger>
                 <TabsTrigger 
                   value="cgap" 
-                  className={`flex items-center gap-2 ${darkMode ? 'data-[state=active]:bg-blue-900 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}
+                  className={`flex items-center gap-2 text-base font-semibold py-3 ${darkMode ? 'data-[state=active]:bg-blue-900 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}
                 >
-                  <FileCheck className="w-4 h-4" />
+                  <FileCheck className="w-5 h-5" />
                   CGAP
                 </TabsTrigger>
               </TabsList>
