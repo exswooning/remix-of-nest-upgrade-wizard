@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCGAP } from '@/contexts/CGAPContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock } from 'lucide-react';
+import { extractCompanyAbv, getTodayISO } from '@/utils/cgapAutoFill';
 
 const ACCENT = '#A78BFA';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
@@ -15,7 +16,8 @@ interface QuickAmendmentTabProps { darkMode?: boolean; }
 const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false }) => {
   const { generateAddendumId, addAddendumLog } = useCGAP();
   const [contractId, setContractId] = useState('');
-  const [effectiveDate, setEffectiveDate] = useState('');
+  const [companyAbv, setCompanyAbv] = useState('');
+  const [effectiveDate, setEffectiveDate] = useState(getTodayISO());
   const [sigName, setSigName] = useState('');
   const [sigTitle, setSigTitle] = useState('');
   const [witName, setWitName] = useState('');
@@ -26,12 +28,17 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
   const [done, setDone] = useState(false);
   const [generatedId, setGeneratedId] = useState('');
 
+  // Auto-extract company abbreviation
+  useEffect(() => {
+    setCompanyAbv(extractCompanyAbv(contractId));
+  }, [contractId]);
+
   const dm = darkMode;
   const card = `rounded-xl p-5 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
   const labelCls = `text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`;
-  const inputCls = (err: boolean) => `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border ${err ? '!border-red-500' : ''}`;
+  const inputCls = (err: boolean, isAuto?: boolean) =>
+    `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border ${err ? '!border-red-500' : ''} ${isAuto ? 'opacity-75 cursor-not-allowed' : ''}`;
 
-  const extractAbv = (id: string) => id.split('-')[0] || '';
   const addRow = () => { if (changes.length < 3) setChanges(prev => [...prev, { clause: '', original: '', replacement: '' }]); };
   const removeRow = (i: number) => setChanges(prev => prev.filter((_, idx) => idx !== i));
   const updateRow = (i: number, key: keyof ChangeRow, val: string) => setChanges(prev => prev.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
@@ -39,7 +46,6 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
   const validate = () => {
     const errs: Record<string, boolean> = {};
     if (!contractId.trim()) errs.contractId = true;
-    if (!effectiveDate.trim()) errs.effectiveDate = true;
     if (!sigName.trim()) errs.sigName = true;
     if (!sigTitle.trim()) errs.sigTitle = true;
     setErrors(errs); return Object.keys(errs).length === 0;
@@ -50,7 +56,7 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
     setDone(false);
     const id = generateAddendumId(contractId); setGeneratedId(id);
     for (let i = 0; i < STEPS.length; i++) { setStep(i); await new Promise(r => setTimeout(r, 700)); }
-    addAddendumLog({ timestamp: new Date().toISOString(), companyAbv: extractAbv(contractId), addendumId: id, originalContractId: contractId, fields: { effectiveDate, sigName, sigTitle, witName, witTitle, changes: JSON.stringify(changes) } });
+    addAddendumLog({ timestamp: new Date().toISOString(), companyAbv, addendumId: id, originalContractId: contractId, fields: { effectiveDate, sigName, sigTitle, witName, witTitle, changes: JSON.stringify(changes) } });
     setDone(true);
   };
 
@@ -60,19 +66,25 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${generatedId || 'amendment'}.pdf`; a.click();
   };
 
+  const sectionHeader = (title: string, subtitle: string) => (
+    <div className={`flex items-center gap-2 pt-2 pb-1`}>
+      <div className="w-1 h-5 rounded-full" style={{ background: ACCENT }} />
+      <div>
+        <h3 className={`text-sm font-semibold ${dm ? 'text-gray-200' : 'text-gray-700'}`}>{title}</h3>
+        <p className={`text-[10px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>{subtitle}</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-5">
       <div>
         <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Quick Amendment</h2>
         <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Minimal form for fast contract amendments</p>
-        {contractId && (
-          <p className="text-xs mt-2" style={{ color: ACCENT }}>
-            Company: <Badge variant="secondary" className="font-mono">{extractAbv(contractId) || '—'}</Badge>
-          </p>
-        )}
       </div>
 
-      {/* Core Fields */}
+      {/* Contract Reference */}
+      {sectionHeader('Contract Reference', 'Company ABV and effective date auto-fill')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="md:col-span-2">
           <Label className={labelCls}>Original Contract ID <span className="text-red-500">*</span></Label>
@@ -81,9 +93,25 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
           {errors.contractId && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
         </div>
         <div>
-          <Label className={labelCls}>Effective Date <span className="text-red-500">*</span></Label>
-          <Input type="date" value={effectiveDate} onChange={e => { setEffectiveDate(e.target.value); setErrors(prev => ({ ...prev, effectiveDate: false })); }} className={inputCls(!!errors.effectiveDate)} />
-          {errors.effectiveDate && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
+          <Label className={`${labelCls} flex items-center gap-1.5`}>
+            Company ABV
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${ACCENT}22`, color: ACCENT }}>
+              <Wand2 className="w-2.5 h-2.5" /> AUTO
+            </span>
+          </Label>
+          <div className="relative">
+            <Input value={companyAbv} readOnly className={inputCls(false, true)} placeholder="Auto-extracted" />
+            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-40" />
+          </div>
+        </div>
+        <div>
+          <Label className={`${labelCls} flex items-center gap-1.5`}>
+            Effective Date
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${ACCENT}22`, color: ACCENT }}>
+              <Wand2 className="w-2.5 h-2.5" /> AUTO
+            </span>
+          </Label>
+          <Input type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} className={inputCls(false)} />
         </div>
       </div>
 
@@ -113,14 +141,17 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
       </div>
 
       {/* Signatory */}
+      {sectionHeader('Signatories', 'Contract signing parties')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <Label className={labelCls}>Signatory Name <span className="text-red-500">*</span></Label>
           <Input value={sigName} onChange={e => { setSigName(e.target.value); setErrors(prev => ({ ...prev, sigName: false })); }} className={inputCls(!!errors.sigName)} />
+          {errors.sigName && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
         </div>
         <div>
           <Label className={labelCls}>Signatory Title <span className="text-red-500">*</span></Label>
           <Input value={sigTitle} onChange={e => { setSigTitle(e.target.value); setErrors(prev => ({ ...prev, sigTitle: false })); }} className={inputCls(!!errors.sigTitle)} />
+          {errors.sigTitle && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
         </div>
         <div>
           <Label className={labelCls}>Witness Name</Label>
