@@ -709,7 +709,7 @@ const Index = () => {
 
               <TabsContent value="ucap">
                 <Tabs defaultValue="upgrade" className="w-full">
-                  <TabsList className={`grid w-full grid-cols-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                  <TabsList className={`grid w-full grid-cols-5 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                     <TabsTrigger value="upgrade" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
                       <ArrowUpCircle className="w-3.5 h-3.5" /> Upgrade
                     </TabsTrigger>
@@ -721,6 +721,9 @@ const Index = () => {
                     </TabsTrigger>
                     <TabsTrigger value="vps" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
                       <Server className="w-3.5 h-3.5" /> VPS
+                    </TabsTrigger>
+                    <TabsTrigger value="history" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
+                      <History className="w-3.5 h-3.5" /> History
                     </TabsTrigger>
                   </TabsList>
                   
