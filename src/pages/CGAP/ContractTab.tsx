@@ -74,6 +74,12 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     setSignatures(prev => ({ ...prev, [key]: null }));
   };
 
+  // Auto-fill companyAbv from clientCompanyName
+  useEffect(() => {
+    const abv = generateAbbreviation(fields.clientCompanyName || '');
+    setFields(prev => ({ ...prev, companyAbv: abv }));
+  }, [fields.clientCompanyName]);
+
   // Auto-fill paymentWords when paymentAmount changes
   useEffect(() => {
     const amount = parseFloat(fields.paymentAmount || '');
