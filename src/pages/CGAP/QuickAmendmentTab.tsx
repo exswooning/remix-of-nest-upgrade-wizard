@@ -99,7 +99,7 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
   const inputCls = (err: boolean, isAuto?: boolean) =>
     `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border ${err ? '!border-red-500' : ''} ${isAuto ? 'opacity-75 cursor-not-allowed' : ''}`;
 
-  const addRow = () => { if (changes.length < 3) setChanges(prev => [...prev, { clause: '', original: '', replacement: '' }]); };
+  const addRow = () => setChanges(prev => [...prev, { clause: '', original: '', replacement: '' }]);
   const removeRow = (i: number) => setChanges(prev => prev.filter((_, idx) => idx !== i));
   const updateRow = (i: number, key: keyof ChangeRow, val: string) => setChanges(prev => prev.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
 
@@ -179,14 +179,12 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
       <div className={card}>
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h3 className={`text-sm font-medium ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Changes (up to 3)</h3>
+            <h3 className={`text-sm font-medium ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Changes</h3>
             <p className={`text-[10px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Type a section number to search (e.g. "3A", "15", "Annex")</p>
           </div>
-          {changes.length < 3 && (
-            <Button variant="outline" size="sm" onClick={addRow} className="gap-1 text-xs" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
-              <Plus className="w-3 h-3" /> Add
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={addRow} className="gap-1 text-xs" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
+            <Plus className="w-3 h-3" /> Add
+          </Button>
         </div>
         <div className="space-y-3">
           {changes.map((row, i) => (
@@ -210,13 +208,15 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
                   accent={ACCENT}
                 />
               </div>
-              <div>
-                <Label className={`${labelCls} text-[10px] mb-1`}>Original Text</Label>
-                <textarea placeholder="Text from the original contract..." rows={2} value={row.original} onChange={e => updateRow(i, 'original', e.target.value)} className={inputCls(false)} />
-              </div>
-              <div>
-                <Label className={`${labelCls} text-[10px] mb-1`}>Replacement Text</Label>
-                <textarea placeholder="New text that replaces the original..." rows={2} value={row.replacement} onChange={e => updateRow(i, 'replacement', e.target.value)} className={inputCls(false)} />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <div>
+                  <Label className={`${labelCls} text-[10px] mb-1`}>Original Text</Label>
+                  <textarea placeholder="Text from the original contract..." rows={3} value={row.original} onChange={e => updateRow(i, 'original', e.target.value)} className={inputCls(false)} />
+                </div>
+                <div>
+                  <Label className={`${labelCls} text-[10px] mb-1`}>Replacement Text</Label>
+                  <textarea placeholder="New text that replaces the original..." rows={3} value={row.replacement} onChange={e => updateRow(i, 'replacement', e.target.value)} className={inputCls(false)} />
+                </div>
               </div>
             </div>
           ))}
