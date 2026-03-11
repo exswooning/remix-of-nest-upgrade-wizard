@@ -211,11 +211,11 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                 <div>
                   <Label className={`${labelCls} text-[10px] mb-1`}>Original Text</Label>
-                  <textarea placeholder="Text from the original contract..." rows={3} value={row.original} onChange={e => updateRow(i, 'original', e.target.value)} className={inputCls(false)} />
+                  <textarea placeholder="Text from the original contract..." rows={6} value={row.original} onChange={e => updateRow(i, 'original', e.target.value)} className={inputCls(false)} />
                 </div>
                 <div>
                   <Label className={`${labelCls} text-[10px] mb-1`}>Replacement Text</Label>
-                  <textarea placeholder="New text that replaces the original..." rows={3} value={row.replacement} onChange={e => updateRow(i, 'replacement', e.target.value)} className={inputCls(false)} />
+                  <textarea placeholder="New text that replaces the original..." rows={6} value={row.replacement} onChange={e => updateRow(i, 'replacement', e.target.value)} className={inputCls(false)} />
                 </div>
               </div>
             </div>
