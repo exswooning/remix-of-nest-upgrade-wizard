@@ -179,14 +179,12 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
       <div className={card}>
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h3 className={`text-sm font-medium ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Changes (up to 3)</h3>
+            <h3 className={`text-sm font-medium ${dm ? 'text-gray-300' : 'text-gray-700'}`}>Changes</h3>
             <p className={`text-[10px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Type a section number to search (e.g. "3A", "15", "Annex")</p>
           </div>
-          {changes.length < 3 && (
-            <Button variant="outline" size="sm" onClick={addRow} className="gap-1 text-xs" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
-              <Plus className="w-3 h-3" /> Add
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={addRow} className="gap-1 text-xs" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
+            <Plus className="w-3 h-3" /> Add
+          </Button>
         </div>
         <div className="space-y-3">
           {changes.map((row, i) => (
