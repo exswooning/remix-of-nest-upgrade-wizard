@@ -342,7 +342,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
                   {p.label}
                   <Wand2 className="w-2.5 h-2.5" style={{ color: ACCENT }} />
                 </span>
-                <Badge variant="secondary" className="font-mono text-xs" style={{ color: ACCENT }}>{p.tag}</Badge>
+                <Badge variant="secondary" className="font-mono text-xs" style={{ color: ACCENT }}>{p.tag.replace(/<<|>>/g, '')}</Badge>
               </div>
             ))}
           </div>

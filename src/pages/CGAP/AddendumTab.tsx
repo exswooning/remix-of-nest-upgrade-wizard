@@ -301,7 +301,7 @@ const AddendumTab: React.FC<AddendumTabProps> = ({ darkMode = false }) => {
           {MAPPING_ITEMS.map(m => (
             <div key={m.tag} className={`flex justify-between text-xs py-1 ${dm ? 'border-gray-800' : 'border-gray-200'} border-b`}>
               <span className={dm ? 'text-gray-400' : 'text-gray-500'}>{m.label}</span>
-              <Badge variant="secondary" className="font-mono text-xs" style={{ color: ACCENT }}>{m.tag}</Badge>
+              <Badge variant="secondary" className="font-mono text-xs" style={{ color: ACCENT }}>{m.tag.replace(/<<|>>/g, '')}</Badge>
             </div>
           ))}
         </CollapsibleContent>

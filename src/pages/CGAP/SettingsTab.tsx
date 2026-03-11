@@ -100,7 +100,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
         <div className="space-y-1">
           {AUTO_PLACEHOLDERS.map(p => (
             <div key={p.tag} className={`flex items-center justify-between py-1.5 ${dm ? 'border-gray-800' : 'border-gray-200'} border-b`}>
-              <Badge variant="secondary" className="font-mono text-xs" style={{ color: '#A78BFA' }}>{p.tag}</Badge>
+              <Badge variant="secondary" className="font-mono text-xs" style={{ color: '#A78BFA' }}>{p.tag.replace(/<<|>>/g, '')}</Badge>
               <span className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{p.desc}</span>
             </div>
           ))}
