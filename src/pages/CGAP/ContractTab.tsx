@@ -332,7 +332,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
                   {f.label}
                   {AUTO_FIELDS.has(f.id) && <Wand2 className="w-2.5 h-2.5" style={{ color: ACCENT }} />}
                 </span>
-                <Badge variant="secondary" className="font-mono text-xs" style={{ color: ACCENT }}>{f.placeholder}</Badge>
+                <Badge variant="secondary" className="font-mono text-xs" style={{ color: ACCENT }}>{f.placeholder.replace(/<<|>>/g, '')}</Badge>
               </div>
             ))}
             <p className={`text-[10px] uppercase tracking-wider font-semibold pt-3 pb-1 ${dm ? 'text-gray-600' : 'text-gray-400'}`}>System-Generated Fields</p>
