@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock } from 'lucide-react';
 import { numberToWords, periodToText, formatNepaliNumber, generateAbbreviation, getTodayISO } from '@/utils/cgapAutoFill';
@@ -49,6 +50,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [generatedId, setGeneratedId] = useState('');
   const [step, setStep] = useState(-1);
   const [done, setDone] = useState(false);
+  const [isSigned, setIsSigned] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Auto-fill companyAbv from clientCompanyName
@@ -121,7 +123,9 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       sp_signatory_title: fields.spSignatoryTitle || null,
       sp_witness_name: fields.spWitnessName || null,
       sp_witness_designation: fields.spWitnessDesignation || null,
-      is_signed: false,
+      is_signed: isSigned,
+      signed_at: isSigned ? new Date().toISOString() : null,
+      signed_by: isSigned ? (currentUsername || 'unknown') : null,
       created_by: currentUsername || 'unknown',
     } as any);
 
@@ -364,9 +368,22 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       )}
 
       {!done && (
-        <Button onClick={runGeneration} disabled={step >= 0 && !done} className="w-full text-white" style={{ background: ACCENT }}>
-          Generate Contract
-        </Button>
+        <div className="space-y-3">
+          <div className={`flex items-center gap-3 rounded-lg px-4 py-3 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`}>
+            <Checkbox checked={isSigned} onCheckedChange={(val) => setIsSigned(!!val)} id="signed-check" />
+            <Label htmlFor="signed-check" className={`text-sm cursor-pointer ${dm ? 'text-gray-300' : 'text-gray-700'}`}>
+              Mark contract as signed
+            </Label>
+            {isSigned && (
+              <Badge variant="secondary" className="ml-auto text-xs" style={{ color: '#22c55e', background: '#22c55e22' }}>
+                Signed
+              </Badge>
+            )}
+          </div>
+          <Button onClick={runGeneration} disabled={step >= 0 && !done} className="w-full text-white" style={{ background: ACCENT }}>
+            Generate Contract
+          </Button>
+        </div>
       )}
     </div>
   );
