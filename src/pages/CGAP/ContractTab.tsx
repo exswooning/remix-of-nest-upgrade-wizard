@@ -367,9 +367,22 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       )}
 
       {!done && (
-        <Button onClick={runGeneration} disabled={step >= 0 && !done} className="w-full text-white" style={{ background: ACCENT }}>
-          Generate Contract
-        </Button>
+        <div className="space-y-3">
+          <div className={`flex items-center gap-3 rounded-lg px-4 py-3 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`}>
+            <Checkbox checked={isSigned} onCheckedChange={(val) => setIsSigned(!!val)} id="signed-check" />
+            <Label htmlFor="signed-check" className={`text-sm cursor-pointer ${dm ? 'text-gray-300' : 'text-gray-700'}`}>
+              Mark contract as signed
+            </Label>
+            {isSigned && (
+              <Badge variant="secondary" className="ml-auto text-xs" style={{ color: '#22c55e', background: '#22c55e22' }}>
+                Signed
+              </Badge>
+            )}
+          </div>
+          <Button onClick={runGeneration} disabled={step >= 0 && !done} className="w-full text-white" style={{ background: ACCENT }}>
+            Generate Contract
+          </Button>
+        </div>
       )}
     </div>
   );
