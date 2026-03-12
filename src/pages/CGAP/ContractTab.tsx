@@ -122,7 +122,9 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       sp_signatory_title: fields.spSignatoryTitle || null,
       sp_witness_name: fields.spWitnessName || null,
       sp_witness_designation: fields.spWitnessDesignation || null,
-      is_signed: false,
+      is_signed: isSigned,
+      signed_at: isSigned ? new Date().toISOString() : null,
+      signed_by: isSigned ? (currentUsername || 'unknown') : null,
       created_by: currentUsername || 'unknown',
     } as any);
 
