@@ -49,6 +49,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [generatedId, setGeneratedId] = useState('');
   const [step, setStep] = useState(-1);
   const [done, setDone] = useState(false);
+  const [isSigned, setIsSigned] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Auto-fill companyAbv from clientCompanyName
