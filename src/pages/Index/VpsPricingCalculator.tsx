@@ -18,7 +18,7 @@ const VpsPricingCalculator: React.FC<VpsPricingCalculatorProps> = ({ darkMode })
   const [cpuCores, setCpuCores] = useState(0);
   const [ramGB, setRamGB] = useState(0);
   const [discountPct, setDiscountPct] = useState(0);
-  const [managementFee, setManagementFee] = useState(10000);
+  const [managementFee, setManagementFee] = useState(0);
   const [showAnnual, setShowAnnual] = useState(false);
 
   const VAT_RATE = 0.13;
