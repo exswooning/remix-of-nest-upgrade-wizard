@@ -299,21 +299,6 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         )}
       </div>
 
-      {/* Auto-generated fields summary */}
-      <div className={`rounded-xl p-4 ${dm ? 'bg-gray-900/60 border-gray-800' : 'bg-blue-50/50 border-blue-100'} border`}>
-        <h4 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${dm ? 'text-gray-400' : 'text-gray-500'}`}>
-          Auto-Generated at Creation
-        </h4>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          {autoPlaceholders.map(p => (
-            <div key={p.tag} className={`flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md ${dm ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500'}`}>
-              <Wand2 className="w-3 h-3 flex-shrink-0" style={{ color: ACCENT }} />
-              <span className="truncate">{p.label}</span>
-              <span className={`ml-auto text-[10px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>{p.desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* Placeholder Mapping */}
       <Collapsible open={showMapping} onOpenChange={setShowMapping}>
