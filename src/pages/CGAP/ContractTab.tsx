@@ -372,16 +372,18 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           <div className={`flex items-center gap-3 rounded-lg px-4 py-3 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`}>
             <Checkbox checked={isSigned} onCheckedChange={(val) => setIsSigned(!!val)} id="signed-check" />
             <Label htmlFor="signed-check" className={`text-sm cursor-pointer ${dm ? 'text-gray-300' : 'text-gray-700'}`}>
-              Mark contract as signed
+              Generate Signed
             </Label>
-            {isSigned && (
+            {isSigned ? (
               <Badge variant="secondary" className="ml-auto text-xs" style={{ color: '#22c55e', background: '#22c55e22' }}>
-                Signed
+                Digital signature will be added
               </Badge>
+            ) : (
+              <span className={`ml-auto text-xs ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Unsigned</span>
             )}
           </div>
           <Button onClick={runGeneration} disabled={step >= 0 && !done} className="w-full text-white" style={{ background: ACCENT }}>
-            Generate Contract
+            {isSigned ? 'Generate Signed Contract' : 'Generate Unsigned Contract'}
           </Button>
         </div>
       )}
