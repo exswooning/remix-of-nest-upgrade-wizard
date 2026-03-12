@@ -187,7 +187,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           <Input
             value={fields[f.id] || ''}
             onChange={e => set(f.id, e.target.value)}
-            placeholder={isAuto ? 'Auto-generated' : f.placeholder}
+            placeholder={isAuto ? 'Auto-generated' : ''}
             readOnly={isAuto}
             type={isNumber || isAmount ? 'number' : 'text'}
             min={isNumber || isAmount ? 0 : undefined}
