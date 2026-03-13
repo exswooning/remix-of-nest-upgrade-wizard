@@ -4,16 +4,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock, FileText } from 'lucide-react';
-import { extractCompanyAbv, getTodayISO } from '@/utils/cgapAutoFill';
-import { CONTRACT_SECTIONS, searchSections, type ContractSection } from '@/utils/contractSections';
+import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock, FileText, Search } from 'lucide-react';
+import { getTodayISO } from '@/utils/cgapAutoFill';
+import { searchSections, type ContractSection } from '@/utils/contractSections';
+import { useContractLookup } from '@/hooks/useContractLookup';
 
 const ACCENT = '#A78BFA';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
 
 interface ChangeRow { clause: string; original: string; replacement: string; }
 
-// Section picker dropdown component
 const SectionPicker: React.FC<{
   value: string;
   onChange: (val: string, section?: ContractSection) => void;
@@ -27,11 +27,8 @@ const SectionPicker: React.FC<{
   const results = searchSections(query);
 
   useEffect(() => { setQuery(value); }, [value]);
-
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
@@ -40,27 +37,13 @@ const SectionPicker: React.FC<{
     <div ref={ref} className="relative">
       <div className="relative">
         <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-40" />
-        <Input
-          value={query}
-          onChange={e => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          placeholder="Type section # (e.g. 3A, 12, Annex B)"
-          className={`${inputCls} pl-9`}
-        />
+        <Input value={query} onChange={e => { setQuery(e.target.value); onChange(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} placeholder="Type section # (e.g. 3A, 12, Annex B)" className={`${inputCls} pl-9`} />
       </div>
       {open && results.length > 0 && (
         <div className={`absolute z-50 w-full mt-1 max-h-48 overflow-auto rounded-lg border shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           {results.map(s => (
-            <button
-              key={s.id}
-              onClick={() => {
-                const formatted = `Section ${s.label} — ${s.title} (Page ${s.page})`;
-                onChange(formatted, s);
-                setQuery(formatted);
-                setOpen(false);
-              }}
-              className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}
-            >
+            <button key={s.id} onClick={() => { const formatted = `Section ${s.label} — ${s.title} (Page ${s.page})`; onChange(formatted, s); setQuery(formatted); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}>
               <Badge variant="secondary" className="font-mono text-[10px] shrink-0" style={{ color: accent }}>{s.label}</Badge>
               <span className="truncate">{s.title}</span>
               <span className={`ml-auto text-[10px] shrink-0 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>p.{s.page}</span>
@@ -76,22 +59,13 @@ interface QuickAmendmentTabProps { darkMode?: boolean; }
 
 const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false }) => {
   const { generateAddendumId, addAddendumLog } = useCGAP();
-  const [contractId, setContractId] = useState('');
-  const [companyAbv, setCompanyAbv] = useState('');
+  const { contractId, setContractId, contractData, loading, notFound } = useContractLookup();
   const [effectiveDate, setEffectiveDate] = useState(getTodayISO());
-  const [sigName, setSigName] = useState('');
-  const [sigTitle, setSigTitle] = useState('');
-  const [witName, setWitName] = useState('');
-  const [witDesignation, setWitDesignation] = useState('');
   const [changes, setChanges] = useState<ChangeRow[]>([{ clause: '', original: '', replacement: '' }]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [step, setStep] = useState(-1);
   const [done, setDone] = useState(false);
   const [generatedId, setGeneratedId] = useState('');
-
-  useEffect(() => {
-    setCompanyAbv(extractCompanyAbv(contractId));
-  }, [contractId]);
 
   const dm = darkMode;
   const card = `rounded-xl p-5 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
@@ -106,8 +80,7 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
   const validate = () => {
     const errs: Record<string, boolean> = {};
     if (!contractId.trim()) errs.contractId = true;
-    if (!sigName.trim()) errs.sigName = true;
-    if (!sigTitle.trim()) errs.sigTitle = true;
+    if (!contractData) errs.contractId = true;
     setErrors(errs); return Object.keys(errs).length === 0;
   };
 
@@ -116,7 +89,13 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
     setDone(false);
     const id = generateAddendumId(contractId); setGeneratedId(id);
     for (let i = 0; i < STEPS.length; i++) { setStep(i); await new Promise(r => setTimeout(r, 700)); }
-    addAddendumLog({ timestamp: new Date().toISOString(), companyAbv, addendumId: id, originalContractId: contractId, fields: { effectiveDate, sigName, sigTitle, witName, witDesignation, changes: JSON.stringify(changes) } });
+    addAddendumLog({
+      timestamp: new Date().toISOString(),
+      companyAbv: contractData?.company_abv || '',
+      addendumId: id,
+      originalContractId: contractId,
+      fields: { effectiveDate, changes: JSON.stringify(changes) },
+    });
     setDone(true);
   };
 
@@ -136,43 +115,61 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
     </div>
   );
 
+  const autoField = (label: string, value: string) => (
+    <div>
+      <Label className={`${labelCls} flex items-center gap-1.5`}>
+        {label}
+        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${ACCENT}22`, color: ACCENT }}>
+          <Wand2 className="w-2.5 h-2.5" /> AUTO
+        </span>
+      </Label>
+      <div className="relative">
+        <Input value={value} readOnly className={inputCls(false, true)} placeholder="Auto from contract" />
+        <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-40" />
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-5">
       <div>
         <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Quick Amendment</h2>
-        <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Minimal form for fast contract amendments</p>
+        <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Minimal form for fast contract amendments — data auto-fills from the database</p>
       </div>
 
       {/* Contract Reference */}
-      {sectionHeader('Contract Reference', 'Company ABV and effective date auto-fill')}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="md:col-span-2">
+      {sectionHeader('Contract Reference', 'Enter a contract ID to auto-fill all fields from the database')}
+      <div className="space-y-3">
+        <div>
           <Label className={labelCls}>Original Contract ID <span className="text-red-500">*</span></Label>
-          <Input value={contractId} onChange={e => { setContractId(e.target.value); if (e.target.value.trim()) setErrors(prev => ({ ...prev, contractId: false })); }}
-            placeholder="e.g. WMA-NNBS-03-03-26-1" className={inputCls(!!errors.contractId)} />
-          {errors.contractId && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
-        </div>
-        <div>
-          <Label className={`${labelCls} flex items-center gap-1.5`}>
-            Company ABV
-            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${ACCENT}22`, color: ACCENT }}>
-              <Wand2 className="w-2.5 h-2.5" /> AUTO
-            </span>
-          </Label>
           <div className="relative">
-            <Input value={companyAbv} readOnly className={inputCls(false, true)} placeholder="Auto-extracted" />
-            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-40" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-40" />
+            <Input value={contractId} onChange={e => { setContractId(e.target.value); if (e.target.value.trim()) setErrors(prev => ({ ...prev, contractId: false })); }}
+              placeholder="e.g. WMA-NNBS-03-03-26-1" className={`${inputCls(!!errors.contractId)} pl-9`} />
+            {loading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin opacity-40" />}
           </div>
+          {errors.contractId && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Valid contract ID required</p>}
+          {notFound && contractId.trim() && <p className="text-xs mt-1 flex items-center gap-1 text-amber-500"><AlertCircle className="w-3 h-3" /> Contract not found in database</p>}
         </div>
-        <div>
-          <Label className={`${labelCls} flex items-center gap-1.5`}>
-            Effective Date
-            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `${ACCENT}22`, color: ACCENT }}>
-              <Wand2 className="w-2.5 h-2.5" /> AUTO
-            </span>
-          </Label>
-          <Input type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} className={inputCls(false)} />
-        </div>
+
+        {contractData && (
+          <div className={`rounded-lg p-4 ${dm ? 'bg-green-900/20 border-green-800/30' : 'bg-green-50 border-green-200'} border`}>
+            <p className="text-xs font-medium mb-3 flex items-center gap-1.5" style={{ color: '#22c55e' }}>
+              <CheckCircle2 className="w-3.5 h-3.5" /> Contract found — fields auto-populated
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {autoField('Company ABV', contractData.company_abv)}
+              {autoField('Client Company', contractData.client_company_name)}
+              {autoField('Client Location', contractData.client_location || '—')}
+              {autoField('Client Coordinator', contractData.client_coordinator || '—')}
+              {autoField('Issue Date', new Date(contractData.created_at).toLocaleDateString())}
+              <div>
+                <Label className={labelCls}>Effective Date</Label>
+                <Input type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} className={inputCls(false)} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Change Rows with Section Picker */}
@@ -195,18 +192,7 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
               </div>
               <div>
                 <Label className={`${labelCls} text-[10px] mb-1`}>Section / Clause Reference</Label>
-                <SectionPicker
-                  value={row.clause}
-                  onChange={(val, section) => {
-                    updateRow(i, 'clause', val);
-                    if (section?.clauseText) {
-                      updateRow(i, 'original', section.clauseText);
-                    }
-                  }}
-                  darkMode={dm}
-                  inputCls={inputCls(false)}
-                  accent={ACCENT}
-                />
+                <SectionPicker value={row.clause} onChange={(val, section) => { updateRow(i, 'clause', val); if (section?.clauseText) updateRow(i, 'original', section.clauseText); }} darkMode={dm} inputCls={inputCls(false)} accent={ACCENT} />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                 <div>
@@ -220,29 +206,6 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
               </div>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Signatory */}
-      {sectionHeader('Signatories', 'Contract signing parties')}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <Label className={labelCls}>Signatory Name <span className="text-red-500">*</span></Label>
-          <Input value={sigName} onChange={e => { setSigName(e.target.value); setErrors(prev => ({ ...prev, sigName: false })); }} className={inputCls(!!errors.sigName)} />
-          {errors.sigName && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
-        </div>
-        <div>
-          <Label className={labelCls}>Signatory Title <span className="text-red-500">*</span></Label>
-          <Input value={sigTitle} onChange={e => { setSigTitle(e.target.value); setErrors(prev => ({ ...prev, sigTitle: false })); }} className={inputCls(!!errors.sigTitle)} />
-          {errors.sigTitle && <p className="text-xs mt-1 flex items-center gap-1 text-red-500"><AlertCircle className="w-3 h-3" /> Required</p>}
-        </div>
-        <div>
-          <Label className={labelCls}>Witness Name</Label>
-          <Input value={witName} onChange={e => setWitName(e.target.value)} className={inputCls(false)} />
-        </div>
-        <div>
-          <Label className={labelCls}>Witness Designation</Label>
-          <Input value={witDesignation} onChange={e => setWitDesignation(e.target.value)} className={inputCls(false)} />
         </div>
       </div>
 
