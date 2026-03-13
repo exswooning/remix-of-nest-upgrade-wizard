@@ -26,7 +26,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import UserManagement from "@/components/UserManagement";
 import PriceManagement from "@/components/PriceManagement";
 import MathSettings from "@/components/MathSettings";
-import { calculateUpgradeWithSettings } from "@/utils/calculationEngine";
+import CGAPEmbedded from "./Index/CGAPEmbedded";
 
 const cycleLabels: Record<number, string> = {
   1: "Monthly",
