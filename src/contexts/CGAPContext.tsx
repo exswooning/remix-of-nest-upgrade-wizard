@@ -115,9 +115,12 @@ const parseNumberMap = (value: string | null): Record<string, number> => {
     const parsed = JSON.parse(value);
     if (!isRecord(parsed)) return {};
 
-    return Object.fromEntries(
-      Object.entries(parsed).filter(([, entry]) => typeof entry === 'number' && Number.isFinite(entry))
-    );
+    return Object.entries(parsed).reduce<Record<string, number>>((acc, [key, entry]) => {
+      if (typeof entry === 'number' && Number.isFinite(entry)) {
+        acc[key] = entry;
+      }
+      return acc;
+    }, {});
   } catch {
     return {};
   }

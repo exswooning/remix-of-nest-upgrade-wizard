@@ -469,15 +469,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Load plan data from localStorage on mount
   useEffect(() => {
-    const savedPlanData = localStorage.getItem('calculator-plan-data');
-    if (savedPlanData) {
-      try {
-        setPlanData(JSON.parse(savedPlanData));
-      } catch (error) {
-        console.error('Error loading plan data:', error);
-        setPlanData(DEFAULT_PLAN_DATA);
-      }
-    }
+    setPlanData(parseStoredPlanData(localStorage.getItem('calculator-plan-data')));
   }, []);
 
   return (
