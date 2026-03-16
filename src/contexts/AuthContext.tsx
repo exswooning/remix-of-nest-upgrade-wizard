@@ -47,7 +47,7 @@ const INITIAL_USERS: User[] = [
 ];
 
 // Default plan data
-const DEFAULT_PLAN_DATA = {
+const DEFAULT_PLAN_DATA: Record<string, PlanCategory> = {
   "shared-hosting": {
     name: "Web Hosting",
     options: [
@@ -200,6 +200,50 @@ const DEFAULT_PLAN_DATA = {
     ],
     cycles: [1, 12],
     unit: { 1: "monthly", 12: "annually" }
+  }
+};
+
+const isPlanDataRecord = (value: unknown): value is Record<string, PlanCategory> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+
+  return Object.values(value).every((category) => {
+    if (typeof category !== 'object' || category === null || Array.isArray(category)) return false;
+
+    const candidate = category as Partial<PlanCategory>;
+
+    return (
+      typeof candidate.name === 'string' &&
+      Array.isArray(candidate.options) &&
+      candidate.options.every((option) => {
+        if (typeof option !== 'object' || option === null || Array.isArray(option)) return false;
+        const plan = option as Partial<PlanOption>;
+        const hasValidPricing =
+          plan.pricing === undefined ||
+          (typeof plan.pricing === 'object' &&
+            plan.pricing !== null &&
+            !Array.isArray(plan.pricing) &&
+            Object.values(plan.pricing).every((price) => typeof price === 'number' && Number.isFinite(price)));
+
+        return typeof plan.name === 'string' && hasValidPricing && (plan.price === undefined || typeof plan.price === 'number');
+      }) &&
+      Array.isArray(candidate.cycles) &&
+      candidate.cycles.every((cycle) => typeof cycle === 'number') &&
+      typeof candidate.unit === 'object' &&
+      candidate.unit !== null &&
+      !Array.isArray(candidate.unit)
+    );
+  });
+};
+
+const parseStoredPlanData = (value: string | null): Record<string, PlanCategory> => {
+  if (!value) return DEFAULT_PLAN_DATA;
+
+  try {
+    const parsed = JSON.parse(value);
+    return isPlanDataRecord(parsed) ? parsed : DEFAULT_PLAN_DATA;
+  } catch (error) {
+    console.error('Error loading plan data:', error);
+    return DEFAULT_PLAN_DATA;
   }
 };
 
@@ -425,15 +469,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Load plan data from localStorage on mount
   useEffect(() => {
-    const savedPlanData = localStorage.getItem('calculator-plan-data');
-    if (savedPlanData) {
-      try {
-        setPlanData(JSON.parse(savedPlanData));
-      } catch (error) {
-        console.error('Error loading plan data:', error);
-        setPlanData(DEFAULT_PLAN_DATA);
-      }
-    }
+    setPlanData(parseStoredPlanData(localStorage.getItem('calculator-plan-data')));
   }, []);
 
   return (

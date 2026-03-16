@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { CGAPProvider } from "@/contexts/CGAPContext";
+import AppErrorBoundary from "./components/AppErrorBoundary";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import LoginScreen from "./components/LoginScreen";
@@ -37,11 +38,13 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <AuthProvider>
-        <CGAPProvider>
-          <AppContent />
-        </CGAPProvider>
-      </AuthProvider>
+      <AppErrorBoundary>
+        <AuthProvider>
+          <CGAPProvider>
+            <AppContent />
+          </CGAPProvider>
+        </AuthProvider>
+      </AppErrorBoundary>
     </TooltipProvider>
   </QueryClientProvider>
 );
