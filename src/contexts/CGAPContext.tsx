@@ -68,6 +68,83 @@ const DEFAULT_FIELD_MAPPINGS: FieldMapping[] = [
   { id: 'spWitnessDesignation', label: 'SP Witness Designation', placeholder: '<<SPWITNESSDESIGNATION>>', required: false },
 ];
 
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const isFieldMapping = (value: unknown): value is FieldMapping => (
+  isRecord(value) &&
+  typeof value.id === 'string' &&
+  typeof value.label === 'string' &&
+  typeof value.placeholder === 'string' &&
+  typeof value.required === 'boolean'
+);
+
+const isContractLog = (value: unknown): value is ContractLog => (
+  isRecord(value) &&
+  typeof value.timestamp === 'string' &&
+  typeof value.companyAbv === 'string' &&
+  typeof value.contractId === 'string' &&
+  isRecord(value.fields)
+);
+
+const isAddendumLog = (value: unknown): value is AddendumLog => (
+  isRecord(value) &&
+  typeof value.timestamp === 'string' &&
+  typeof value.companyAbv === 'string' &&
+  typeof value.addendumId === 'string' &&
+  typeof value.originalContractId === 'string' &&
+  isRecord(value.fields)
+);
+
+const parseFieldMappings = (value: string | null): FieldMapping[] => {
+  if (!value) return DEFAULT_FIELD_MAPPINGS;
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.every(isFieldMapping) ? parsed : DEFAULT_FIELD_MAPPINGS;
+  } catch {
+    return DEFAULT_FIELD_MAPPINGS;
+  }
+};
+
+const parseNumberMap = (value: string | null): Record<string, number> => {
+  if (!value) return {};
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!isRecord(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, entry]) => typeof entry === 'number' && Number.isFinite(entry))
+    );
+  } catch {
+    return {};
+  }
+};
+
+const parseContractLogs = (value: string | null): ContractLog[] => {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.every(isContractLog) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const parseAddendumLogs = (value: string | null): AddendumLog[] => {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.every(isAddendumLog) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 export const CGAPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>(DEFAULT_FIELD_MAPPINGS);
@@ -80,24 +157,16 @@ export const CGAPProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const saved = localStorage.getItem('cgap-auth');
     if (saved === 'true') setIsLoggedIn(true);
-    
-    const mappings = localStorage.getItem('cgap-field-mappings');
-    if (mappings) try { setFieldMappings(JSON.parse(mappings)); } catch {}
-    
+
+    setFieldMappings(parseFieldMappings(localStorage.getItem('cgap-field-mappings')));
+
     const templateId = localStorage.getItem('cgap-addendum-template-id');
-    if (templateId) setAddendumTemplateIdState(templateId);
-    
-    const counts = localStorage.getItem('cgap-contract-counts');
-    if (counts) try { setContractCounts(JSON.parse(counts)); } catch {}
-    
-    const aCounts = localStorage.getItem('cgap-addendum-counts');
-    if (aCounts) try { setAddendumCounts(JSON.parse(aCounts)); } catch {}
-    
-    const cLogs = localStorage.getItem('cgap-contract-logs');
-    if (cLogs) try { setContractLogs(JSON.parse(cLogs)); } catch {}
-    
-    const aLogs = localStorage.getItem('cgap-addendum-logs');
-    if (aLogs) try { setAddendumLogs(JSON.parse(aLogs)); } catch {}
+    if (typeof templateId === 'string') setAddendumTemplateIdState(templateId);
+
+    setContractCounts(parseNumberMap(localStorage.getItem('cgap-contract-counts')));
+    setAddendumCounts(parseNumberMap(localStorage.getItem('cgap-addendum-counts')));
+    setContractLogs(parseContractLogs(localStorage.getItem('cgap-contract-logs')));
+    setAddendumLogs(parseAddendumLogs(localStorage.getItem('cgap-addendum-logs')));
   }, []);
 
   useEffect(() => { localStorage.setItem('cgap-field-mappings', JSON.stringify(fieldMappings)); }, [fieldMappings]);
