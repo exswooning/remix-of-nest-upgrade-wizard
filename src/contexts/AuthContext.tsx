@@ -47,7 +47,7 @@ const INITIAL_USERS: User[] = [
 ];
 
 // Default plan data
-const DEFAULT_PLAN_DATA = {
+const DEFAULT_PLAN_DATA: Record<string, PlanCategory> = {
   "shared-hosting": {
     name: "Web Hosting",
     options: [
