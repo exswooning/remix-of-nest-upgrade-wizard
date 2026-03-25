@@ -1,4 +1,4 @@
-name: 🚀 Deploy to Production
+name: 🚀 Deploy to Production (cPanel)
 
 on:
   push:
@@ -30,11 +30,26 @@ jobs:
     - name: 🏗️ Build for production
       run: npm run build:cpanel
       
+    - name: 📋 Verify cPanel configuration
+      run: |
+        echo "🔍 Checking cPanel configuration..."
+        if [ -f "cpanel.yml" ]; then
+          echo "✅ cPanel.yml found"
+          echo "📋 Configuration preview:"
+          head -20 cpanel.yml
+        else
+          echo "❌ cPanel.yml not found!"
+          exit 1
+        fi
+      
     - name: ⬆️ Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
         name: production-build
-        path: dist/
+        path: |
+          dist/
+          cpanel.yml
+          deploy-cpanel.sh
         retention-days: 7
 
   deploy:
@@ -48,8 +63,11 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: production-build
-        path: dist/
+        path: ./
         
+    - name: 🔧 Make deployment script executable
+      run: chmod +x deploy-cpanel.sh
+      
     - name: 📧 Deploy to cPanel
       uses: SamKirkland/FTP-Deploy-Action@4.3.0
       with:
@@ -59,16 +77,36 @@ jobs:
         port: ${{ secrets.FTP_PORT || 21 }}
         local-dir: dist/
         server-dir: ${{ secrets.FTP_PATH || '/public_html' }}
-        timeout: 30000
+        
+    - name: 🔍 Verify deployment
+      run: |
+        echo "🔍 Verifying deployment files..."
+        if [ -f "cpanel.yml" ]; then
+          echo "✅ cPanel.yml ready"
+        fi
+        if [ -f "deploy-cpanel.sh" ]; then
+          echo "✅ Deployment script ready"
+        fi
+        echo "📊 Build artifacts:"
+        ls -la dist/ | head -10
         
     - name: ✅ Deployment Notification
       if: success()
       run: |
         echo "🎉 Deployment successful!"
         echo "🌐 Your UCAP & CGAP app is now live!"
+        echo "📋 Deployment details:"
+        echo "  - Target: ${{ secrets.FTP_PATH || '/public_html' }}"
+        echo "  - Server: ${{ secrets.FTP_SERVER }}"
+        echo "  - Configuration: cPanel.yml"
+        echo "  - Build: Production optimized"
         
     - name: ❌ Deployment Failure
       if: failure()
       run: |
         echo "❌ Deployment failed!"
-        echo "🔧 Check the logs for details"
+        echo "🔧 Check the following:"
+        echo "  - FTP credentials in GitHub secrets"
+        echo "  - Server connectivity"
+        echo "  - File permissions"
+        echo "  - Build artifacts"

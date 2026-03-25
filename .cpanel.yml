@@ -1,0 +1,320 @@
+# 🚀 cPanel Deployment Configuration
+# UCAP & CGAP Application - Production Ready
+
+# Application Information
+name: "UCAP & CGAP Application"
+version: "1.0.0"
+description: "UCAP Calculator and CGAP Contract Management System with RFR & RFP modules"
+
+# Deployment Settings
+deploy:
+  # Target directory in cPanel
+  target: public_html
+  
+  # Source directory (where built files are located)
+  source: dist
+  
+  # Deployment type
+  type: static
+  
+  # Build command (runs on cPanel)
+  build_command: |
+    echo "🚀 UCAP & CGAP - cPanel Deployment"
+    echo "📁 Deploying from source directory..."
+    echo "🌐 Setting up production environment..."
+
+# Environment Configuration
+environment:
+  # Node.js version
+  node_version: "20"
+  
+  # Environment type
+  type: production
+  
+  # Base path for routing
+  base_path: "/"
+  
+  # Build mode
+  build_mode: production
+
+# File Permissions
+permissions:
+  # Directory permissions
+  directories: 755
+  
+  # File permissions
+  files: 644
+  
+  # Special files
+  htaccess: 644
+  html: 644
+  css: 644
+  js: 644
+
+# Web Server Configuration
+webserver:
+  # Apache configuration
+  apache:
+    # Enable .htaccess processing
+    htaccess: true
+    
+    # Enable gzip compression
+    gzip: true
+    
+    # Enable caching
+    cache: true
+    
+    # Security headers
+    security_headers: true
+  
+  # Routing configuration
+  routing:
+    # SPA routing (React Router)
+    spa_routing: true
+    
+    # Fallback for 404 errors
+    fallback: index.html
+    
+    # Clean URLs
+    clean_urls: true
+
+# Build Configuration
+build:
+  # Build output directory
+  output_dir: dist
+  
+  # Public URL base
+  base: "/"
+  
+  # Asset optimization
+  assets:
+    # Minify CSS
+    minify_css: true
+    
+    # Minify JavaScript
+    minify_js: true
+    
+    # Optimize images
+    optimize_images: true
+    
+    # Generate source maps (disabled for production)
+    sourcemaps: false
+  
+  # Bundle optimization
+  bundling:
+    # Code splitting
+    code_splitting: true
+    
+    # Tree shaking
+    tree_shaking: true
+    
+    # Chunk size warning limit
+    chunk_size_warning: 1000
+
+# Database Configuration (if needed)
+database:
+  # No database required for this application
+  # Uses localStorage for data persistence
+  type: none
+  
+# Environment Variables
+environment_variables:
+  # Application mode
+  NODE_ENV: production
+  
+  # Base URL
+  PUBLIC_URL: "/"
+  
+  # Supabase configuration (if using)
+  VITE_SUPABASE_URL: ""
+  VITE_SUPABASE_PUBLISHABLE_KEY: ""
+
+# Security Settings
+security:
+  # Enable HTTPS
+  https_only: true
+  
+  # Security headers
+  headers:
+    X-Frame-Options: "DENY"
+    X-Content-Type-Options: "nosniff"
+    X-XSS-Protection: "1; mode=block"
+    Referrer-Policy: "strict-origin-when-cross-origin"
+    Content-Security-Policy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:;"
+
+# Performance Optimization
+performance:
+  # Browser caching
+  cache:
+    # Static assets cache duration (in seconds)
+    static_assets: 31536000  # 1 year
+    
+    # HTML cache duration
+    html: 3600  # 1 hour
+    
+    # API cache duration
+    api: 0  # no caching
+  
+  # Compression
+  compression:
+    # Enable gzip
+    gzip: true
+    
+    # Enable brotli
+    brotli: true
+    
+    # Compression level
+    level: 6
+
+# Monitoring and Logging
+monitoring:
+  # Enable error logging
+  error_logging: true
+  
+  # Enable access logging
+  access_logging: true
+  
+  # Log level
+  log_level: info
+  
+  # Log retention (days)
+  log_retention: 30
+
+# Backup Configuration
+backup:
+  # Enable automatic backups
+  auto_backup: true
+  
+  # Backup frequency
+  frequency: daily
+  
+  # Backup retention (days)
+  retention: 7
+  
+  # Backup locations
+  locations:
+    - local
+    - remote
+
+# Deployment Hooks
+hooks:
+  # Pre-deployment hook
+  pre_deploy: |
+    echo "🔧 Pre-deployment hook running..."
+    echo "📁 Checking source directory..."
+    if [ ! -d "dist" ]; then
+      echo "❌ Source directory 'dist' not found!"
+      exit 1
+    fi
+    echo "✅ Source directory verified"
+    
+  # Post-deployment hook
+  post_deploy: |
+    echo "✅ Post-deployment hook running..."
+    echo "🔧 Setting file permissions..."
+    find public_html -type d -exec chmod 755 {} \;
+    find public_html -type f -exec chmod 644 {} \;
+    chmod 644 public_html/.htaccess
+    echo "🌐 Deployment completed successfully!"
+    echo "🎉 UCAP & CGAP Application is now live!"
+
+# Health Check
+health_check:
+  # Enable health checks
+  enabled: true
+  
+  # Check URL
+  url: "/"
+  
+  # Expected status code
+  expected_status: 200
+  
+  # Check interval (seconds)
+  interval: 60
+  
+  # Timeout (seconds)
+  timeout: 10
+  
+  # Retry attempts
+  retries: 3
+
+# Rollback Configuration
+rollback:
+  # Enable automatic rollback
+  auto_rollback: true
+  
+  # Rollback triggers
+  triggers:
+    - deployment_failure
+    - health_check_failure
+    - error_rate_threshold
+  
+  # Backup retention for rollback
+  backup_retention: 5
+
+# Feature Flags
+features:
+  # Enable staging environment
+  staging: true
+  
+  # Enable development mode
+  development: false
+  
+  # Enable maintenance mode
+  maintenance_mode: false
+  
+  # Enable debug mode
+  debug_mode: false
+
+# Application URLs
+urls:
+  # Production URL
+  production: "https://yourdomain.com"
+  
+  # Staging URL
+  staging: "https://yourdomain.com/staging"
+  
+  # Development URL
+  development: "http://localhost:8080"
+
+# Contact Information
+contact:
+  # Administrator email
+  admin_email: "admin@yourdomain.com"
+  
+  # Support email
+  support_email: "support@yourdomain.com"
+  
+  # Development team
+  dev_team: "UCAP & CGAP Development Team"
+
+# Documentation
+documentation:
+  # README file
+  readme: "README.md"
+  
+  # Deployment guide
+  deployment_guide: "DEPLOYMENT.md"
+  
+  # API documentation
+  api_docs: "docs/api.md"
+  
+  # User guide
+  user_guide: "docs/user-guide.md"
+
+# Version Information
+version_info:
+  # Current version
+  current: "1.0.0"
+  
+  # Build date
+  build_date: "2024-03-25"
+  
+  # Build number
+  build_number: "1"
+  
+  # Commit hash (will be set during deployment)
+  commit_hash: ""
+  
+  # Branch name (will be set during deployment)
+  branch_name: ""
