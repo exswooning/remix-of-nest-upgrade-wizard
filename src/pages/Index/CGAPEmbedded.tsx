@@ -4,8 +4,10 @@ import AddendumTab from '@/pages/CGAP/AddendumTab';
 import QuickAmendmentTab from '@/pages/CGAP/QuickAmendmentTab';
 import SettingsTab from '@/pages/CGAP/SettingsTab';
 import ContractsDatabase from '@/pages/CGAP/ContractsDatabase';
+import RFRTab from '@/pages/CGAP/RFRTab';
+import RFPTab from '@/pages/CGAP/RFPTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, FilePlus, Zap, Settings, Database } from 'lucide-react';
+import { FileText, FilePlus, Zap, Settings, Database, DollarSign, AlertTriangle } from 'lucide-react';
 
 interface CGAPEmbeddedProps {
   darkMode: boolean;
@@ -15,7 +17,7 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
   return (
     <div className="space-y-4">
       <Tabs defaultValue="contract" className="w-full">
-        <TabsList className={`grid w-full grid-cols-5 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+        <TabsList className={`grid w-full grid-cols-7 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
           <TabsTrigger value="contract" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-blue-900/50 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}>
             <FileText className="w-3.5 h-3.5" /> Contract
           </TabsTrigger>
@@ -25,7 +27,13 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
           <TabsTrigger value="amendment" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-purple-900/50 data-[state=active]:text-purple-300' : 'data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700'}`}>
             <Zap className="w-3.5 h-3.5" /> Amendment
           </TabsTrigger>
-          <TabsTrigger value="database" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-green-900/50 data-[state=active]:text-green-300' : 'data-[state=active]:bg-green-100 data-[state=active]:text-green-700'}`}>
+          <TabsTrigger value="rfr" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-orange-900/50 data-[state=active]:text-orange-300' : 'data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700'}`}>
+            <AlertTriangle className="w-3.5 h-3.5" /> RFR
+          </TabsTrigger>
+          <TabsTrigger value="rfp" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-green-900/50 data-[state=active]:text-green-300' : 'data-[state=active]:bg-green-100 data-[state=active]:text-green-700'}`}>
+            <DollarSign className="w-3.5 h-3.5" /> RFP
+          </TabsTrigger>
+          <TabsTrigger value="database" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-teal-900/50 data-[state=active]:text-teal-300' : 'data-[state=active]:bg-teal-100 data-[state=active]:text-teal-700'}`}>
             <Database className="w-3.5 h-3.5" /> Database
           </TabsTrigger>
           <TabsTrigger value="settings" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
@@ -41,6 +49,12 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
         </TabsContent>
         <TabsContent value="amendment" className="mt-4">
           <QuickAmendmentTab darkMode={darkMode} />
+        </TabsContent>
+        <TabsContent value="rfr" className="mt-4">
+          <RFRTab darkMode={darkMode} />
+        </TabsContent>
+        <TabsContent value="rfp" className="mt-4">
+          <RFPTab darkMode={darkMode} />
         </TabsContent>
         <TabsContent value="database" className="mt-4">
           <ContractsDatabase darkMode={darkMode} />

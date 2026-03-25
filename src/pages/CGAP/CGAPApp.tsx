@@ -39,7 +39,7 @@ const CGAPApp: React.FC = () => {
 
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-xl" style={{ background: 'rgba(13,13,13,0.9)', borderBottom: '1px solid #1A1A1A' }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'Playfair Display, serif', color: '#fff' }}>
             CGAP
           </h1>
@@ -50,7 +50,7 @@ const CGAPApp: React.FC = () => {
         </div>
 
         {/* Tab Bar */}
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <nav className="flex gap-1 overflow-x-auto pb-0">
             {visibleTabs.map(tab => (
               <button
@@ -72,7 +72,7 @@ const CGAPApp: React.FC = () => {
       </header>
 
       {/* Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <div className="rounded-2xl p-6 sm:p-8" style={{ background: '#161616', border: '1px solid #2A2A2A' }}>
           {activeTab === 'contract' && <ContractTab />}
           {activeTab === 'addendum' && <AddendumTab />}

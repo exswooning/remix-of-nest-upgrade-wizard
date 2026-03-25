@@ -7,8 +7,17 @@
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "build:cpanel": "vite build --mode production",
+    "build:staging": "vite build --mode development --base=/staging/",
+    "preview": "vite preview",
+    "preview:staging": "vite preview --base=/staging/",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "lint:fix": "eslint . --fix",
+    "test": "npm run lint",
+    "deploy:cpanel": "npm run build:cpanel && echo 'Build complete! Upload /dist folder to your cPanel public_html directory.'",
+    "deploy:staging": "npm run build:staging && echo 'Staging build complete! Upload /dist folder to staging server.'",
+    "ci": "npm ci && npm run build:cpanel",
+    "predeploy": "npm run test && npm run build:cpanel"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

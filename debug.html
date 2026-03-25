@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Test</title>
+</head>
+<body>
+    <div id="root">
+        <h1>Testing if React can mount...</h1>
+        <div id="test-output"></div>
+    </div>
+    
+    <script>
+        // Test basic JavaScript
+        document.getElementById('test-output').innerHTML = '<p>JavaScript is working</p>';
+        
+        // Test if we can load the main app
+        console.log('Attempting to load main app...');
+        
+        // Check for errors
+        window.addEventListener('error', function(e) {
+            console.error('JavaScript Error:', e.error);
+            document.getElementById('test-output').innerHTML += '<p style="color: red;">Error: ' + e.error.message + '</p>';
+        });
+        
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('Unhandled Promise Rejection:', e.reason);
+            document.getElementById('test-output').innerHTML += '<p style="color: red;">Promise Error: ' + e.reason + '</p>';
+        });
+    </script>
+</body>
+</html>

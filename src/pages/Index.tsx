@@ -416,7 +416,7 @@ const Index = () => {
     });
   };
   return <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'dark bg-black' : 'bg-gradient-to-br from-blue-50 to-indigo-100'}`}>
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="flex justify-between items-center mb-6">
           <CalculatorHeader darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
           <div className="flex items-center gap-4">
@@ -435,7 +435,7 @@ const Index = () => {
           </div>
         </div>
         
-        <Card className={`max-w-2xl mx-auto ${darkMode ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-200'} shadow-xl`}>
+        <Card className={`max-w-6xl mx-auto ${darkMode ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-200'} shadow-xl`}>
           <CardContent className="pt-6 space-y-6">
             {/* Top-level toggle: UCAP vs CGAP */}
             <Tabs defaultValue="ucap" className="w-full">
