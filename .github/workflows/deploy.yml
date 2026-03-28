@@ -84,7 +84,7 @@ jobs:
         password: ${{ secrets.FTP_PASSWORD }}
         port: ${{ secrets.FTP_PORT || 21 }}
         local-dir: dist/
-        server-dir: ${{ secrets.FTP_PATH || '/public_html' }}
+        server-dir: ${{ secrets.FTP_PATH || '/public_html/' }}
         
     - name: 🔍 Verify deployment
       run: |

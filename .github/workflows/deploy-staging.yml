@@ -61,7 +61,7 @@ jobs:
         password: ${{ secrets.STAGING_FTP_PASSWORD }}
         port: ${{ secrets.STAGING_FTP_PORT || 21 }}
         local-dir: dist/
-        server-dir: ${{ secrets.STAGING_FTP_PATH || '/public_html/staging' }}
+        server-dir: ${{ secrets.STAGING_FTP_PATH || '/public_html/staging/' }}
         timeout: 30000
         
     - name: 🔔 Staging notification
