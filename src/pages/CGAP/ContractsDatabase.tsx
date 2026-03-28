@@ -60,7 +60,7 @@ const ContractsDatabase: React.FC<ContractsDatabaseProps> = ({ darkMode = false 
       console.error('Error fetching contracts:', error);
       toast({ title: 'Error', description: 'Failed to load contracts.', variant: 'destructive' });
     } else {
-      setContracts((data as any) || []);
+      setContracts((data as Contract[]) || []);
     }
     setLoading(false);
   };
@@ -80,7 +80,7 @@ const ContractsDatabase: React.FC<ContractsDatabaseProps> = ({ darkMode = false 
         is_signed: newSigned,
         signed_at: newSigned ? new Date().toISOString() : null,
         signed_by: newSigned ? currentUsername : null,
-      } as any)
+      } as Partial<Contract>)
       .eq('id', contract.id);
 
     if (error) {

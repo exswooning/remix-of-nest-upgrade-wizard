@@ -127,7 +127,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       signed_at: isSigned ? new Date().toISOString() : null,
       signed_by: isSigned ? (currentUsername || 'unknown') : null,
       created_by: currentUsername || 'unknown',
-    } as any);
+    } as Partial<Contract>);
 
     if (error) {
       console.error('Error saving contract:', error);

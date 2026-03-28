@@ -223,7 +223,7 @@ const RFPTab: React.FC<{ darkMode: boolean }> = ({ darkMode }) => {
             </div>
             <div>
               <Label htmlFor="urgency">Urgency</Label>
-              <Select value={newRFP.urgency} onValueChange={(value) => setNewRFP({...newRFP, urgency: value as any})}>
+              <Select value={newRFP.urgency} onValueChange={(value) => setNewRFP({...newRFP, urgency: value as 'low' | 'medium' | 'high' | 'critical'})}>
                 <SelectTrigger className={darkMode ? 'bg-gray-700 border-gray-600' : ''}>
                   <SelectValue />
                 </SelectTrigger>

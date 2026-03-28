@@ -227,7 +227,7 @@ const Index = () => {
       try {
         const parsed = JSON.parse(savedHistory);
         // Convert timestamp strings back to Date objects
-        const historyWithDates = parsed.map((item: any) => ({
+        const historyWithDates = parsed.map((item: { timestamp: string; [key: string]: any }) => ({
           ...item,
           timestamp: new Date(item.timestamp)
         }));

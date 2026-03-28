@@ -131,7 +131,7 @@ const RFRTab: React.FC<{ darkMode: boolean }> = ({ darkMode }) => {
             </div>
             <div>
               <Label htmlFor="status">Status</Label>
-              <Select value={newRFR.status} onValueChange={(value) => setNewRFR({...newRFR, status: value as any})}>
+              <Select value={newRFR.status} onValueChange={(value) => setNewRFR({...newRFR, status: value as 'pending' | 'approved' | 'rejected' | 'under_review'})}>
                 <SelectTrigger className={darkMode ? 'bg-gray-700 border-gray-600' : ''}>
                   <SelectValue />
                 </SelectTrigger>
