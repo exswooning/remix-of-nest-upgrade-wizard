@@ -82,7 +82,7 @@ export function formatNepaliNumber(num: number): string {
   if (isNaN(num)) return '';
   const str = Math.floor(num).toString();
   if (str.length <= 3) return str;
-  let last3 = str.slice(-3);
+  const last3 = str.slice(-3);
   let rest = str.slice(0, -3);
   let formatted = '';
   while (rest.length > 2) {

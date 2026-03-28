@@ -6,7 +6,7 @@ export function parseDate(dateStr: string): Date | null {
   if (!dateStr.trim()) return null;
   
   // Primary format: DD/MM/YYYY or DD-MM-YYYY
-  const ddmmyyyyPattern = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/;
+  const ddmmyyyyPattern = /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/;
   const match = dateStr.match(ddmmyyyyPattern);
   
   if (match) {

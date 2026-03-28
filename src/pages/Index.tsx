@@ -227,7 +227,12 @@ const Index = () => {
       try {
         const parsed = JSON.parse(savedHistory);
         // Convert timestamp strings back to Date objects
-        const historyWithDates = parsed.map((item: { timestamp: string; [key: string]: any }) => ({
+        interface CalculationHistoryItem {
+          timestamp: string;
+          [key: string]: unknown;
+        }
+
+        const historyWithDates = parsed.map((item: CalculationHistoryItem) => ({
           ...item,
           timestamp: new Date(item.timestamp)
         }));

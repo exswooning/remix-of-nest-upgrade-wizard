@@ -111,11 +111,11 @@ const MathSettings: React.FC<MathSettingsProps> = ({ darkMode }) => {
     });
   };
 
-  const updateSetting = (key: keyof MathSettingsData, value: MathSettingsData[keyof MathSettingsData]) => {
+  const updateSetting = <K extends keyof MathSettingsData>(key: K, value: MathSettingsData[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const updateCustomStep = (stepKey: keyof MathSettingsData['customSteps'], value: MathSettingsData['customSteps'][keyof MathSettingsData['customSteps']]) => {
+  const updateCustomStep = <K extends keyof MathSettingsData['customSteps']>(stepKey: K, value: MathSettingsData['customSteps'][K]) => {
     setSettings(prev => ({
       ...prev,
       customSteps: {
