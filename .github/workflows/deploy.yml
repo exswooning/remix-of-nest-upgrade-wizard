@@ -35,10 +35,10 @@ jobs:
     - name: 📋 Verify cPanel configuration
       run: |
         echo "🔍 Checking cPanel configuration..."
-        if [ -f "cpanel.yml" ]; then
+        if [ -f ".cpanel.yml" ]; then
           echo "✅ cPanel.yml found"
           echo "📋 Configuration preview:"
-          head -20 cpanel.yml
+          head -20 .cpanel.yml
         else
           echo "❌ cPanel.yml not found!"
           exit 1
@@ -51,7 +51,7 @@ jobs:
         path: |
           dist/
           dist/.htaccess
-          cpanel.yml
+          .cpanel.yml
           deploy-cpanel.sh
         retention-days: 7
 
@@ -84,7 +84,7 @@ jobs:
     - name: 🔍 Verify deployment
       run: |
         echo "🔍 Verifying deployment files..."
-        if [ -f "cpanel.yml" ]; then
+        if [ -f ".cpanel.yml" ]; then
           echo "✅ cPanel.yml ready"
         fi
         if [ -f "deploy-cpanel.sh" ]; then
