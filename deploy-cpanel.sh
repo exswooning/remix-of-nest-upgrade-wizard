@@ -12,6 +12,22 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Cleanup function for rollback
+cleanup_on_error() {
+    echo -e "${RED}❌ Deployment failed! Rolling back...${NC}"
+    if [ -d "$BACKUP_DIR" ]; then
+        rm -rf "$TARGET_DIR"/*
+        cp -r "$BACKUP_DIR"/* "$TARGET_DIR/"
+        echo -e "${GREEN}✅ Rollback completed${NC}"
+    fi
+    # Clean up temporary files
+    rm -f "/tmp/.htaccess_backup"
+    exit 1
+}
+
+# Set error trap immediately
+trap cleanup_on_error ERR
+
 # Configuration
 DEPLOY_CONFIG="cpanel.yml"
 BUILD_DIR="dist"
@@ -50,8 +66,12 @@ echo -e "${GREEN}🎯 Target directory: $TARGET_DIR${NC}"
 if [ -d "$TARGET_DIR" ] && [ "$(ls -A $TARGET_DIR)" ]; then
     echo -e "${YELLOW}📦 Creating backup of existing deployment...${NC}"
     mkdir -p "$BACKUP_DIR"
-    cp -r "$TARGET_DIR"/* "$BACKUP_DIR/" 2>/dev/null || true
-    echo -e "${GREEN}✅ Backup created: $BACKUP_DIR${NC}"
+    if cp -r "$TARGET_DIR"/* "$BACKUP_DIR/"; then
+        echo -e "${GREEN}✅ Backup created: $BACKUP_DIR${NC}"
+    else
+        echo -e "${RED}❌ Backup creation failed!${NC}"
+        exit 1
+    fi
 fi
 
 # Clear target directory (but keep .htaccess if it exists)
@@ -115,7 +135,9 @@ if command -v curl &> /dev/null; then
         if [ "$HTTP_STATUS" = "200" ]; then
             echo -e "${GREEN}✅ Health check passed (HTTP $HTTP_STATUS)${NC}"
         else
-            echo -e "${YELLOW}⚠️  Health check warning (HTTP $HTTP_STATUS)${NC}"
+            echo -e "${RED}❌ Health check failed (HTTP $HTTP_STATUS)${NC}"
+            echo -e "${YELLOW}🔧 Check your deployment and try again${NC}"
+            exit 1
         fi
     fi
 fi
@@ -136,28 +158,4 @@ echo -e ""
 echo -e "${GREEN}🎉 UCAP & CGAP Application deployed successfully!${NC}"
 echo -e "${BLUE}🌐 Your application is now live!${NC}"
 
-# Cleanup function for rollback
-cleanup_on_error() {
-    echo -e "${RED}❌ Deployment failed! Rolling back...${NC}"
-    if [ -d "$BACKUP_DIR" ]; then
-        rm -rf "$TARGET_DIR"/*
-        cp -r "$BACKUP_DIR"/* "$TARGET_DIR/"
-        echo -e "${GREEN}✅ Rollback completed${NC}"
-    fi
-    exit 1
-}
-
-# Set error trap
-trap cleanup_on_error ERR
-
-echo -e ""
-echo -e "${BLUE}📋 Next Steps:${NC}"
-echo -e "${YELLOW}1. Visit your website to verify deployment${NC}"
-echo -e "${YELLOW}2. Test login with: aryan / nestnepal2024${NC}"
-echo -e "${YELLOW}3. Check all UCAP and CGAP features${NC}"
-echo -e "${YELLOW}4. Verify mobile responsiveness${NC}"
-echo -e ""
-echo -e "${BLUE}🔧 Rollback Command:${NC}"
-echo -e "${YELLOW}cp -r $BACKUP_DIR/* $TARGET_DIR/${NC}"
-echo -e ""
 echo -e "${GREEN}✅ Deployment completed at $(date)${NC}"

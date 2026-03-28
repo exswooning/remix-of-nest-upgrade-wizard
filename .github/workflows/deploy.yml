@@ -2,9 +2,9 @@ name: 🚀 Deploy to Production (cPanel)
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ cpanel ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ cpanel ]
 
 jobs:
   test:
@@ -48,6 +48,7 @@ jobs:
         name: production-build
         path: |
           dist/
+          dist/.htaccess
           cpanel.yml
           deploy-cpanel.sh
         retention-days: 7
@@ -56,7 +57,7 @@ jobs:
     name: 🚀 Deploy to cPanel
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/cpanel'
     
     steps:
     - name: 📥 Download build artifacts
