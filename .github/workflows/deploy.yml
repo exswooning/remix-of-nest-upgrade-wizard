@@ -35,12 +35,17 @@ jobs:
     - name: 📋 Verify cPanel configuration
       run: |
         echo "🔍 Checking cPanel configuration..."
+        echo "📁 Current directory contents:"
+        ls -la
+        echo ""
         if [ -f ".cpanel.yml" ]; then
           echo "✅ cPanel.yml found"
           echo "📋 Configuration preview:"
           head -20 .cpanel.yml
         else
           echo "❌ cPanel.yml not found!"
+          echo "🔍 Looking for any .yml files:"
+          find . -name "*.yml" -type f
           exit 1
         fi
       
