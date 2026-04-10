@@ -302,19 +302,37 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
               <CommandInput placeholder="Search products..." />
               <CommandList>
                 <CommandEmpty>No product found.</CommandEmpty>
+                {/* Google Workspace */}
+                <CommandGroup heading="Google Workspace">
+                  {['Business Starter', 'Business Standard', 'Business Plus', 'Enterprise'].map(plan => {
+                    const val = `Google Workspace — ${plan}`;
+                    return (
+                      <CommandItem key={val} value={val} onSelect={() => { setSelectedProduct(val); setProductOpen(false); }}>
+                        <Check className={cn('mr-2 h-4 w-4', selectedProduct === val ? 'opacity-100' : 'opacity-0')} />
+                        {plan}
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+                {/* Microsoft 365 */}
+                <CommandGroup heading="Microsoft 365">
+                  {['Business Basic', 'Business Standard', 'Business Premium'].map(plan => {
+                    const val = `Microsoft 365 — ${plan}`;
+                    return (
+                      <CommandItem key={val} value={val} onSelect={() => { setSelectedProduct(val); setProductOpen(false); }}>
+                        <Check className={cn('mr-2 h-4 w-4', selectedProduct === val ? 'opacity-100' : 'opacity-0')} />
+                        {plan}
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+                {/* UCAP Hosting Plans */}
                 {Object.values(getPlanData()).map(category => (
                   <CommandGroup key={category.name} heading={category.name}>
                     {category.options.map(option => {
                       const val = `${category.name} — ${option.name}`;
                       return (
-                        <CommandItem
-                          key={val}
-                          value={val}
-                          onSelect={() => {
-                            setSelectedProduct(val);
-                            setProductOpen(false);
-                          }}
-                        >
+                        <CommandItem key={val} value={val} onSelect={() => { setSelectedProduct(val); setProductOpen(false); }}>
                           <Check className={cn('mr-2 h-4 w-4', selectedProduct === val ? 'opacity-100' : 'opacity-0')} />
                           {option.name}
                         </CommandItem>
