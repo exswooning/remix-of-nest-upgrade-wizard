@@ -273,8 +273,66 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         {companyFields.map(renderField)}
       </div>
 
-      {/* Contract Terms Section */}
-      {sectionHeader('Contract Terms', 'Section 2A — Period text auto-fills from months')}
+      {/* Product & Contract Terms Section */}
+      {sectionHeader('Product & Contract Terms', 'Select a product from UCAP plans; Section 2A — Period text auto-fills from months')}
+
+      {/* Product Selector */}
+      <div className="mb-3">
+        <Label className={`${labelCls} flex items-center gap-1.5 mb-1`}>
+          <Package className="w-3 h-3" /> Product / Service <span className="text-red-500">*</span>
+        </Label>
+        <Popover open={productOpen} onOpenChange={setProductOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={productOpen}
+              className={cn(
+                'w-full justify-between text-sm font-normal',
+                dm ? 'bg-gray-800 border-gray-700 text-white hover:bg-gray-750' : 'bg-white border-gray-300 text-gray-900',
+                !selectedProduct && (dm ? 'text-gray-500' : 'text-gray-400')
+              )}
+            >
+              {selectedProduct || 'Select a product...'}
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Search products..." />
+              <CommandList>
+                <CommandEmpty>No product found.</CommandEmpty>
+                {Object.values(getPlanData()).map(category => (
+                  <CommandGroup key={category.name} heading={category.name}>
+                    {category.options.map(option => {
+                      const val = `${category.name} — ${option.name}`;
+                      return (
+                        <CommandItem
+                          key={val}
+                          value={val}
+                          onSelect={() => {
+                            setSelectedProduct(val);
+                            setProductOpen(false);
+                          }}
+                        >
+                          <Check className={cn('mr-2 h-4 w-4', selectedProduct === val ? 'opacity-100' : 'opacity-0')} />
+                          {option.name}
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                ))}
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+        {selectedProduct && (
+          <p className={`text-xs mt-1 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+            Selected: {selectedProduct}
+          </p>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {contractFields.map(renderField)}
       </div>
