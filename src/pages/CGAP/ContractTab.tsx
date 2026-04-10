@@ -58,20 +58,44 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [selectedProduct, setSelectedProduct] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Build flat product list from UCAP plan data
-  const productList = useMemo(() => {
-    const data = getPlanData();
-    const items: { value: string; label: string; category: string }[] = [];
-    Object.values(data).forEach(category => {
-      category.options.forEach(option => {
-        items.push({
+  const productGroups = useMemo(() => {
+    const staticGroups = [
+      {
+        heading: 'Google Workspace',
+        options: ['Business Starter', 'Business Standard', 'Business Plus', 'Enterprise'].map((plan) => ({
+          value: `Google Workspace — ${plan}`,
+          label: plan,
+        })),
+      },
+      {
+        heading: 'Microsoft 365',
+        options: ['Business Basic', 'Business Standard', 'Business Premium'].map((plan) => ({
+          value: `Microsoft 365 — ${plan}`,
+          label: plan,
+        })),
+      },
+    ];
+
+    const dynamicGroups = Object.values(getPlanData() ?? {}).flatMap((category) => {
+      if (
+        !category ||
+        typeof category.name !== 'string' ||
+        !Array.isArray(category.options)
+      ) {
+        return [];
+      }
+
+      const options = category.options
+        .filter((option) => option && typeof option.name === 'string')
+        .map((option) => ({
           value: `${category.name} — ${option.name}`,
           label: option.name,
-          category: category.name,
-        });
-      });
+        }));
+
+      return options.length ? [{ heading: category.name, options }] : [];
     });
-    return items;
+
+    return [...staticGroups, ...dynamicGroups];
   }, [getPlanData]);
 
   // Auto-fill companyAbv from clientCompanyName
@@ -302,42 +326,21 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
               <CommandInput placeholder="Search products..." />
               <CommandList>
                 <CommandEmpty>No product found.</CommandEmpty>
-                {/* Google Workspace */}
-                <CommandGroup heading="Google Workspace">
-                  {['Business Starter', 'Business Standard', 'Business Plus', 'Enterprise'].map(plan => {
-                    const val = `Google Workspace — ${plan}`;
-                    return (
-                      <CommandItem key={val} value={val} onSelect={() => { setSelectedProduct(val); setProductOpen(false); }}>
-                        <Check className={cn('mr-2 h-4 w-4', selectedProduct === val ? 'opacity-100' : 'opacity-0')} />
-                        {plan}
+                {productGroups.map((group) => (
+                  <CommandGroup key={group.heading} heading={group.heading}>
+                    {group.options.map((option) => (
+                      <CommandItem
+                        key={option.value}
+                        value={option.value}
+                        onSelect={() => {
+                          setSelectedProduct(option.value);
+                          setProductOpen(false);
+                        }}
+                      >
+                        <Check className={cn('mr-2 h-4 w-4', selectedProduct === option.value ? 'opacity-100' : 'opacity-0')} />
+                        {option.label}
                       </CommandItem>
-                    );
-                  })}
-                </CommandGroup>
-                {/* Microsoft 365 */}
-                <CommandGroup heading="Microsoft 365">
-                  {['Business Basic', 'Business Standard', 'Business Premium'].map(plan => {
-                    const val = `Microsoft 365 — ${plan}`;
-                    return (
-                      <CommandItem key={val} value={val} onSelect={() => { setSelectedProduct(val); setProductOpen(false); }}>
-                        <Check className={cn('mr-2 h-4 w-4', selectedProduct === val ? 'opacity-100' : 'opacity-0')} />
-                        {plan}
-                      </CommandItem>
-                    );
-                  })}
-                </CommandGroup>
-                {/* UCAP Hosting Plans */}
-                {Object.values(getPlanData()).map(category => (
-                  <CommandGroup key={category.name} heading={category.name}>
-                    {category.options.map(option => {
-                      const val = `${category.name} — ${option.name}`;
-                      return (
-                        <CommandItem key={val} value={val} onSelect={() => { setSelectedProduct(val); setProductOpen(false); }}>
-                          <Check className={cn('mr-2 h-4 w-4', selectedProduct === val ? 'opacity-100' : 'opacity-0')} />
-                          {option.name}
-                        </CommandItem>
-                      );
-                    })}
+                    ))}
                   </CommandGroup>
                 ))}
               </CommandList>
