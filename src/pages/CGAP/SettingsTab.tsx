@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCGAP } from '@/contexts/CGAPContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Trash2, Save, Info } from 'lucide-react';
+import { Plus, Trash2, Save, Info, Database, X } from 'lucide-react';
 
 interface SettingsTabProps { darkMode?: boolean; }
 
