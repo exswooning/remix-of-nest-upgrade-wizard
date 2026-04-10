@@ -6,8 +6,19 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Trash2, Save, Info, Database, X } from 'lucide-react';
 
-interface SettingsTabProps { darkMode?: boolean; }
+const STORAGE_KEYS = [
+  { key: 'calculator-plan-data', label: 'Calculator Plan Data' },
+  { key: 'cgap-field-mappings', label: 'CGAP Field Mappings' },
+  { key: 'cgap-addendum-template-id', label: 'Addendum Template ID' },
+  { key: 'cgap-contract-counts', label: 'Contract Counters' },
+  { key: 'cgap-addendum-counts', label: 'Addendum Counters' },
+  { key: 'cgap-contract-logs', label: 'Contract Logs' },
+  { key: 'cgap-addendum-logs', label: 'Addendum Logs' },
+  { key: 'cgap-auth', label: 'CGAP Auth' },
+  { key: 'calculator-auth', label: 'Calculator Auth' },
+];
 
+interface SettingsTabProps { darkMode?: boolean; }
 const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
   const { fieldMappings, setFieldMappings, addendumTemplateId, setAddendumTemplateId } = useCGAP();
   const [localMappings, setLocalMappings] = useState(fieldMappings);
