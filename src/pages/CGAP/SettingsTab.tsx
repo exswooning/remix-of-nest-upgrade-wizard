@@ -117,6 +117,78 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
           ))}
         </div>
       </div>
+      {/* Diagnostics Panel */}
+      <DiagnosticsPanel darkMode={dm} />
+    </div>
+  );
+};
+
+const DiagnosticsPanel: React.FC<{ darkMode: boolean }> = ({ darkMode: dm }) => {
+  const [keyStates, setKeyStates] = useState<Record<string, { exists: boolean; size: number }>>({});
+
+  const refresh = () => {
+    const states: Record<string, { exists: boolean; size: number }> = {};
+    STORAGE_KEYS.forEach(({ key }) => {
+      const val = localStorage.getItem(key);
+      states[key] = { exists: val !== null, size: val ? val.length : 0 };
+    });
+    setKeyStates(states);
+  };
+
+  useEffect(() => { refresh(); }, []);
+
+  const clearKey = (key: string) => {
+    localStorage.removeItem(key);
+    refresh();
+  };
+
+  const clearAll = () => {
+    STORAGE_KEYS.forEach(({ key }) => localStorage.removeItem(key));
+    refresh();
+  };
+
+  const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+
+  return (
+    <div className={`rounded-xl p-6 border ${dm ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-100 border-gray-200'}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Database className={`w-4 h-4 ${dm ? 'text-gray-500' : 'text-gray-400'}`} />
+          <h3 className={`text-sm font-medium ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Local Storage Diagnostics</h3>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={refresh} className="text-xs h-7">Refresh</Button>
+          <Button variant="destructive" size="sm" onClick={clearAll} className="text-xs h-7">Clear All</Button>
+        </div>
+      </div>
+      <div className="space-y-1">
+        {STORAGE_KEYS.map(({ key, label }) => {
+          const state = keyStates[key];
+          return (
+            <div key={key} className={`flex items-center justify-between py-2 px-3 rounded-lg ${dm ? 'bg-gray-800/50' : 'bg-background'}`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-2 h-2 rounded-full ${state?.exists ? 'bg-green-500' : 'bg-muted'}`} />
+                <div className="min-w-0">
+                  <p className={`text-xs font-medium truncate ${dm ? 'text-gray-300' : 'text-gray-700'}`}>{label}</p>
+                  <p className={`text-[10px] font-mono truncate ${dm ? 'text-gray-600' : 'text-gray-400'}`}>{key}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                {state?.exists ? (
+                  <>
+                    <span className={`text-[10px] ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{formatSize(state.size)}</span>
+                    <button onClick={() => clearKey(key)} className="p-1 text-destructive hover:opacity-70" title="Clear">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </>
+                ) : (
+                  <span className={`text-[10px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>empty</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
