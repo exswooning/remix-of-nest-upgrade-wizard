@@ -43,7 +43,7 @@ interface ContractTabProps { darkMode?: boolean; }
 
 const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const { fieldMappings, generateContractId, addContractLog } = useCGAP();
-  const { isAdmin, currentUsername } = useAuth();
+  const { isAdmin, currentUsername, getPlanData } = useAuth();
   const { toast } = useToast();
   const [fields, setFields] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, boolean>>({});
@@ -54,7 +54,25 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [step, setStep] = useState(-1);
   const [done, setDone] = useState(false);
   const [isSigned, setIsSigned] = useState(false);
+  const [productOpen, setProductOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Build flat product list from UCAP plan data
+  const productList = useMemo(() => {
+    const data = getPlanData();
+    const items: { value: string; label: string; category: string }[] = [];
+    Object.values(data).forEach(category => {
+      category.options.forEach(option => {
+        items.push({
+          value: `${category.name} — ${option.name}`,
+          label: option.name,
+          category: category.name,
+        });
+      });
+    });
+    return items;
+  }, [getPlanData]);
 
   // Auto-fill companyAbv from clientCompanyName
   useEffect(() => {
