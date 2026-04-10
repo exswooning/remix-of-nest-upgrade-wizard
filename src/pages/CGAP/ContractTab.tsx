@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useCGAP } from '@/contexts/CGAPContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,9 +8,12 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ChevronsUpDown, Check, Package } from 'lucide-react';
 import { numberToWords, periodToText, formatNepaliNumber, generateAbbreviation, getTodayISO } from '@/utils/cgapAutoFill';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 const ACCENT = '#4F7FFF';
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
@@ -40,7 +43,7 @@ interface ContractTabProps { darkMode?: boolean; }
 
 const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const { fieldMappings, generateContractId, addContractLog } = useCGAP();
-  const { isAdmin, currentUsername } = useAuth();
+  const { isAdmin, currentUsername, getPlanData } = useAuth();
   const { toast } = useToast();
   const [fields, setFields] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, boolean>>({});
@@ -51,7 +54,25 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [step, setStep] = useState(-1);
   const [done, setDone] = useState(false);
   const [isSigned, setIsSigned] = useState(false);
+  const [productOpen, setProductOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Build flat product list from UCAP plan data
+  const productList = useMemo(() => {
+    const data = getPlanData();
+    const items: { value: string; label: string; category: string }[] = [];
+    Object.values(data).forEach(category => {
+      category.options.forEach(option => {
+        items.push({
+          value: `${category.name} — ${option.name}`,
+          label: option.name,
+          category: category.name,
+        });
+      });
+    });
+    return items;
+  }, [getPlanData]);
 
   // Auto-fill companyAbv from clientCompanyName
   useEffect(() => {
@@ -252,8 +273,66 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         {companyFields.map(renderField)}
       </div>
 
-      {/* Contract Terms Section */}
-      {sectionHeader('Contract Terms', 'Section 2A — Period text auto-fills from months')}
+      {/* Product & Contract Terms Section */}
+      {sectionHeader('Product & Contract Terms', 'Select a product from UCAP plans; Section 2A — Period text auto-fills from months')}
+
+      {/* Product Selector */}
+      <div className="mb-3">
+        <Label className={`${labelCls} flex items-center gap-1.5 mb-1`}>
+          <Package className="w-3 h-3" /> Product / Service <span className="text-red-500">*</span>
+        </Label>
+        <Popover open={productOpen} onOpenChange={setProductOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={productOpen}
+              className={cn(
+                'w-full justify-between text-sm font-normal',
+                dm ? 'bg-gray-800 border-gray-700 text-white hover:bg-gray-750' : 'bg-white border-gray-300 text-gray-900',
+                !selectedProduct && (dm ? 'text-gray-500' : 'text-gray-400')
+              )}
+            >
+              {selectedProduct || 'Select a product...'}
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Search products..." />
+              <CommandList>
+                <CommandEmpty>No product found.</CommandEmpty>
+                {Object.values(getPlanData()).map(category => (
+                  <CommandGroup key={category.name} heading={category.name}>
+                    {category.options.map(option => {
+                      const val = `${category.name} — ${option.name}`;
+                      return (
+                        <CommandItem
+                          key={val}
+                          value={val}
+                          onSelect={() => {
+                            setSelectedProduct(val);
+                            setProductOpen(false);
+                          }}
+                        >
+                          <Check className={cn('mr-2 h-4 w-4', selectedProduct === val ? 'opacity-100' : 'opacity-0')} />
+                          {option.name}
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                ))}
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+        {selectedProduct && (
+          <p className={`text-xs mt-1 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+            Selected: {selectedProduct}
+          </p>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {contractFields.map(renderField)}
       </div>
