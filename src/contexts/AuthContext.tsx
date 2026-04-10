@@ -46,6 +46,31 @@ const INITIAL_USERS: User[] = [
   { username: 'aryan', password: 'nestnepal2024', name: 'Aryan', isAdmin: true },
 ];
 
+const isUser = (value: unknown): value is User => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+
+  const candidate = value as Partial<User>;
+
+  return (
+    typeof candidate.username === 'string' &&
+    typeof candidate.password === 'string' &&
+    typeof candidate.name === 'string' &&
+    (candidate.isAdmin === undefined || typeof candidate.isAdmin === 'boolean')
+  );
+};
+
+const parseStoredUsers = (value: string | null): User[] => {
+  if (!value) return INITIAL_USERS;
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.every(isUser) ? parsed : INITIAL_USERS;
+  } catch (error) {
+    console.error('Error loading users:', error);
+    return INITIAL_USERS;
+  }
+};
+
 // Default plan data
 const DEFAULT_PLAN_DATA: Record<string, PlanCategory> = {
   "shared-hosting": {
@@ -257,15 +282,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Load users from localStorage on mount
   useEffect(() => {
-    const savedUsers = localStorage.getItem('calculator-users');
-    if (savedUsers) {
-      try {
-        setUsers(JSON.parse(savedUsers));
-      } catch (error) {
-        console.error('Error loading users:', error);
-        setUsers(INITIAL_USERS);
-      }
-    }
+    setUsers(parseStoredUsers(localStorage.getItem('calculator-users')));
   }, []);
 
   // Save users to localStorage whenever users change
