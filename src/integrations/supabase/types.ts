@@ -31,8 +31,11 @@ export type Database = {
           num_users: number | null
           payment_amount: number | null
           payment_words: string | null
+          pdf_path: string | null
           signatory_name: string | null
           signatory_title: string | null
+          signature_image_path: string | null
+          signature_placement: Json | null
           signed_at: string | null
           signed_by: string | null
           sp_signatory_name: string | null
@@ -58,8 +61,11 @@ export type Database = {
           num_users?: number | null
           payment_amount?: number | null
           payment_words?: string | null
+          pdf_path?: string | null
           signatory_name?: string | null
           signatory_title?: string | null
+          signature_image_path?: string | null
+          signature_placement?: Json | null
           signed_at?: string | null
           signed_by?: string | null
           sp_signatory_name?: string | null
@@ -85,8 +91,11 @@ export type Database = {
           num_users?: number | null
           payment_amount?: number | null
           payment_words?: string | null
+          pdf_path?: string | null
           signatory_name?: string | null
           signatory_title?: string | null
+          signature_image_path?: string | null
+          signature_placement?: Json | null
           signed_at?: string | null
           signed_by?: string | null
           sp_signatory_name?: string | null
@@ -95,6 +104,63 @@ export type Database = {
           sp_witness_name?: string | null
           witness_designation?: string | null
           witness_name?: string | null
+        }
+        Relationships: []
+      }
+      rfp_submissions: {
+        Row: {
+          client_location: string | null
+          company_name: string
+          contact_email: string
+          contact_person: string
+          contact_phone: string | null
+          converted_contract_id: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          requested_period_months: number | null
+          requested_services: string | null
+          requested_users: number | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          client_location?: string | null
+          company_name: string
+          contact_email: string
+          contact_person: string
+          contact_phone?: string | null
+          converted_contract_id?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          requested_period_months?: number | null
+          requested_services?: string | null
+          requested_users?: number | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          client_location?: string | null
+          company_name?: string
+          contact_email?: string
+          contact_person?: string
+          contact_phone?: string | null
+          converted_contract_id?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          requested_period_months?: number | null
+          requested_services?: string | null
+          requested_users?: number | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
         }
         Relationships: []
       }
