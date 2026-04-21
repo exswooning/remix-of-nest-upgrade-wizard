@@ -4,15 +4,17 @@ import CGAPLogin from './CGAPLogin';
 import ContractTab from './ContractTab';
 import AddendumTab from './AddendumTab';
 import QuickAmendmentTab from './QuickAmendmentTab';
+import RequestForPaymentTab from './RequestForPaymentTab';
 import SettingsTab from './SettingsTab';
-import { LogOut, FileText, FilePlus, Zap, Settings } from 'lucide-react';
+import { LogOut, FileText, FilePlus, Zap, Settings, Receipt } from 'lucide-react';
 
-type Tab = 'contract' | 'addendum' | 'amendment' | 'settings';
+type Tab = 'contract' | 'addendum' | 'amendment' | 'rfp' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode; accent: string; adminOnly?: boolean }[] = [
   { id: 'contract', label: 'Contract', icon: <FileText className="w-4 h-4" />, accent: '#4F7FFF' },
   { id: 'addendum', label: 'Addendum', icon: <FilePlus className="w-4 h-4" />, accent: '#F59E0B' },
   { id: 'amendment', label: 'Quick Amendment', icon: <Zap className="w-4 h-4" />, accent: '#A78BFA' },
+  { id: 'rfp', label: 'Request for Payment', icon: <Receipt className="w-4 h-4" />, accent: '#10B981' },
   { id: 'settings', label: 'Settings', icon: <Settings className="w-4 h-4" />, accent: '#888', adminOnly: true },
 ];
 
@@ -77,6 +79,7 @@ const CGAPApp: React.FC = () => {
           {activeTab === 'contract' && <ContractTab />}
           {activeTab === 'addendum' && <AddendumTab />}
           {activeTab === 'amendment' && <QuickAmendmentTab />}
+          {activeTab === 'rfp' && <RequestForPaymentTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </div>
       </main>
