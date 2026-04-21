@@ -6,7 +6,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Receipt, Download, Loader2, CheckCircle2, AlertCircle, Search, Printer } from 'lucide-react';
 import { useContractLookup } from '@/hooks/useContractLookup';
-import { getTodayISO, numberToWords, formatNPR } from '@/utils/cgapAutoFill';
+import { getTodayISO, numberToWords } from '@/utils/cgapAutoFill';
+
+const formatNPR = (n: number) => `NRs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
