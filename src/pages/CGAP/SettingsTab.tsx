@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Trash2, Save, Info, Database, X } from 'lucide-react';
+import { Plus, Trash2, Save, Info, Database, X, FileText } from 'lucide-react';
+import TemplateManager from '@/components/TemplateManager';
 
 const STORAGE_KEYS = [
   { key: 'calculator-plan-data', label: 'Calculator Plan Data' },
