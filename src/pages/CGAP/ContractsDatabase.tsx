@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Download, RefreshCw, CheckCircle2, XCircle, Shield } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import AdminFileUpload from '@/components/AdminFileUpload';
 
 const ACCENT = '#4F7FFF';
 
@@ -35,6 +36,7 @@ interface Contract {
   signed_by: string | null;
   created_at: string;
   created_by: string | null;
+  pdf_path: string | null;
 }
 
 interface ContractsDatabaseProps {
@@ -170,6 +172,7 @@ const ContractsDatabase: React.FC<ContractsDatabaseProps> = ({ darkMode = false 
                 <th className="px-3 py-2 text-left font-semibold">Users</th>
                 <th className="px-3 py-2 text-left font-semibold">Amount</th>
                 <th className="px-3 py-2 text-center font-semibold">Signed</th>
+                <th className="px-3 py-2 text-left font-semibold">File</th>
                 <th className="px-3 py-2 text-left font-semibold">Created</th>
               </tr>
             </thead>
@@ -207,6 +210,40 @@ const ContractsDatabase: React.FC<ContractsDatabaseProps> = ({ darkMode = false 
                       <div className={`text-[9px] mt-0.5 ${dm ? 'text-gray-600' : 'text-gray-400'}`}>
                         {new Date(c.signed_at).toLocaleDateString()} by {c.signed_by}
                       </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {isAdmin ? (
+                      <AdminFileUpload
+                        folder="contracts"
+                        recordId={c.contract_id}
+                        currentPath={c.pdf_path}
+                        darkMode={dm}
+                        compact
+                        onChange={async (path) => {
+                          const { error } = await supabase
+                            .from('contracts')
+                            .update({ pdf_path: path } as any)
+                            .eq('id', c.id);
+                          if (error) {
+                            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+                          } else {
+                            fetchContracts();
+                          }
+                        }}
+                      />
+                    ) : c.pdf_path ? (
+                      <a
+                        href={supabase.storage.from('contracts').getPublicUrl(c.pdf_path).data.publicUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] underline"
+                        style={{ color: ACCENT }}
+                      >
+                        View PDF
+                      </a>
+                    ) : (
+                      <span className={`text-[10px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>—</span>
                     )}
                   </td>
                   <td className="px-3 py-2.5">
