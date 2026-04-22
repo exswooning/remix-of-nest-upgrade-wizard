@@ -24,6 +24,8 @@ interface RequestForPaymentTabProps {
 
 const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = false }) => {
   const dm = darkMode;
+  const { isAdmin, currentUsername } = useAuth();
+  const { toast } = useToast();
   const { contractId, setContractId, contractData, loading, notFound } = useContractLookup();
 
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -37,6 +39,60 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   const [generating, setGenerating] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Archive state
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+
+  const fetchSubmissions = useCallback(async () => {
+    setArchiveLoading(true);
+    const { data, error: e } = await supabase
+      .from('rfp_submissions')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (e) {
+      console.error(e);
+    } else {
+      setSubmissions(data || []);
+    }
+    setArchiveLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) fetchSubmissions();
+  }, [isAdmin, fetchSubmissions]);
+
+  const handleSaveToArchive = async () => {
+    if (!contractData) { toast({ title: 'Lookup contract first', variant: 'destructive' }); return; }
+    if (!invoiceNumber.trim() || !amountNum) {
+      toast({ title: 'Fill invoice number and amount', variant: 'destructive' });
+      return;
+    }
+    setSaving(true);
+    const { error: e } = await supabase.from('rfp_submissions').insert({
+      company_name: contractData.client_company_name,
+      contact_person: contractData.client_coordinator || '—',
+      contact_email: 'n/a@cgap.local',
+      client_location: contractData.client_location,
+      requested_users: contractData.num_users,
+      requested_period_months: contractData.contract_period_num,
+      requested_services: description || `RfP ${invoiceNumber}`,
+      notes: `Invoice ${invoiceNumber} · Amount ${formatNPR(amountNum)} · Due ${dueDate} · Contract ${contractData.contract_id}\n${notes}`,
+      status: 'submitted',
+      converted_contract_id: contractData.contract_id,
+      reviewed_by: currentUsername,
+      reviewed_at: new Date().toISOString(),
+    } as any);
+    setSaving(false);
+    if (e) {
+      toast({ title: 'Save failed', description: e.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Saved to archive' });
+      fetchSubmissions();
+    }
+  };
+
 
   const card = `rounded-xl p-5 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
   const labelCls = `text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`;
