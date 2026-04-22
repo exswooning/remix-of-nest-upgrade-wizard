@@ -244,13 +244,19 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
           <p className="text-xs mt-3 text-red-500 flex items-center gap-1.5"><AlertCircle className="w-3 h-3" /> {error}</p>
         )}
 
-        <div className="flex items-center gap-3 mt-5">
+        <div className="flex items-center gap-3 mt-5 flex-wrap">
           <Button onClick={handleGenerate} disabled={generating || !contractData}
-            className="flex-1" style={{ background: ACCENT, color: '#fff' }}>
+            className="flex-1 min-w-[180px]" style={{ background: ACCENT, color: '#fff' }}>
             {generating ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Generating…</>
               : done ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Downloaded</>
               : <><Download className="w-4 h-4 mr-2" /> Generate PDF</>}
           </Button>
+          {isAdmin && (
+            <Button variant="outline" onClick={handleSaveToArchive} disabled={saving || !contractData}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+              Save to Archive
+            </Button>
+          )}
           <Button variant="outline" onClick={() => window.print()} disabled={!contractData}>
             <Printer className="w-4 h-4 mr-2" /> Print
           </Button>
