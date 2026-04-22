@@ -172,6 +172,7 @@ const ContractsDatabase: React.FC<ContractsDatabaseProps> = ({ darkMode = false 
                 <th className="px-3 py-2 text-left font-semibold">Users</th>
                 <th className="px-3 py-2 text-left font-semibold">Amount</th>
                 <th className="px-3 py-2 text-center font-semibold">Signed</th>
+                <th className="px-3 py-2 text-left font-semibold">File</th>
                 <th className="px-3 py-2 text-left font-semibold">Created</th>
               </tr>
             </thead>
