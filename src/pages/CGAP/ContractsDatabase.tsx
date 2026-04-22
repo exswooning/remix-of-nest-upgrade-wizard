@@ -36,6 +36,7 @@ interface Contract {
   signed_by: string | null;
   created_at: string;
   created_by: string | null;
+  pdf_path: string | null;
 }
 
 interface ContractsDatabaseProps {
