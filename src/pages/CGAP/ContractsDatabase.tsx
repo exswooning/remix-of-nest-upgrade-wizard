@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Download, RefreshCw, CheckCircle2, XCircle, Shield } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import AdminFileUpload from '@/components/AdminFileUpload';
 
 const ACCENT = '#4F7FFF';
 
