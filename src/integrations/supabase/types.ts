@@ -107,6 +107,48 @@ export type Database = {
         }
         Relationships: []
       }
+      document_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          gdoc_url: string | null
+          id: string
+          is_default: boolean
+          name: string
+          notes: string | null
+          source_kind: string
+          storage_path: string | null
+          template_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          gdoc_url?: string | null
+          id?: string
+          is_default?: boolean
+          name: string
+          notes?: string | null
+          source_kind: string
+          storage_path?: string | null
+          template_type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          gdoc_url?: string | null
+          id?: string
+          is_default?: boolean
+          name?: string
+          notes?: string | null
+          source_kind?: string
+          storage_path?: string | null
+          template_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       rfp_submissions: {
         Row: {
           client_location: string | null

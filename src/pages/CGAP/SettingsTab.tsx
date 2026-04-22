@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Trash2, Save, Info, Database, X } from 'lucide-react';
+import { Plus, Trash2, Save, Info, Database, X, FileText } from 'lucide-react';
+import TemplateManager from '@/components/TemplateManager';
 
 const STORAGE_KEYS = [
   { key: 'calculator-plan-data', label: 'Calculator Plan Data' },
@@ -117,6 +118,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
           ))}
         </div>
       </div>
+      {/* Document Templates */}
+      <div className={card}>
+        <div className="flex items-center gap-2 mb-1">
+          <FileText className={`w-4 h-4 ${dm ? 'text-emerald-400' : 'text-emerald-600'}`} />
+          <h3 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Document Templates</h3>
+        </div>
+        <p className={`text-xs mb-4 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+          Upload <code>.docx</code> files or paste Google Docs links for Contract, Addendum, and RfP. Use <code className="font-mono" style={{ color: '#A78BFA' }}>&lt;&lt;PLACEHOLDER&gt;&gt;</code> tokens inside your documents.
+        </p>
+        <TemplateManager darkMode={dm} />
+      </div>
+
       {/* Diagnostics Panel */}
       <DiagnosticsPanel darkMode={dm} />
     </div>
