@@ -356,8 +356,6 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
           </div>
         </div>
       )}
-    </div>
-  );
 
       {/* RfP Archive (admin only) */}
       {isAdmin && (
