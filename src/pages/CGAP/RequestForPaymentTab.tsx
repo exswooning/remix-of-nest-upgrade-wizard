@@ -358,6 +358,81 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       )}
     </div>
   );
+
+      {/* RfP Archive (admin only) */}
+      {isAdmin && (
+        <div className={card}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Archive className="w-4 h-4" style={{ color: ACCENT }} />
+              <Label className={labelCls}>RfP Archive · {submissions.length}</Label>
+            </div>
+            <Button variant="outline" size="sm" onClick={fetchSubmissions} disabled={archiveLoading} className="gap-1.5 h-7">
+              <RefreshCw className={`w-3 h-3 ${archiveLoading ? 'animate-spin' : ''}`} /> Refresh
+            </Button>
+          </div>
+          {archiveLoading ? (
+            <div className={`text-center py-6 text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Loading…</div>
+          ) : submissions.length === 0 ? (
+            <div className={`text-center py-6 text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+              No RfP submissions yet. Use "Save to Archive" above to record one.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className={`w-full text-xs ${dm ? 'text-gray-300' : 'text-gray-700'}`}>
+                <thead>
+                  <tr className={`${dm ? 'bg-gray-800/50 border-gray-800' : 'bg-white border-gray-200'} border-b`}>
+                    <th className="px-2 py-2 text-left font-semibold">Company</th>
+                    <th className="px-2 py-2 text-left font-semibold">Contract</th>
+                    <th className="px-2 py-2 text-left font-semibold">Status</th>
+                    <th className="px-2 py-2 text-left font-semibold">Created</th>
+                    <th className="px-2 py-2 text-left font-semibold">File</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {submissions.map((s) => (
+                    <tr key={s.id} className={`${dm ? 'border-gray-800' : 'border-gray-100'} border-b`}>
+                      <td className="px-2 py-2">
+                        <div className="font-medium">{s.company_name}</div>
+                        {s.client_location && <div className={`text-[10px] ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{s.client_location}</div>}
+                      </td>
+                      <td className="px-2 py-2">
+                        <code className="text-[10px] font-mono" style={{ color: ACCENT }}>{s.converted_contract_id || '—'}</code>
+                      </td>
+                      <td className="px-2 py-2">
+                        <Badge variant="secondary" className="text-[10px]">{s.status}</Badge>
+                      </td>
+                      <td className="px-2 py-2 text-[10px]">{new Date(s.created_at).toLocaleDateString()}</td>
+                      <td className="px-2 py-2">
+                        <AdminFileUpload
+                          folder="rfp"
+                          recordId={s.id}
+                          currentPath={s.pdf_path}
+                          darkMode={dm}
+                          compact
+                          onChange={async (path) => {
+                            const { error: e } = await supabase
+                              .from('rfp_submissions')
+                              .update({ pdf_path: path } as any)
+                              .eq('id', s.id);
+                            if (e) {
+                              toast({ title: 'Error', description: e.message, variant: 'destructive' });
+                            } else {
+                              fetchSubmissions();
+                            }
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default RequestForPaymentTab;
