@@ -118,6 +118,7 @@ export type Database = {
           created_at: string
           id: string
           notes: string | null
+          pdf_path: string | null
           requested_period_months: number | null
           requested_services: string | null
           requested_users: number | null
@@ -136,6 +137,7 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
+          pdf_path?: string | null
           requested_period_months?: number | null
           requested_services?: string | null
           requested_users?: number | null
@@ -154,6 +156,7 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
+          pdf_path?: string | null
           requested_period_months?: number | null
           requested_services?: string | null
           requested_users?: number | null

@@ -1,0 +1,1 @@
+ALTER TABLE public.rfp_submissions ADD COLUMN IF NOT EXISTS pdf_path text;
