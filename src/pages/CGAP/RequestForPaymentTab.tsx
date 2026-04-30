@@ -29,13 +29,22 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   const { contractId, setContractId, contractData, loading, notFound } = useContractLookup();
 
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [refNo, setRefNo] = useState('');
   const [issueDate, setIssueDate] = useState(getTodayISO());
   const [dueDate, setDueDate] = useState('');
   const [amount, setAmount] = useState('');
+  const [recipientName, setRecipientName] = useState('');
+  const [recipientOrg, setRecipientOrg] = useState('');
+  const [serviceFor, setServiceFor] = useState('domain and hosting services');
+  const [serviceTerm, setServiceTerm] = useState('5 years (Domain and Hosting)');
+  const [serviceReference, setServiceReference] = useState('provided quotes');
+  const [payeeName, setPayeeName] = useState('Nest Nepal Business Solution Pvt.Ltd.');
+  const [bankName, setBankName] = useState('Laxmi Sunrise Bank');
+  const [bankAccount, setBankAccount] = useState('03211002193');
+  const [signatoryName, setSignatoryName] = useState('Yashoda Ghimire');
+  const [signatoryPosition, setSignatoryPosition] = useState('Finance');
   const [description, setDescription] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('Bank Transfer');
-  const [bankDetails, setBankDetails] = useState('Nepal NNBS Pvt. Ltd.\nNIC Asia Bank\nA/C: 1234567890');
-  const [notes, setNotes] = useState('Please process payment by the due date.');
+  const [notes, setNotes] = useState('');
   const [generating, setGenerating] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
@@ -114,6 +123,19 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     const seq = String(Math.floor(Math.random() * 900) + 100);
     setInvoiceNumber(`RfP-${yymm}-${seq}`);
   };
+
+  const autoGenerateRefNo = () => setRefNo(String(Math.floor(Math.random() * 9000) + 1000));
+
+  // Pre-fill recipient from contract lookup
+  useEffect(() => {
+    if (contractData) {
+      if (!recipientOrg) setRecipientOrg(contractData.client_company_name || '');
+      if (!recipientName && contractData.client_coordinator) setRecipientName(contractData.client_coordinator);
+      if (!refNo) autoGenerateRefNo();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractData]);
+
 
   const handleGenerate = async () => {
     setError('');
@@ -195,6 +217,13 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       <div className={card}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
+            <Label className={labelCls}>Ref. No</Label>
+            <div className="flex gap-2 mt-2">
+              <Input value={refNo} onChange={e => setRefNo(e.target.value)} placeholder="980" className={inputCls} />
+              <Button type="button" variant="outline" size="sm" onClick={autoGenerateRefNo} className="shrink-0">Auto</Button>
+            </div>
+          </div>
+          <div>
             <Label className={labelCls}>Invoice / RfP Number</Label>
             <div className="flex gap-2 mt-2">
               <Input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="RfP-2604-001" className={inputCls} />
@@ -202,12 +231,20 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
             </div>
           </div>
           <div>
-            <Label className={labelCls}>Issue Date</Label>
+            <Label className={labelCls}>Letter Date</Label>
             <Input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Due Date</Label>
             <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Recipient Salutation / Title</Label>
+            <Input value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="The SOMTU" className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Recipient Organization</Label>
+            <Input value={recipientOrg} onChange={e => setRecipientOrg(e.target.value)} placeholder="School Of Management Tribhuvan University" className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Amount (NRs.)</Label>
@@ -220,22 +257,46 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
             />
             {amountWords && <p className={`text-[11px] mt-1 italic ${dm ? 'text-gray-500' : 'text-gray-500'}`}>{amountWords}</p>}
           </div>
+          <div>
+            <Label className={labelCls}>Payee Name (in favor of)</Label>
+            <Input value={payeeName} onChange={e => setPayeeName(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
           <div className="md:col-span-2">
-            <Label className={labelCls}>Description / Service Period</Label>
-            <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={3}
+            <Label className={labelCls}>Service / Subject (e.g. "domain and hosting services")</Label>
+            <Input value={serviceFor} onChange={e => setServiceFor(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Reference (e.g. "provided quotes")</Label>
+            <Input value={serviceReference} onChange={e => setServiceReference(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Service Term</Label>
+            <Input value={serviceTerm} onChange={e => setServiceTerm(e.target.value)} placeholder="5 years (Domain and Hosting)" className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Bank Name</Label>
+            <Input value={bankName} onChange={e => setBankName(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Account No.</Label>
+            <Input value={bankAccount} onChange={e => setBankAccount(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Signatory Name</Label>
+            <Input value={signatoryName} onChange={e => setSignatoryName(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Signatory Position</Label>
+            <Input value={signatoryPosition} onChange={e => setSignatoryPosition(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div className="md:col-span-2">
+            <Label className={labelCls}>Additional Description (optional, shown on summary line)</Label>
+            <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
               placeholder="e.g. Workspace subscription for May 2026 — 25 users"
               className={inputCls} />
           </div>
-          <div>
-            <Label className={labelCls}>Payment Method</Label>
-            <Input value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className={`${inputCls} mt-2`} />
-          </div>
-          <div>
-            <Label className={labelCls}>Bank / Payment Details</Label>
-            <Textarea value={bankDetails} onChange={e => setBankDetails(e.target.value)} rows={3} className={inputCls} />
-          </div>
           <div className="md:col-span-2">
-            <Label className={labelCls}>Notes</Label>
+            <Label className={labelCls}>Notes (optional)</Label>
             <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={inputCls} />
           </div>
         </div>
@@ -268,71 +329,86 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
         <div className={card}>
           <Label className={labelCls}>Preview</Label>
           <div className="mt-3 overflow-auto rounded-lg border" style={{ borderColor: dm ? '#2A2A2A' : '#E5E7EB' }}>
-            <div id="rfp-printable" className="bg-white text-gray-900 p-10 mx-auto" style={{ width: '794px', fontFamily: 'Inter, sans-serif' }}>
-              <div className="flex items-start justify-between border-b-2 pb-4 mb-6" style={{ borderColor: ACCENT }}>
+            <div id="rfp-printable" className="bg-white text-gray-900 mx-auto" style={{ width: '794px', minHeight: '1123px', fontFamily: 'Inter, sans-serif', padding: '48px 56px', display: 'flex', flexDirection: 'column' }}>
+              {/* Letterhead */}
+              <div className="flex items-center justify-between pb-3 mb-2 border-b-2" style={{ borderColor: ACCENT }}>
                 <div>
-                  <h1 className="text-2xl font-bold" style={{ color: ACCENT }}>REQUEST FOR PAYMENT</h1>
-                  <p className="text-xs text-gray-500 mt-1">Nepal NNBS Pvt. Ltd.</p>
+                  <h1 className="text-3xl font-bold tracking-wide" style={{ color: ACCENT, fontFamily: 'Playfair Display, serif' }}>NEST NEPAL</h1>
                 </div>
-                <div className="text-right text-xs">
-                  <p><span className="text-gray-500">RfP No:</span> <span className="font-semibold">{invoiceNumber || '—'}</span></p>
-                  <p><span className="text-gray-500">Issue Date:</span> {formatDateDDMMYYYY(issueDate)}</p>
-                  <p><span className="text-gray-500">Due Date:</span> <span className="font-semibold text-red-600">{formatDateDDMMYYYY(dueDate) || '—'}</span></p>
+                <div className="text-xs text-gray-600 text-right">
+                  <p><span className="text-gray-500">Ref.No:</span> <span className="font-semibold">{refNo || '—'}</span></p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Billed To</p>
-                  <p className="font-semibold">{contractData.client_company_name}</p>
-                  {contractData.client_location && <p className="text-gray-600">{contractData.client_location}</p>}
-                  {contractData.client_coordinator && <p className="text-gray-600 text-xs mt-1">Attn: {contractData.client_coordinator}</p>}
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Reference Contract</p>
-                  <p className="font-semibold">{contractData.contract_id}</p>
-                  {contractData.contract_period && <p className="text-gray-600 text-xs">Period: {contractData.contract_period}</p>}
-                </div>
+              {/* Title */}
+              <h2 className="text-center text-lg font-bold uppercase tracking-wider mt-6 mb-4 underline">
+                Payment Release Request Letter
+              </h2>
+
+              {/* Date */}
+              <p className="text-sm mb-4">Date: [{formatDateDDMMYYYY(issueDate) || '—'}]</p>
+
+              {/* Recipient */}
+              <div className="text-sm mb-4">
+                <p>To:</p>
+                <p className="font-semibold">{recipientName || '—'}</p>
+                <p>{recipientOrg || '—'}</p>
               </div>
 
-              <table className="w-full border-collapse mb-6 text-sm">
-                <thead>
-                  <tr style={{ background: `${ACCENT}15` }}>
-                    <th className="text-left p-3 border" style={{ borderColor: '#E5E7EB' }}>Description</th>
-                    <th className="text-right p-3 border w-40" style={{ borderColor: '#E5E7EB' }}>Amount (NRs.)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="p-3 border align-top whitespace-pre-wrap" style={{ borderColor: '#E5E7EB' }}>
-                      {description || '—'}
-                    </td>
-                    <td className="p-3 border text-right align-top font-semibold" style={{ borderColor: '#E5E7EB' }}>
-                      {formattedAmount || '—'}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="p-3 border text-right font-semibold" style={{ borderColor: '#E5E7EB', background: '#F9FAFB' }}>Total Due</td>
-                    <td className="p-3 border text-right font-bold text-base" style={{ borderColor: '#E5E7EB', background: '#F9FAFB', color: ACCENT }}>
-                      {formattedAmount || '—'}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              {/* Subject */}
+              <p className="text-sm font-semibold mb-4">Subject: Request for Payment Release</p>
 
-              {amountWords && (
-                <p className="text-xs italic text-gray-600 mb-6">Amount in words: <span className="font-semibold not-italic text-gray-900">{amountWords}</span></p>
+              {/* Body */}
+              <p className="text-sm mb-4">Dear Sir/Madam,</p>
+
+              <p className="text-sm leading-relaxed mb-4">
+                I would like to request the release of payment <strong>for {serviceFor}</strong> in favor of <strong>[{payeeName}]</strong> against <strong>{serviceReference}</strong> as we will be providing provisioned services for the term of {serviceTerm}.
+              </p>
+
+              {amountNum > 0 && (
+                <p className="text-sm leading-relaxed mb-4">
+                  Total amount: <strong>{formattedAmount}</strong>
+                  {amountWords && <span className="italic text-gray-700"> ({amountWords})</span>}
+                  {dueDate && <> &middot; Due by <strong>{formatDateDDMMYYYY(dueDate)}</strong></>}
+                  {invoiceNumber && <> &middot; Ref Invoice: <strong>{invoiceNumber}</strong></>}
+                  {contractData?.contract_id && <> &middot; Contract: <strong>{contractData.contract_id}</strong></>}
+                </p>
               )}
 
-              <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Payment Method</p>
-                  <p className="font-medium">{paymentMethod}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Payment Details</p>
-                  <p className="text-xs whitespace-pre-wrap">{bankDetails}</p>
-                </div>
+              {description && (
+                <p className="text-sm leading-relaxed mb-4 whitespace-pre-wrap">{description}</p>
+              )}
+
+              <p className="text-sm leading-relaxed mb-3">
+                Also here is the bank details for the payment delivery.
+              </p>
+
+              <div className="text-sm leading-relaxed mb-4 space-y-1">
+                <p>Name : {payeeName}</p>
+                <p>Bank Name : {bankName}</p>
+                <p>Account No: {bankAccount}</p>
+              </div>
+
+              <p className="text-sm leading-relaxed mb-2">Kindly process the payment at your earliest convenience.</p>
+              <p className="text-sm leading-relaxed mb-6">Thank you for your cooperation.</p>
+
+              {notes && (
+                <p className="text-xs italic text-gray-700 mb-4 whitespace-pre-wrap">{notes}</p>
+              )}
+
+              {/* Signature */}
+              <div className="text-sm mt-6">
+                <p>-</p>
+                <p>Warm Regards,</p>
+                <p className="font-semibold mt-1">{signatoryName || '—'}</p>
+                <p>Position: {signatoryPosition || '—'}</p>
+                <p>Nest Nepal Business Solutions Pvt.Ltd</p>
+              </div>
+
+              {/* Footer */}
+              <div className="mt-auto pt-8 border-t text-[10px] text-gray-600 text-center leading-relaxed" style={{ borderColor: ACCENT }}>
+                <p>Nest Nepal Business Solutions Pvt. Ltd., Birendrachowk, Kathmandu, Nepal, Tel: 977-1-5917627/927, WhatsApp: +977-9815111199</p>
+                <p>Noticeboard No.: 1618015917627 Email:contact@nestnepal.com, VAT No.: 609828128, Website: www.nestnepal.com</p>
               </div>
 
               {notes && (
