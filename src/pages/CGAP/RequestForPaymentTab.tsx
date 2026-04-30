@@ -29,13 +29,22 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   const { contractId, setContractId, contractData, loading, notFound } = useContractLookup();
 
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [refNo, setRefNo] = useState('');
   const [issueDate, setIssueDate] = useState(getTodayISO());
   const [dueDate, setDueDate] = useState('');
   const [amount, setAmount] = useState('');
+  const [recipientName, setRecipientName] = useState('');
+  const [recipientOrg, setRecipientOrg] = useState('');
+  const [serviceFor, setServiceFor] = useState('domain and hosting services');
+  const [serviceTerm, setServiceTerm] = useState('5 years (Domain and Hosting)');
+  const [serviceReference, setServiceReference] = useState('provided quotes');
+  const [payeeName, setPayeeName] = useState('Nest Nepal Business Solution Pvt.Ltd.');
+  const [bankName, setBankName] = useState('Laxmi Sunrise Bank');
+  const [bankAccount, setBankAccount] = useState('03211002193');
+  const [signatoryName, setSignatoryName] = useState('Yashoda Ghimire');
+  const [signatoryPosition, setSignatoryPosition] = useState('Finance');
   const [description, setDescription] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('Bank Transfer');
-  const [bankDetails, setBankDetails] = useState('Nepal NNBS Pvt. Ltd.\nNIC Asia Bank\nA/C: 1234567890');
-  const [notes, setNotes] = useState('Please process payment by the due date.');
+  const [notes, setNotes] = useState('');
   const [generating, setGenerating] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
