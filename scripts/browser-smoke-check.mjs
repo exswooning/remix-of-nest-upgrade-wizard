@@ -140,7 +140,7 @@ async function assertPageLoaded(ws, path, expectedText) {
     const text = (message.params?.args || []).map(arg => arg.value || arg.description || '').join(' ');
     if (type === 'error') errors.push(text);
   };
-  ws.on('message', onConsole);
+  const removeConsoleListener = addSocketMessageListener(ws, onConsole);
 
   await websocketRequest(ws, 'Page.navigate', { url: `${APP_URL}${path}` });
   await waitUntil(`page ${path}`, async () => {
@@ -165,7 +165,7 @@ async function assertPageLoaded(ws, path, expectedText) {
     returnByValue: true,
   });
 
-  ws.off('message', onConsole);
+  removeConsoleListener();
   const state = result?.value;
   if (!state?.hasVisibleRoot || !state?.hasExpectedText || state?.hasRecoveryError) {
     throw new Error(`Smoke check failed for ${path}: ${JSON.stringify(state)}${errors.length ? ` Console errors: ${errors.join(' | ')}` : ''}`);
