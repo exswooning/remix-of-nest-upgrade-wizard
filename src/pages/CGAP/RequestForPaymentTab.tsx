@@ -124,6 +124,19 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     setInvoiceNumber(`RfP-${yymm}-${seq}`);
   };
 
+  const autoGenerateRefNo = () => setRefNo(String(Math.floor(Math.random() * 9000) + 1000));
+
+  // Pre-fill recipient from contract lookup
+  useEffect(() => {
+    if (contractData) {
+      if (!recipientOrg) setRecipientOrg(contractData.client_company_name || '');
+      if (!recipientName && contractData.client_coordinator) setRecipientName(contractData.client_coordinator);
+      if (!refNo) autoGenerateRefNo();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractData]);
+
+
   const handleGenerate = async () => {
     setError('');
     if (!contractData) { setError('Look up a contract first'); return; }
