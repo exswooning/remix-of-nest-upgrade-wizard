@@ -217,6 +217,13 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       <div className={card}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
+            <Label className={labelCls}>Ref. No</Label>
+            <div className="flex gap-2 mt-2">
+              <Input value={refNo} onChange={e => setRefNo(e.target.value)} placeholder="980" className={inputCls} />
+              <Button type="button" variant="outline" size="sm" onClick={autoGenerateRefNo} className="shrink-0">Auto</Button>
+            </div>
+          </div>
+          <div>
             <Label className={labelCls}>Invoice / RfP Number</Label>
             <div className="flex gap-2 mt-2">
               <Input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="RfP-2604-001" className={inputCls} />
@@ -224,12 +231,20 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
             </div>
           </div>
           <div>
-            <Label className={labelCls}>Issue Date</Label>
+            <Label className={labelCls}>Letter Date</Label>
             <Input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Due Date</Label>
             <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Recipient Salutation / Title</Label>
+            <Input value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="The SOMTU" className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Recipient Organization</Label>
+            <Input value={recipientOrg} onChange={e => setRecipientOrg(e.target.value)} placeholder="School Of Management Tribhuvan University" className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Amount (NRs.)</Label>
@@ -242,22 +257,46 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
             />
             {amountWords && <p className={`text-[11px] mt-1 italic ${dm ? 'text-gray-500' : 'text-gray-500'}`}>{amountWords}</p>}
           </div>
+          <div>
+            <Label className={labelCls}>Payee Name (in favor of)</Label>
+            <Input value={payeeName} onChange={e => setPayeeName(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
           <div className="md:col-span-2">
-            <Label className={labelCls}>Description / Service Period</Label>
-            <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={3}
+            <Label className={labelCls}>Service / Subject (e.g. "domain and hosting services")</Label>
+            <Input value={serviceFor} onChange={e => setServiceFor(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Reference (e.g. "provided quotes")</Label>
+            <Input value={serviceReference} onChange={e => setServiceReference(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Service Term</Label>
+            <Input value={serviceTerm} onChange={e => setServiceTerm(e.target.value)} placeholder="5 years (Domain and Hosting)" className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Bank Name</Label>
+            <Input value={bankName} onChange={e => setBankName(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Account No.</Label>
+            <Input value={bankAccount} onChange={e => setBankAccount(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Signatory Name</Label>
+            <Input value={signatoryName} onChange={e => setSignatoryName(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div>
+            <Label className={labelCls}>Signatory Position</Label>
+            <Input value={signatoryPosition} onChange={e => setSignatoryPosition(e.target.value)} className={`${inputCls} mt-2`} />
+          </div>
+          <div className="md:col-span-2">
+            <Label className={labelCls}>Additional Description (optional, shown on summary line)</Label>
+            <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
               placeholder="e.g. Workspace subscription for May 2026 — 25 users"
               className={inputCls} />
           </div>
-          <div>
-            <Label className={labelCls}>Payment Method</Label>
-            <Input value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className={`${inputCls} mt-2`} />
-          </div>
-          <div>
-            <Label className={labelCls}>Bank / Payment Details</Label>
-            <Textarea value={bankDetails} onChange={e => setBankDetails(e.target.value)} rows={3} className={inputCls} />
-          </div>
           <div className="md:col-span-2">
-            <Label className={labelCls}>Notes</Label>
+            <Label className={labelCls}>Notes (optional)</Label>
             <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={inputCls} />
           </div>
         </div>
