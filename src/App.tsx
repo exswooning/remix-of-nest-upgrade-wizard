@@ -7,7 +7,13 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { CGAPProvider } from "@/contexts/CGAPContext";
 import AppErrorBoundary from "./components/AppErrorBoundary";
 import LoginScreen from "./components/LoginScreen";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
+// Eagerly import the supabase client so that any env-misconfiguration
+// surfaces at app boot (not deep inside a lazy chunk like SettingsTab),
+// and so the bundle hash changes when env values change — preventing
+// stale cached chunks from showing "supabaseUrl is required" forever.
+import { supabase as _supabase } from "@/integrations/supabase/client";
+void _supabase;
 
 const Index = lazy(() => import("./pages/Index"));
 const CGAPApp = lazy(() => import("./pages/CGAP/CGAPApp"));
