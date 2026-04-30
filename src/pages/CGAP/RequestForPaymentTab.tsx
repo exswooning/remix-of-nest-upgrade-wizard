@@ -329,71 +329,86 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
         <div className={card}>
           <Label className={labelCls}>Preview</Label>
           <div className="mt-3 overflow-auto rounded-lg border" style={{ borderColor: dm ? '#2A2A2A' : '#E5E7EB' }}>
-            <div id="rfp-printable" className="bg-white text-gray-900 p-10 mx-auto" style={{ width: '794px', fontFamily: 'Inter, sans-serif' }}>
-              <div className="flex items-start justify-between border-b-2 pb-4 mb-6" style={{ borderColor: ACCENT }}>
+            <div id="rfp-printable" className="bg-white text-gray-900 mx-auto" style={{ width: '794px', minHeight: '1123px', fontFamily: 'Inter, sans-serif', padding: '48px 56px', display: 'flex', flexDirection: 'column' }}>
+              {/* Letterhead */}
+              <div className="flex items-center justify-between pb-3 mb-2 border-b-2" style={{ borderColor: ACCENT }}>
                 <div>
-                  <h1 className="text-2xl font-bold" style={{ color: ACCENT }}>REQUEST FOR PAYMENT</h1>
-                  <p className="text-xs text-gray-500 mt-1">Nepal NNBS Pvt. Ltd.</p>
+                  <h1 className="text-3xl font-bold tracking-wide" style={{ color: ACCENT, fontFamily: 'Playfair Display, serif' }}>NEST NEPAL</h1>
                 </div>
-                <div className="text-right text-xs">
-                  <p><span className="text-gray-500">RfP No:</span> <span className="font-semibold">{invoiceNumber || '—'}</span></p>
-                  <p><span className="text-gray-500">Issue Date:</span> {formatDateDDMMYYYY(issueDate)}</p>
-                  <p><span className="text-gray-500">Due Date:</span> <span className="font-semibold text-red-600">{formatDateDDMMYYYY(dueDate) || '—'}</span></p>
+                <div className="text-xs text-gray-600 text-right">
+                  <p><span className="text-gray-500">Ref.No:</span> <span className="font-semibold">{refNo || '—'}</span></p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Billed To</p>
-                  <p className="font-semibold">{contractData.client_company_name}</p>
-                  {contractData.client_location && <p className="text-gray-600">{contractData.client_location}</p>}
-                  {contractData.client_coordinator && <p className="text-gray-600 text-xs mt-1">Attn: {contractData.client_coordinator}</p>}
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Reference Contract</p>
-                  <p className="font-semibold">{contractData.contract_id}</p>
-                  {contractData.contract_period && <p className="text-gray-600 text-xs">Period: {contractData.contract_period}</p>}
-                </div>
+              {/* Title */}
+              <h2 className="text-center text-lg font-bold uppercase tracking-wider mt-6 mb-4 underline">
+                Payment Release Request Letter
+              </h2>
+
+              {/* Date */}
+              <p className="text-sm mb-4">Date: [{formatDateDDMMYYYY(issueDate) || '—'}]</p>
+
+              {/* Recipient */}
+              <div className="text-sm mb-4">
+                <p>To:</p>
+                <p className="font-semibold">{recipientName || '—'}</p>
+                <p>{recipientOrg || '—'}</p>
               </div>
 
-              <table className="w-full border-collapse mb-6 text-sm">
-                <thead>
-                  <tr style={{ background: `${ACCENT}15` }}>
-                    <th className="text-left p-3 border" style={{ borderColor: '#E5E7EB' }}>Description</th>
-                    <th className="text-right p-3 border w-40" style={{ borderColor: '#E5E7EB' }}>Amount (NRs.)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="p-3 border align-top whitespace-pre-wrap" style={{ borderColor: '#E5E7EB' }}>
-                      {description || '—'}
-                    </td>
-                    <td className="p-3 border text-right align-top font-semibold" style={{ borderColor: '#E5E7EB' }}>
-                      {formattedAmount || '—'}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="p-3 border text-right font-semibold" style={{ borderColor: '#E5E7EB', background: '#F9FAFB' }}>Total Due</td>
-                    <td className="p-3 border text-right font-bold text-base" style={{ borderColor: '#E5E7EB', background: '#F9FAFB', color: ACCENT }}>
-                      {formattedAmount || '—'}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              {/* Subject */}
+              <p className="text-sm font-semibold mb-4">Subject: Request for Payment Release</p>
 
-              {amountWords && (
-                <p className="text-xs italic text-gray-600 mb-6">Amount in words: <span className="font-semibold not-italic text-gray-900">{amountWords}</span></p>
+              {/* Body */}
+              <p className="text-sm mb-4">Dear Sir/Madam,</p>
+
+              <p className="text-sm leading-relaxed mb-4">
+                I would like to request the release of payment <strong>for {serviceFor}</strong> in favor of <strong>[{payeeName}]</strong> against <strong>{serviceReference}</strong> as we will be providing provisioned services for the term of {serviceTerm}.
+              </p>
+
+              {amountNum > 0 && (
+                <p className="text-sm leading-relaxed mb-4">
+                  Total amount: <strong>{formattedAmount}</strong>
+                  {amountWords && <span className="italic text-gray-700"> ({amountWords})</span>}
+                  {dueDate && <> &middot; Due by <strong>{formatDateDDMMYYYY(dueDate)}</strong></>}
+                  {invoiceNumber && <> &middot; Ref Invoice: <strong>{invoiceNumber}</strong></>}
+                  {contractData?.contract_id && <> &middot; Contract: <strong>{contractData.contract_id}</strong></>}
+                </p>
               )}
 
-              <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Payment Method</p>
-                  <p className="font-medium">{paymentMethod}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Payment Details</p>
-                  <p className="text-xs whitespace-pre-wrap">{bankDetails}</p>
-                </div>
+              {description && (
+                <p className="text-sm leading-relaxed mb-4 whitespace-pre-wrap">{description}</p>
+              )}
+
+              <p className="text-sm leading-relaxed mb-3">
+                Also here is the bank details for the payment delivery.
+              </p>
+
+              <div className="text-sm leading-relaxed mb-4 space-y-1">
+                <p>Name : {payeeName}</p>
+                <p>Bank Name : {bankName}</p>
+                <p>Account No: {bankAccount}</p>
+              </div>
+
+              <p className="text-sm leading-relaxed mb-2">Kindly process the payment at your earliest convenience.</p>
+              <p className="text-sm leading-relaxed mb-6">Thank you for your cooperation.</p>
+
+              {notes && (
+                <p className="text-xs italic text-gray-700 mb-4 whitespace-pre-wrap">{notes}</p>
+              )}
+
+              {/* Signature */}
+              <div className="text-sm mt-6">
+                <p>-</p>
+                <p>Warm Regards,</p>
+                <p className="font-semibold mt-1">{signatoryName || '—'}</p>
+                <p>Position: {signatoryPosition || '—'}</p>
+                <p>Nest Nepal Business Solutions Pvt.Ltd</p>
+              </div>
+
+              {/* Footer */}
+              <div className="mt-auto pt-8 border-t text-[10px] text-gray-600 text-center leading-relaxed" style={{ borderColor: ACCENT }}>
+                <p>Nest Nepal Business Solutions Pvt. Ltd., Birendrachowk, Kathmandu, Nepal, Tel: 977-1-5917627/927, WhatsApp: +977-9815111199</p>
+                <p>Noticeboard No.: 1618015917627 Email:contact@nestnepal.com, VAT No.: 609828128, Website: www.nestnepal.com</p>
               </div>
 
               {notes && (
