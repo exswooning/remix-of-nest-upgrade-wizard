@@ -84,12 +84,23 @@ async function waitUntil(label, fn, timeoutMs = 30000) {
   throw new Error(`${label} did not become ready${lastError ? `: ${lastError.message}` : ''}`);
 }
 
+function addSocketMessageListener(ws, handler) {
+  if (typeof ws.on === 'function') {
+    ws.on('message', handler);
+    return () => ws.off('message', handler);
+  }
+
+  const listener = (event) => handler(event.data);
+  ws.addEventListener('message', listener);
+  return () => ws.removeEventListener('message', listener);
+}
+
 async function websocketRequest(ws, method, params = {}) {
   const id = ++websocketRequest.id;
   ws.send(JSON.stringify({ id, method, params }));
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      ws.off('message', onMessage);
+      removeListener();
       reject(new Error(`Chrome command timed out: ${method}`));
     }, 10000);
 
@@ -97,12 +108,12 @@ async function websocketRequest(ws, method, params = {}) {
       const message = JSON.parse(data.toString());
       if (message.id !== id) return;
       clearTimeout(timeout);
-      ws.off('message', onMessage);
+      removeListener();
       if (message.error) reject(new Error(`${method}: ${message.error.message}`));
       else resolve(message.result || {});
     };
 
-    ws.on('message', onMessage);
+    const removeListener = addSocketMessageListener(ws, onMessage);
   });
 }
 websocketRequest.id = 0;
@@ -112,11 +123,10 @@ async function connectToChrome() {
   const page = tabs.find(tab => tab.type === 'page') || tabs[0];
   if (!page?.webSocketDebuggerUrl) throw new Error('No debuggable Chrome page found');
 
-  const { WebSocket } = await import('ws');
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
-    ws.once('open', resolve);
-    ws.once('error', reject);
+    ws.addEventListener('open', resolve, { once: true });
+    ws.addEventListener('error', reject, { once: true });
   });
   return ws;
 }
