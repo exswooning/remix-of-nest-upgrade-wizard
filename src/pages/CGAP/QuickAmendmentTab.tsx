@@ -141,9 +141,14 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Quick Amendment</h2>
-        <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Minimal form for fast contract amendments — data auto-fills from the database</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Quick Amendment</h2>
+          <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Minimal form for fast contract amendments — data auto-fills from the database</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={fillTest} className="gap-1.5" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
+          <Sparkles className="w-3 h-3" /> Test Data
+        </Button>
       </div>
 
       {/* Contract Reference */}
