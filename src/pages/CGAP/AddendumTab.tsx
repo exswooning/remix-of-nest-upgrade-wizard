@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock, FileText, Search } from 'lucide-react';
+import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock, FileText, Search, Sparkles } from 'lucide-react';
 import { getTodayISO } from '@/utils/cgapAutoFill';
 import { searchSections, type ContractSection } from '@/utils/contractSections';
 import { useContractLookup } from '@/hooks/useContractLookup';
@@ -77,6 +77,16 @@ const AddendumTab: React.FC<AddendumTabProps> = ({ darkMode = false }) => {
   const removeRow = (i: number) => setChanges(prev => prev.filter((_, idx) => idx !== i));
   const updateRow = (i: number, key: keyof ChangeRow, val: string) => setChanges(prev => prev.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
 
+  const fillTest = () => {
+    setContractId('WMA-NNBS-03-03-26-1');
+    setEffectiveDate(getTodayISO());
+    setChanges([
+      { clause: 'Section 5A — Payment Terms (Page 4)', original: 'Payment shall be made in full upon contract signing.', replacement: 'Payment shall be made in two installments: 50% upon signing and 50% on go-live.' },
+      { clause: 'Section 7 — Number of Users (Page 6)', original: '25 users', replacement: '40 users' },
+    ]);
+    setErrors({});
+  };
+
   const validate = () => {
     const errs: Record<string, boolean> = {};
     if (!contractId.trim()) errs.contractId = true;
@@ -133,14 +143,19 @@ const AddendumTab: React.FC<AddendumTabProps> = ({ darkMode = false }) => {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>New Addendum</h2>
-        <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Create an addendum to an existing contract — data auto-fills from the database</p>
-        {contractData && (
-          <p className="text-xs mt-2" style={{ color: ACCENT }}>
-            Addendum ID will be: <Badge variant="secondary" className="font-mono">{contractId}#A…</Badge>
-          </p>
-        )}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>New Addendum</h2>
+          <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Create an addendum to an existing contract — data auto-fills from the database</p>
+          {contractData && (
+            <p className="text-xs mt-2" style={{ color: ACCENT }}>
+              Addendum ID will be: <Badge variant="secondary" className="font-mono">{contractId}#A…</Badge>
+            </p>
+          )}
+        </div>
+        <Button variant="outline" size="sm" onClick={fillTest} className="gap-1.5" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
+          <Sparkles className="w-3 h-3" /> Test Data
+        </Button>
       </div>
 
       {/* Contract Reference */}

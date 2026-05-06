@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock, FileText, Search } from 'lucide-react';
+import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock, FileText, Search, Sparkles } from 'lucide-react';
 import { getTodayISO } from '@/utils/cgapAutoFill';
 import { searchSections, type ContractSection } from '@/utils/contractSections';
 import { useContractLookup } from '@/hooks/useContractLookup';
@@ -77,6 +77,15 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
   const removeRow = (i: number) => setChanges(prev => prev.filter((_, idx) => idx !== i));
   const updateRow = (i: number, key: keyof ChangeRow, val: string) => setChanges(prev => prev.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
 
+  const fillTest = () => {
+    setContractId('WMA-NNBS-03-03-26-1');
+    setEffectiveDate(getTodayISO());
+    setChanges([
+      { clause: 'Section 3A — Service Scope (Page 2)', original: 'Standard hosting package only.', replacement: 'Standard hosting package plus daily backups.' },
+    ]);
+    setErrors({});
+  };
+
   const validate = () => {
     const errs: Record<string, boolean> = {};
     if (!contractId.trim()) errs.contractId = true;
@@ -132,9 +141,14 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Quick Amendment</h2>
-        <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Minimal form for fast contract amendments — data auto-fills from the database</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Quick Amendment</h2>
+          <p className={`text-xs mt-0.5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Minimal form for fast contract amendments — data auto-fills from the database</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={fillTest} className="gap-1.5" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
+          <Sparkles className="w-3 h-3" /> Test Data
+        </Button>
       </div>
 
       {/* Contract Reference */}

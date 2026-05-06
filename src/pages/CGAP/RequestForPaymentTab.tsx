@@ -4,7 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Receipt, Download, Loader2, CheckCircle2, AlertCircle, Search, Printer, Archive, RefreshCw, Save } from 'lucide-react';
+import { Receipt, Download, Loader2, CheckCircle2, AlertCircle, Search, Printer, Archive, RefreshCw, Save, Sparkles } from 'lucide-react';
 import { useContractLookup } from '@/hooks/useContractLookup';
 import { getTodayISO, numberToWords } from '@/utils/cgapAutoFill';
 import { supabase } from '@/integrations/supabase/client';
@@ -175,16 +175,37 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     }
   };
 
+  const fillTest = () => {
+    setContractId('WMA-NNBS-03-03-26-1');
+    setInvoiceNumber('INV-2026-0001');
+    setRefNo('NNBS/RFP/2026/001');
+    setIssueDate(getTodayISO());
+    setDueDate(getTodayISO());
+    setAmount('150000');
+    setRecipientName('Ram Sharma');
+    setRecipientOrg('Acme Corporation Pvt. Ltd.');
+    setServiceFor('domain and hosting services');
+    setServiceTerm('1 year (Domain and Hosting)');
+    setServiceReference('Contract WMA-NNBS-03-03-26-1');
+    setDescription('Annual hosting renewal and domain registration.');
+    setNotes('Please process at the earliest convenience.');
+  };
+
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${ACCENT}20`, color: ACCENT }}>
-          <Receipt className="w-5 h-5" />
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${ACCENT}20`, color: ACCENT }}>
+            <Receipt className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-900'}`}>Request for Payment</h2>
+            <p className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-500'}`}>Generate a payment request linked to an existing contract</p>
+          </div>
         </div>
-        <div>
-          <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-900'}`}>Request for Payment</h2>
-          <p className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-500'}`}>Generate a payment request linked to an existing contract</p>
-        </div>
+        <Button variant="outline" size="sm" onClick={fillTest} className="gap-1.5" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
+          <Sparkles className="w-3 h-3" /> Test Data
+        </Button>
       </div>
 
       {/* Contract Lookup */}
