@@ -77,6 +77,16 @@ const AddendumTab: React.FC<AddendumTabProps> = ({ darkMode = false }) => {
   const removeRow = (i: number) => setChanges(prev => prev.filter((_, idx) => idx !== i));
   const updateRow = (i: number, key: keyof ChangeRow, val: string) => setChanges(prev => prev.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
 
+  const fillTest = () => {
+    setContractId('WMA-NNBS-03-03-26-1');
+    setEffectiveDate(getTodayISO());
+    setChanges([
+      { clause: 'Section 5A — Payment Terms (Page 4)', original: 'Payment shall be made in full upon contract signing.', replacement: 'Payment shall be made in two installments: 50% upon signing and 50% on go-live.' },
+      { clause: 'Section 7 — Number of Users (Page 6)', original: '25 users', replacement: '40 users' },
+    ]);
+    setErrors({});
+  };
+
   const validate = () => {
     const errs: Record<string, boolean> = {};
     if (!contractId.trim()) errs.contractId = true;
