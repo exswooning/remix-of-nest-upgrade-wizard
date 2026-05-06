@@ -77,6 +77,15 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
   const removeRow = (i: number) => setChanges(prev => prev.filter((_, idx) => idx !== i));
   const updateRow = (i: number, key: keyof ChangeRow, val: string) => setChanges(prev => prev.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
 
+  const fillTest = () => {
+    setContractId('WMA-NNBS-03-03-26-1');
+    setEffectiveDate(getTodayISO());
+    setChanges([
+      { clause: 'Section 3A — Service Scope (Page 2)', original: 'Standard hosting package only.', replacement: 'Standard hosting package plus daily backups.' },
+    ]);
+    setErrors({});
+  };
+
   const validate = () => {
     const errs: Record<string, boolean> = {};
     if (!contractId.trim()) errs.contractId = true;
