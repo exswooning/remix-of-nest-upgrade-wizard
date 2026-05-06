@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock, FileText, Search } from 'lucide-react';
+import { Plus, Trash2, Download, CheckCircle2, Loader2, AlertCircle, Wand2, Lock, FileText, Search, Sparkles } from 'lucide-react';
 import { getTodayISO } from '@/utils/cgapAutoFill';
 import { searchSections, type ContractSection } from '@/utils/contractSections';
 import { useContractLookup } from '@/hooks/useContractLookup';
