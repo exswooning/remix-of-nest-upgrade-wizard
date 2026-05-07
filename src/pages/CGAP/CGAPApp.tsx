@@ -5,6 +5,7 @@ import ContractTab from './ContractTab';
 import AddendumTab from './AddendumTab';
 import QuickAmendmentTab from './QuickAmendmentTab';
 import RequestForPaymentTab from './RequestForPaymentTab';
+import RichDocumentEditor from '@/components/RichDocumentEditor';
 import SettingsTab from './SettingsTab';
 import { LogOut, FileText, FilePlus, Zap, Settings, Receipt } from 'lucide-react';
 
