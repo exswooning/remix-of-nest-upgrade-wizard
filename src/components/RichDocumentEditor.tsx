@@ -1,16 +1,18 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import TextAlign from '@tiptap/extension-text-align';
+import mammoth from 'mammoth';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, Heading1, Heading2, Heading3,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Quote, Undo, Redo, Link as LinkIcon, Download, Printer, FileText
+  Quote, Undo, Redo, Link as LinkIcon, Download, Printer, FileText,
+  Upload, RotateCcw, BookmarkPlus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -66,12 +68,19 @@ const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
     },
   });
 
-  // Load saved content
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const templateKey = `${storageKey}-template`;
+  const [hasTemplate, setHasTemplate] = useState<boolean>(() => !!localStorage.getItem(templateKey));
+
+  // Load saved content (or template if no saved content)
   useEffect(() => {
     if (!editor) return;
     const saved = localStorage.getItem(storageKey);
+    const template = localStorage.getItem(templateKey);
     if (saved) {
       editor.commands.setContent(saved);
+    } else if (template) {
+      editor.commands.setContent(template);
     } else if (initialContent) {
       editor.commands.setContent(initialContent);
     }
@@ -86,6 +95,45 @@ const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
     editor.on('update', handler);
     return () => { editor.off('update', handler); };
   }, [editor, storageKey]);
+
+  const handleUploadDocx = async (file: File) => {
+    if (!editor) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+      const html = result.value || '<p></p>';
+      editor.commands.setContent(html);
+      try {
+        localStorage.setItem(templateKey, html);
+        localStorage.setItem(storageKey, html);
+        setHasTemplate(true);
+      } catch {}
+      toast({ title: 'Template loaded', description: `${file.name} imported as the editable template.` });
+    } catch (err: any) {
+      toast({ title: 'Import failed', description: err?.message || 'Could not read .docx file', variant: 'destructive' });
+    }
+  };
+
+  const handleSaveAsTemplate = () => {
+    if (!editor) return;
+    try {
+      localStorage.setItem(templateKey, editor.getHTML());
+      setHasTemplate(true);
+      toast({ title: 'Template saved', description: 'Current content is now the template.' });
+    } catch {}
+  };
+
+  const handleResetToTemplate = () => {
+    if (!editor) return;
+    const template = localStorage.getItem(templateKey);
+    if (!template) {
+      toast({ title: 'No template', description: 'Upload a .docx or save current content as template first.', variant: 'destructive' });
+      return;
+    }
+    editor.commands.setContent(template);
+    try { localStorage.setItem(storageKey, template); } catch {}
+    toast({ title: 'Reset', description: 'Editor restored to the template.' });
+  };
 
   const setLink = useCallback(() => {
     if (!editor) return;
@@ -152,7 +200,28 @@ const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
             {title}
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".docx"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleUploadDocx(f);
+              e.target.value = '';
+            }}
+          />
+          <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} className="h-7 text-xs" title="Import .docx as template">
+            <Upload className="w-3 h-3 mr-1" />Upload .docx
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleSaveAsTemplate} className="h-7 text-xs" title="Save current as template">
+            <BookmarkPlus className="w-3 h-3 mr-1" />Save tpl
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleResetToTemplate} disabled={!hasTemplate} className="h-7 text-xs" title="Reset to template">
+            <RotateCcw className="w-3 h-3 mr-1" />Reset
+          </Button>
+          <Separator orientation="vertical" className="h-5 mx-1" />
           <Button size="sm" variant="outline" onClick={handlePrint} className="h-7 text-xs">
             <Printer className="w-3 h-3 mr-1" />Print/PDF
           </Button>
@@ -163,6 +232,7 @@ const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
             <Download className="w-3 h-3 mr-1" />.html
           </Button>
         </div>
+
       </div>
 
       <div className={cn(
