@@ -68,12 +68,19 @@ const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
     },
   });
 
-  // Load saved content
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const templateKey = `${storageKey}-template`;
+  const [hasTemplate, setHasTemplate] = useState<boolean>(() => !!localStorage.getItem(templateKey));
+
+  // Load saved content (or template if no saved content)
   useEffect(() => {
     if (!editor) return;
     const saved = localStorage.getItem(storageKey);
+    const template = localStorage.getItem(templateKey);
     if (saved) {
       editor.commands.setContent(saved);
+    } else if (template) {
+      editor.commands.setContent(template);
     } else if (initialContent) {
       editor.commands.setContent(initialContent);
     }
@@ -88,6 +95,45 @@ const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
     editor.on('update', handler);
     return () => { editor.off('update', handler); };
   }, [editor, storageKey]);
+
+  const handleUploadDocx = async (file: File) => {
+    if (!editor) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+      const html = result.value || '<p></p>';
+      editor.commands.setContent(html);
+      try {
+        localStorage.setItem(templateKey, html);
+        localStorage.setItem(storageKey, html);
+        setHasTemplate(true);
+      } catch {}
+      toast({ title: 'Template loaded', description: `${file.name} imported as the editable template.` });
+    } catch (err: any) {
+      toast({ title: 'Import failed', description: err?.message || 'Could not read .docx file', variant: 'destructive' });
+    }
+  };
+
+  const handleSaveAsTemplate = () => {
+    if (!editor) return;
+    try {
+      localStorage.setItem(templateKey, editor.getHTML());
+      setHasTemplate(true);
+      toast({ title: 'Template saved', description: 'Current content is now the template.' });
+    } catch {}
+  };
+
+  const handleResetToTemplate = () => {
+    if (!editor) return;
+    const template = localStorage.getItem(templateKey);
+    if (!template) {
+      toast({ title: 'No template', description: 'Upload a .docx or save current content as template first.', variant: 'destructive' });
+      return;
+    }
+    editor.commands.setContent(template);
+    try { localStorage.setItem(storageKey, template); } catch {}
+    toast({ title: 'Reset', description: 'Editor restored to the template.' });
+  };
 
   const setLink = useCallback(() => {
     if (!editor) return;
