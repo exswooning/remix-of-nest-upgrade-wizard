@@ -83,6 +83,20 @@ const CGAPApp: React.FC = () => {
           {activeTab === 'rfp' && <RequestForPaymentTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </div>
+        {activeTab !== 'settings' && (
+          <div className="mt-6 rounded-2xl p-4 sm:p-6" style={{ background: '#161616', border: '1px solid #2A2A2A' }}>
+            <RichDocumentEditor
+              storageKey={`cgap-editor-${activeTab}`}
+              title={
+                activeTab === 'contract' ? 'Contract' :
+                activeTab === 'addendum' ? 'Addendum' :
+                activeTab === 'amendment' ? 'Amendment' :
+                'Request for Payment'
+              }
+              darkMode
+            />
+          </div>
+        )}
       </main>
     </div>
   );
