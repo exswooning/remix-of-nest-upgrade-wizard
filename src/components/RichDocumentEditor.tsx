@@ -200,7 +200,28 @@ const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
             {title}
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".docx"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleUploadDocx(f);
+              e.target.value = '';
+            }}
+          />
+          <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} className="h-7 text-xs" title="Import .docx as template">
+            <Upload className="w-3 h-3 mr-1" />Upload .docx
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleSaveAsTemplate} className="h-7 text-xs" title="Save current as template">
+            <BookmarkPlus className="w-3 h-3 mr-1" />Save tpl
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleResetToTemplate} disabled={!hasTemplate} className="h-7 text-xs" title="Reset to template">
+            <RotateCcw className="w-3 h-3 mr-1" />Reset
+          </Button>
+          <Separator orientation="vertical" className="h-5 mx-1" />
           <Button size="sm" variant="outline" onClick={handlePrint} className="h-7 text-xs">
             <Printer className="w-3 h-3 mr-1" />Print/PDF
           </Button>
@@ -211,6 +232,7 @@ const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
             <Download className="w-3 h-3 mr-1" />.html
           </Button>
         </div>
+
       </div>
 
       <div className={cn(
