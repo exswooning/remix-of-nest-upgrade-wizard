@@ -1,84 +1,41 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Receipt, Download, Loader2, CheckCircle2, AlertCircle, Search, Printer, Archive, RefreshCw, Save, Sparkles, FileText, Bold, Italic, Underline as UnderlineIcon, Strikethrough, AlignLeft, AlignCenter, AlignRight, AlignJustify, Heading1, Heading2, List, ListOrdered, Undo, Redo, RotateCcw, ZoomIn, ZoomOut, Maximize2, Minimize2, X, Type, Move, Eye, PenLine } from 'lucide-react';
+import {
+  Receipt, Download, Loader2, CheckCircle2, AlertCircle, Search, Printer, Archive, RefreshCw, Save, Sparkles,
+  RotateCcw, ZoomIn, ZoomOut, Maximize2, Minimize2, X, Move, Lock, Unlock, LayoutGrid, Plus, Minus, Trash2,
+  ChevronUp, ChevronDown, ChevronLeft, ChevronRight, AlignLeft, AlignCenter, AlignRight,
+} from 'lucide-react';
 import { useContractLookup } from '@/hooks/useContractLookup';
 import { getTodayISO, numberToWords } from '@/utils/cgapAutoFill';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import AdminFileUpload from '@/components/AdminFileUpload';
 import { useToast } from '@/hooks/use-toast';
-import { generateRfpDocx, fetchDefaultRfpTemplateBuffer, mergeRfpDocx, type RfpDocxData } from '@/utils/generateRfpDocx';
-import { renderAsync } from 'docx-preview';
-import { fetchDefaultLetterhead, mergePlaceholders, saveLetterheadMargins, type LetterheadConfig, type LetterheadMargins } from '@/utils/letterheadTemplate';
+import {
+  fetchDefaultLetterhead, saveLetterheadMargins, DEFAULT_MARGINS,
+  type LetterheadConfig, type LetterheadMargins,
+} from '@/utils/letterheadTemplate';
 import { findOrCreateClient } from '@/utils/clients';
-import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
-import Link from '@tiptap/extension-link';
-import TextAlign from '@tiptap/extension-text-align';
+import { freshDefaultAnchors, renderAnchor, type FieldAnchor } from '@/utils/rfpAnchors';
+import { loadLayout, saveLayout } from '@/utils/rfpLayout';
 import { cn } from '@/lib/utils';
 
-const formatNPR = (n: number) => `NRs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+const ACCENT = '#10B981';
 
-const ACCENT = '#10B981'; // emerald
+const formatNPR = (n: number) =>
+  `NRs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
-const ToolbarBtn: React.FC<{
-  onClick: () => void;
-  active?: boolean;
-  disabled?: boolean;
-  title: string;
-  children: React.ReactNode;
-  dm?: boolean;
-}> = ({ onClick, active, disabled, title, children, dm }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    disabled={disabled}
-    title={title}
-    className={cn(
-      'inline-flex items-center justify-center h-7 w-7 rounded transition-colors',
-      'disabled:opacity-40 disabled:cursor-not-allowed',
-      active
-        ? (dm ? 'bg-emerald-900/40 text-emerald-300' : 'bg-emerald-100 text-emerald-700')
-        : (dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'),
-    )}
-  >
-    {children}
-  </button>
-);
-
-// Fallback body when the TipTap editor is empty. Placeholders match the
-// merge keys in `placeholderValues` and the form field labels.
-//
-// IMPORTANT: tokens are written as `&lt;&lt;name&gt;&gt;`, not `<<name>>`. The
-// HTML5 parser treats a bare `<<` as `<` text + `<name>` unknown-tag, and
-// ProseMirror strips the unknown tag — destroying the placeholder. Encoding
-// them as entities means the parser decodes them back to plain text `<<name>>`
-// inside the editor's text node, where they survive round-tripping through
-// `getHTML()` and `mergePlaceholders` can find them.
-const DEFAULT_RFP_BODY_HTML = `
-<p>Ref.No: &lt;&lt;ref_no&gt;&gt;</p>
-<h2 style="text-align:center;text-decoration:underline;text-transform:uppercase;margin-top:16px;margin-bottom:16px">Payment Release Request Letter</h2>
-<p>Date: [&lt;&lt;issue_date&gt;&gt;]</p>
-<p>To:</p>
-<p><strong>&lt;&lt;recipient_name&gt;&gt;</strong></p>
-<p>&lt;&lt;recipient_org&gt;&gt;</p>
-<p><strong>Subject: Request for Payment Release</strong></p>
-<p>Dear Sir/Madam,</p>
-<p>I would like to request the release of payment <strong>for &lt;&lt;service_for&gt;&gt;</strong> in favor of <strong>[&lt;&lt;payee_name&gt;&gt;]</strong> against <strong>&lt;&lt;service_reference&gt;&gt;</strong> as we will be providing provisioned services for the term of &lt;&lt;service_term&gt;&gt;.</p>
-<p>Also here is the bank details for the payment delivery.</p>
-<p>Name : &lt;&lt;payee_name&gt;&gt;<br/>Bank Name : &lt;&lt;bank_name&gt;&gt;<br/>Account No: &lt;&lt;bank_account&gt;&gt;</p>
-<p>Kindly process the payment at your earliest convenience.</p>
-<p>Thank you for your cooperation.</p>
-<p>Warm Regards,<br/><strong>&lt;&lt;signatory_name&gt;&gt;</strong><br/>Position: &lt;&lt;signatory_position&gt;&gt;<br/>Nest Nepal Business Solutions Pvt.Ltd</p>
-`;
+const formatDateDDMMYYYY = (iso: string) => {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+};
 
 interface RequestForPaymentTabProps {
   darkMode?: boolean;
@@ -90,6 +47,7 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   const { toast } = useToast();
   const { contractId, setContractId, contractData, loading, notFound } = useContractLookup();
 
+  // ─── Form fields ──────────────────────────────────────────────────────────
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [refNo, setRefNo] = useState('');
   const [issueDate, setIssueDate] = useState(getTodayISO());
@@ -107,30 +65,71 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   const [signatoryPosition, setSignatoryPosition] = useState('Finance');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
-  const [generating, setGenerating] = useState(false);
-  const [generatingDocx, setGeneratingDocx] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
 
-  // Template-driven preview state
-  const templateBufferRef = useRef<ArrayBuffer | null>(null);
-  const previewContainerRef = useRef<HTMLDivElement | null>(null);
-  const [templateLoading, setTemplateLoading] = useState(false);
-  const [templateError, setTemplateError] = useState('');
-  const [previewing, setPreviewing] = useState(false);
+  const amountNum = parseFloat(amount) || 0;
+  const amountWords = useMemo(() => (amountNum > 0 ? numberToWords(amountNum) : ''), [amountNum]);
+  const formattedAmount = amountNum > 0 ? formatNPR(amountNum) : '';
 
-  // Letterhead-image preview state
+  // Map form state → anchor template values. Anchors reference these with `{key}`.
+  const fieldValues = useMemo<Record<string, string>>(() => ({
+    ref_no: refNo,
+    invoice_number: invoiceNumber,
+    issue_date: formatDateDDMMYYYY(issueDate),
+    due_date: formatDateDDMMYYYY(dueDate),
+    amount: formattedAmount,
+    amount_words: amountWords,
+    recipient_name: recipientName,
+    recipient_org: recipientOrg,
+    service_for: serviceFor,
+    service_term: serviceTerm,
+    service_reference: serviceReference,
+    payee_name: payeeName,
+    bank_name: bankName,
+    bank_account: bankAccount,
+    signatory_name: signatoryName,
+    signatory_position: signatoryPosition,
+    description,
+    notes,
+    contract_id: contractData?.contract_id ?? '',
+    client_company_name: contractData?.client_company_name ?? '',
+    client_location: contractData?.client_location ?? '',
+  }), [
+    refNo, invoiceNumber, issueDate, dueDate, formattedAmount, amountWords,
+    recipientName, recipientOrg, serviceFor, serviceTerm, serviceReference,
+    payeeName, bankName, bankAccount, signatoryName, signatoryPosition,
+    description, notes, contractData,
+  ]);
+
+  // ─── Letterhead ───────────────────────────────────────────────────────────
   const [letterhead, setLetterhead] = useState<LetterheadConfig | null>(null);
   const [letterheadLoading, setLetterheadLoading] = useState(true);
   const [marginSaving, setMarginSaving] = useState(false);
   const marginSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Scaling: A4 page is 794×1123; we scale it to fit the available container width
+  // ─── Anchors + lock (localStorage-backed) ─────────────────────────────────
+  // We lazy-init from localStorage so the layout you spent time designing
+  // survives a reload without any database round-trip.
+  const initialLayout = useMemo(() => loadLayout(), []);
+  const [anchors, setAnchors] = useState<FieldAnchor[]>(initialLayout.anchors);
+  const [locked, setLocked] = useState<boolean>(initialLayout.locked);
+  const [designerMode, setDesignerMode] = useState(false);
+  const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
+  const [draggingAnchor, setDraggingAnchor] = useState<{
+    id: string; startMouseX: number; startMouseY: number; origX: number; origY: number;
+  } | null>(null);
+
+  // Auto-save: whenever the layout changes, persist to localStorage. No
+  // debounce needed — localStorage writes are sync and cheap.
+  useEffect(() => {
+    saveLayout({ anchors, locked });
+  }, [anchors, locked]);
+
+  // ─── Page scaling ─────────────────────────────────────────────────────────
   const pageContainerRef = useRef<HTMLDivElement | null>(null);
   const [autoScale, setAutoScale] = useState(1);
   const [zoomOverride, setZoomOverride] = useState<number | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+
   useEffect(() => {
     const el = pageContainerRef.current;
     if (!el) return;
@@ -138,7 +137,6 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       const r = entries[0]?.contentRect;
       if (!r) return;
       const wScale = (r.width - 24) / 794;
-      // In fullscreen, also fit height so the whole page is visible at once
       const hScale = (r.height - 24) / 1123;
       const fit = fullscreen ? Math.min(wScale, hScale) : wScale;
       setAutoScale(Math.min(2.0, Math.max(0.25, fit)));
@@ -150,181 +148,25 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   const zoomIn = () => setZoomOverride(Math.min(3.0, Math.round((pageScale + 0.1) * 100) / 100));
   const zoomOut = () => setZoomOverride(Math.max(0.25, Math.round((pageScale - 0.1) * 100) / 100));
   const zoomFit = () => setZoomOverride(null);
-  // ESC closes fullscreen / cancels insert mode
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (insertMode) setInsertMode(false);
-        else if (fullscreen) setFullscreen(false);
-        else if (selectedBoxId) setSelectedBoxId(null);
+        if (fullscreen) setFullscreen(false);
+        else if (selectedAnchorId) setSelectedAnchorId(null);
       }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fullscreen]);
+  }, [fullscreen, selectedAnchorId]);
 
-  // Free-position text inserts (Sejda-style "Add text" tool)
-  interface InsertBox {
-    id: string;
-    x: number; y: number;
-    width: number;
-    fontSize: number; // pt
-    text: string;
-  }
-  const INSERTS_KEY = 'cgap-rfp-inserts';
-  const [insertedBoxes, setInsertedBoxes] = useState<InsertBox[]>(() => {
-    try {
-      const raw = localStorage.getItem(INSERTS_KEY);
-      return raw ? (JSON.parse(raw) as InsertBox[]) : [];
-    } catch { return []; }
-  });
-  const [insertMode, setInsertMode] = useState(false);
-  const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
-  const [draggingBox, setDraggingBox] = useState<{ id: string; startMouseX: number; startMouseY: number; origX: number; origY: number } | null>(null);
+  // ─── PDF generation state ─────────────────────────────────────────────────
+  const [generating, setGenerating] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    try { localStorage.setItem(INSERTS_KEY, JSON.stringify(insertedBoxes)); } catch {}
-  }, [insertedBoxes]);
-
-  const handlePageClickForInsert = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!insertMode) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const pageEl = document.getElementById('rfp-printable');
-    if (!pageEl) return;
-    const rect = pageEl.getBoundingClientRect();
-    // Coordinates in unscaled page space (the page is 794×1123, the rect is scaled)
-    const x = Math.max(0, Math.min(794 - 60, (e.clientX - rect.left) / pageScale));
-    const y = Math.max(0, Math.min(1123 - 24, (e.clientY - rect.top) / pageScale));
-    const id = Math.random().toString(36).slice(2, 9);
-    setInsertedBoxes(prev => [...prev, { id, x, y, width: 220, fontSize: 11, text: '' }]);
-    setSelectedBoxId(id);
-    setInsertMode(false);
-    // Focus the new box's contenteditable on next tick
-    setTimeout(() => {
-      const el = document.querySelector<HTMLDivElement>(`[data-insert-id="${id}"] .insert-text-edit`);
-      if (el) { el.focus(); }
-    }, 0);
-  };
-
-  const startBoxDrag = (e: React.MouseEvent, box: InsertBox) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setSelectedBoxId(box.id);
-    setDraggingBox({
-      id: box.id,
-      startMouseX: e.clientX, startMouseY: e.clientY,
-      origX: box.x, origY: box.y,
-    });
-  };
-
-  useEffect(() => {
-    if (!draggingBox) return;
-    const onMove = (e: MouseEvent) => {
-      const dx = (e.clientX - draggingBox.startMouseX) / pageScale;
-      const dy = (e.clientY - draggingBox.startMouseY) / pageScale;
-      setInsertedBoxes(prev => prev.map(b => b.id === draggingBox.id
-        ? { ...b, x: Math.max(0, Math.min(794 - 40, draggingBox.origX + dx)), y: Math.max(0, Math.min(1123 - 16, draggingBox.origY + dy)) }
-        : b));
-    };
-    const onUp = () => setDraggingBox(null);
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    return () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-  }, [draggingBox, pageScale]);
-
-  const updateBoxText = (id: string, text: string) => {
-    setInsertedBoxes(prev => prev.map(b => b.id === id ? { ...b, text } : b));
-  };
-  const deleteBox = (id: string) => {
-    setInsertedBoxes(prev => prev.filter(b => b.id !== id));
-    if (selectedBoxId === id) setSelectedBoxId(null);
-  };
-  const updateBoxFontSize = (id: string, delta: number) => {
-    setInsertedBoxes(prev => prev.map(b => b.id === id
-      ? { ...b, fontSize: Math.max(6, Math.min(48, b.fontSize + delta)) } : b));
-  };
-
-  // Inline editable preview — TipTap mounted right inside the writable area
-  const previewEditor = useEditor({
-    extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
-      Underline,
-      Link.configure({ openOnClick: false, autolink: true }),
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-    ],
-    content: '',
-    editorProps: {
-      attributes: {
-        class: 'focus:outline-none prose prose-sm max-w-none text-[11pt] leading-[1.5]',
-      },
-    },
-  });
-
-  // Load saved body on first mount; if none, seed with default RFP body
-  // (merged with current form values so the user starts pre-filled).
-  //
-  // Backwards-compat guard: earlier versions of DEFAULT_RFP_BODY_HTML used
-  // literal `<<token>>`, which the HTML5 parser corrupted into text `<>` (the
-  // unknown `<token>` element was stripped by ProseMirror). If the saved
-  // content has zero detectable placeholders, treat it as corrupted and fall
-  // back to the (now properly entity-encoded) default.
-  const previewSeededRef = useRef(false);
-  useEffect(() => {
-    if (!previewEditor || previewSeededRef.current) return;
-    const saved = localStorage.getItem('cgap-editor-rfp');
-    const PLACEHOLDER_RE = /(<<|&lt;&lt;)\s*[\w_]+\s*(>>|&gt;&gt;)/;
-    const seed = saved && PLACEHOLDER_RE.test(saved) ? saved : DEFAULT_RFP_BODY_HTML;
-    previewEditor.commands.setContent(seed);
-    setEditorHtml(seed); // mirror immediately — setContent doesn't emit 'update'
-    previewSeededRef.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewEditor]);
-
-  // Mirror editor HTML into state so the merged view re-renders on every keystroke
-  const [editorHtml, setEditorHtml] = useState<string>('');
-  useEffect(() => {
-    if (!previewEditor) return;
-    const sync = () => {
-      const h = previewEditor.getHTML();
-      setEditorHtml(h);
-      try { localStorage.setItem('cgap-editor-rfp', h); } catch {}
-    };
-    previewEditor.on('update', sync);
-    // initial mirror after seed
-    sync();
-    return () => { previewEditor.off('update', sync); };
-  }, [previewEditor]);
-
-  // Toggle: live merged "preview" vs raw "edit" view. Default: preview ON.
-  const [showMerged, setShowMerged] = useState(true);
-
-  const refillFromForm = (opts: { skipConfirm?: boolean; clearInserts?: boolean } = {}) => {
-    if (!previewEditor) return;
-    const hasContent = previewEditor.getText().trim().length > 0;
-    if (!opts.skipConfirm && hasContent) {
-      const msg = opts.clearInserts
-        ? 'Reset the body to the default template AND remove all inserted text boxes? This can\'t be undone.'
-        : 'Reset the body to the default template? This will discard your current edits.';
-      if (!window.confirm(msg)) return;
-    }
-    previewEditor.commands.setContent(DEFAULT_RFP_BODY_HTML);
-    // setContent doesn't emit an 'update' event by default; mirror manually so
-    // the live preview re-renders with the fresh content.
-    setEditorHtml(DEFAULT_RFP_BODY_HTML);
-    try { localStorage.setItem('cgap-editor-rfp', DEFAULT_RFP_BODY_HTML); } catch {}
-    if (opts.clearInserts) setInsertedBoxes([]);
-    toast({
-      title: 'Reset to default',
-      description: opts.clearInserts ? 'Default body restored and inserts cleared.' : 'Default body restored. Form values fill <<placeholders>> at export.',
-    });
-  };
-
-  // Archive state
+  // ─── Archive (admin) ──────────────────────────────────────────────────────
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
 
@@ -334,11 +176,8 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       .from('rfp_submissions')
       .select('*')
       .order('created_at', { ascending: false });
-    if (e) {
-      console.error(e);
-    } else {
-      setSubmissions(data || []);
-    }
+    if (e) console.error(e);
+    else setSubmissions(data || []);
     setArchiveLoading(false);
   }, []);
 
@@ -346,10 +185,129 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     if (isAdmin) fetchSubmissions();
   }, [isAdmin, fetchSubmissions]);
 
+  // ─── Letterhead load ──────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    setLetterheadLoading(true);
+    fetchDefaultLetterhead('rfp')
+      .then((cfg) => { if (!cancelled) setLetterhead(cfg); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLetterheadLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // (Layout auto-saves to localStorage via the effect above. No Supabase
+  // round-trip — DDL access isn't available on the shared project.)
+
+  // ─── Anchor drag ──────────────────────────────────────────────────────────
+  const canEdit = isAdmin || !locked;
+
+  const startAnchorDrag = (e: React.MouseEvent, anchor: FieldAnchor) => {
+    if (!designerMode || !canEdit) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedAnchorId(anchor.id);
+    setDraggingAnchor({
+      id: anchor.id,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      origX: anchor.x,
+      origY: anchor.y,
+    });
+  };
+
+  useEffect(() => {
+    if (!draggingAnchor) return;
+    const onMove = (e: MouseEvent) => {
+      const dx = (e.clientX - draggingAnchor.startMouseX) / pageScale;
+      const dy = (e.clientY - draggingAnchor.startMouseY) / pageScale;
+      setAnchors((prev) => prev.map((a) => (a.id === draggingAnchor.id
+        ? {
+            ...a,
+            x: Math.max(0, Math.min(794 - 40, draggingAnchor.origX + dx)),
+            y: Math.max(0, Math.min(1123 - 16, draggingAnchor.origY + dy)),
+          }
+        : a)));
+    };
+    const onUp = () => setDraggingAnchor(null);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [draggingAnchor, pageScale]);
+
+  const updateAnchor = (id: string, patch: Partial<FieldAnchor>) => {
+    setAnchors((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+  };
+  const deleteAnchor = (id: string) => {
+    setAnchors((prev) => prev.filter((a) => a.id !== id));
+    if (selectedAnchorId === id) setSelectedAnchorId(null);
+  };
+  const addAnchor = () => {
+    const id = `custom_${Math.random().toString(36).slice(2, 7)}`;
+    const newAnchor: FieldAnchor = {
+      id,
+      x: 200,
+      y: 200,
+      width: 300,
+      fontSize: 11,
+      template: 'New text',
+    };
+    setAnchors((prev) => [...prev, newAnchor]);
+    setSelectedAnchorId(id);
+  };
+  const resetAnchorsToDefault = () => {
+    if (!window.confirm('Reset every anchor back to its default position and template? This discards your custom layout.')) return;
+    setAnchors(freshDefaultAnchors());
+    setSelectedAnchorId(null);
+  };
+
+  // ─── Margin nudger (admin) ────────────────────────────────────────────────
+  const nudgeMargin = useCallback((side: keyof LetterheadMargins, delta: number) => {
+    setLetterhead((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev.margins, [side]: Math.max(0, prev.margins[side] + delta) };
+      if (marginSaveTimerRef.current) clearTimeout(marginSaveTimerRef.current);
+      marginSaveTimerRef.current = setTimeout(async () => {
+        setMarginSaving(true);
+        const res = await saveLetterheadMargins('rfp', next);
+        setMarginSaving(false);
+        if (!res.ok) toast({ title: 'Margin save failed', description: res.error, variant: 'destructive' });
+      }, 600);
+      return { ...prev, margins: next };
+    });
+  }, [toast]);
+
+  /** Commit the current state. Layout (anchors + lock) is already in
+   *  localStorage via the auto-save effect, so this button only has to push
+   *  margins into Supabase (`document_templates.notes` via saveLetterheadMargins)
+   *  and surface a confirmation toast. */
+  const handleSaveAsDefault = async () => {
+    if (!letterhead) {
+      toast({ title: 'No letterhead', description: 'Configure a default letterhead first.', variant: 'destructive' });
+      return;
+    }
+    setMarginSaving(true);
+    const marginRes = await saveLetterheadMargins('rfp', letterhead.margins);
+    setMarginSaving(false);
+    if (!marginRes.ok) {
+      toast({ title: 'Margin save failed', description: marginRes.error, variant: 'destructive' });
+      return;
+    }
+    saveLayout({ anchors, locked });
+    toast({
+      title: 'Saved',
+      description: 'Layout is stored in this browser; margins synced to Supabase.',
+    });
+  };
+
+  // ─── Archive (admin) ──────────────────────────────────────────────────────
   const handleSaveToArchive = async () => {
     const companyName = (contractData?.client_company_name || recipientOrg).trim();
     if (!companyName) {
-      toast({ title: 'Recipient organization required', description: 'Type a recipient org or look up a contract first.', variant: 'destructive' });
+      toast({ title: 'Recipient organization required', variant: 'destructive' });
       return;
     }
     if (!invoiceNumber.trim() || !amountNum) {
@@ -357,8 +315,6 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       return;
     }
     setSaving(true);
-
-    // Find or create the client by company name (case-insensitive)
     const clientRes = await findOrCreateClient({
       company_name: companyName,
       contact_person: contractData?.client_coordinator || recipientName || null,
@@ -370,11 +326,9 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       toast({ title: 'Client save failed', description: clientRes.error, variant: 'destructive' });
       return;
     }
-
     const notesLine = contractData?.contract_id
       ? `Invoice ${invoiceNumber} · Amount ${formatNPR(amountNum)} · Due ${dueDate} · Contract ${contractData.contract_id}`
       : `Invoice ${invoiceNumber} · Amount ${formatNPR(amountNum)} · Due ${dueDate}`;
-
     const { error: e } = await supabase.from('rfp_submissions').insert({
       company_name: companyName,
       contact_person: contractData?.client_coordinator || recipientName || '—',
@@ -391,273 +345,84 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       reviewed_at: new Date().toISOString(),
     } as any);
     setSaving(false);
-    if (e) {
-      toast({ title: 'Save failed', description: e.message, variant: 'destructive' });
-    } else {
-      toast({
-        title: clientRes.created ? `Saved · new client created` : `Saved to archive`,
-        description: clientRes.created ? `"${clientRes.client.company_name}" added to clients.` : undefined,
-      });
+    if (e) toast({ title: 'Save failed', description: e.message, variant: 'destructive' });
+    else {
+      toast({ title: clientRes.created ? 'Saved · new client created' : 'Saved to archive' });
       fetchSubmissions();
     }
   };
 
-
-  const card = `rounded-xl p-5 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
-  const labelCls = `text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`;
-  const inputCls = `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border focus:border-emerald-500`;
-
-  const formatDateDDMMYYYY = (iso: string) => {
-    if (!iso) return '';
-    const [y, m, d] = iso.split('-');
-    return `${d}/${m}/${y}`;
-  };
-
-  const amountNum = parseFloat(amount) || 0;
-  const amountWords = useMemo(() => amountNum > 0 ? numberToWords(amountNum) : '', [amountNum]);
-  const formattedAmount = amountNum > 0 ? formatNPR(amountNum) : '';
-
-  const docxValues: RfpDocxData = useMemo(() => ({
-    ref_no: refNo,
-    invoice_number: invoiceNumber,
-    issue_date: formatDateDDMMYYYY(issueDate),
-    due_date: formatDateDDMMYYYY(dueDate),
-    amount: formattedAmount,
-    amount_words: amountWords,
-    recipient_name: recipientName,
-    recipient_org: recipientOrg,
-    service_for: serviceFor,
-    service_term: serviceTerm,
-    service_reference: serviceReference,
-    payee_name: payeeName,
-    bank_name: bankName,
-    bank_account: bankAccount,
-    signatory_name: signatoryName,
-    signatory_position: signatoryPosition,
-    description,
-    notes,
-    contract_id: contractData?.contract_id ?? '',
-    client_company_name: contractData?.client_company_name ?? '',
-    client_location: contractData?.client_location ?? '',
-  }), [refNo, invoiceNumber, issueDate, dueDate, formattedAmount, amountWords, recipientName, recipientOrg, serviceFor, serviceTerm, serviceReference, payeeName, bankName, bankAccount, signatoryName, signatoryPosition, description, notes, contractData]);
-
-  // Fetch letterhead config once on mount
-  useEffect(() => {
-    let cancelled = false;
-    setLetterheadLoading(true);
-    fetchDefaultLetterhead('rfp')
-      .then(cfg => { if (!cancelled) setLetterhead(cfg); })
-      .catch(() => { /* swallow — letterhead is optional */ })
-      .finally(() => { if (!cancelled) setLetterheadLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  // Live-subscribe to TipTap editor updates so body overlay refreshes
-  const placeholderValues = useMemo<Record<string, string>>(() => ({
-    ref_no: refNo,
-    invoice_number: invoiceNumber,
-    issue_date: formatDateDDMMYYYY(issueDate),
-    due_date: formatDateDDMMYYYY(dueDate),
-    amount: formattedAmount,
-    amount_words: amountWords,
-    recipient_name: recipientName,
-    recipient_org: recipientOrg,
-    service_for: serviceFor,
-    service_term: serviceTerm,
-    service_reference: serviceReference,
-    payee_name: payeeName,
-    bank_name: bankName,
-    bank_account: bankAccount,
-    signatory_name: signatoryName,
-    signatory_position: signatoryPosition,
-    description,
-    notes,
-    contract_id: contractData?.contract_id ?? '',
-    client_company_name: contractData?.client_company_name ?? '',
-    client_location: contractData?.client_location ?? '',
-  }), [refNo, invoiceNumber, issueDate, dueDate, formattedAmount, amountWords, recipientName, recipientOrg, serviceFor, serviceTerm, serviceReference, payeeName, bankName, bankAccount, signatoryName, signatoryPosition, description, notes, contractData]);
-
-
-  // Fetch docx template once (only if no letterhead override)
-  useEffect(() => {
-    if (letterhead) return; // letterhead path supersedes docx path
-    if (templateBufferRef.current) return;
-    let cancelled = false;
-    setTemplateLoading(true);
-    setTemplateError('');
-    fetchDefaultRfpTemplateBuffer()
-      .then(buf => { if (!cancelled) templateBufferRef.current = buf; })
-      .catch(e => { if (!cancelled) setTemplateError(e instanceof Error ? e.message : 'Template load failed'); })
-      .finally(() => { if (!cancelled) setTemplateLoading(false); });
-    return () => { cancelled = true; };
-  }, [contractData]);
-
-  // Debounced preview render via docx-preview (renders headers, footers, watermarks)
-  useEffect(() => {
-    if (letterhead) return; // letterhead path supersedes docx-preview path
-    if (!templateBufferRef.current) return;
-    setPreviewing(true);
-    const t = setTimeout(async () => {
-      try {
-        const merged = mergeRfpDocx(templateBufferRef.current!, docxValues);
-        const blob = new Blob([merged], {
-          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        });
-        const container = previewContainerRef.current;
-        if (!container) return;
-        container.innerHTML = '';
-        await renderAsync(blob, container, undefined, {
-          inWrapper: true,
-          ignoreWidth: false,
-          ignoreHeight: false,
-          ignoreFonts: false,
-          breakPages: true,
-          experimental: true,
-          useBase64URL: true,
-          renderHeaders: true,
-          renderFooters: true,
-          renderFootnotes: true,
-        });
-
-        // Fade watermark-like elements: large, absolutely-positioned images that
-        // span most of a page. Word's "Washout" should produce this effect in the
-        // source XML but isn't always honored by the docx parser.
-        container.querySelectorAll<HTMLElement>('section.docx').forEach((section) => {
-          const sectionRect = section.getBoundingClientRect();
-          section.querySelectorAll<HTMLElement>('img, svg').forEach((el) => {
-            const positioned = el.closest<HTMLElement>('[style*="position"]') ?? el;
-            const cs = window.getComputedStyle(positioned);
-            const r = el.getBoundingClientRect();
-            const isPositioned = cs.position === 'absolute' || cs.position === 'fixed';
-            const coversPage = r.width >= sectionRect.width * 0.4 && r.height >= sectionRect.height * 0.3;
-            if (isPositioned && coversPage) {
-              el.classList.add('rfp-watermark');
-            }
-          });
-        });
-
-        setTemplateError('');
-      } catch (e) {
-        setTemplateError(e instanceof Error ? e.message : 'Preview render failed');
-      } finally {
-        setPreviewing(false);
-      }
-    }, 400);
-    return () => clearTimeout(t);
-  }, [docxValues, contractData, templateLoading, letterhead]);
-
-  const autoGenerateInvoiceNo = () => {
-    const today = new Date();
-    const yymm = `${String(today.getFullYear()).slice(-2)}${String(today.getMonth() + 1).padStart(2, '0')}`;
-    const seq = String(Math.floor(Math.random() * 900) + 100);
-    setInvoiceNumber(`RfP-${yymm}-${seq}`);
-  };
-
-  const autoGenerateRefNo = () => setRefNo(String(Math.floor(Math.random() * 9000) + 1000));
-
-  // Pre-fill recipient from contract lookup
-  useEffect(() => {
-    if (contractData) {
-      if (!recipientOrg) setRecipientOrg(contractData.client_company_name || '');
-      if (!recipientName && contractData.client_coordinator) setRecipientName(contractData.client_coordinator);
-      if (!refNo) autoGenerateRefNo();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractData]);
-
-
-  const nudgeMargin = useCallback((side: keyof LetterheadMargins, delta: number) => {
-    setLetterhead(prev => {
-      if (!prev) return prev;
-      const next = { ...prev.margins, [side]: Math.max(0, prev.margins[side] + delta) };
-      if (marginSaveTimerRef.current) clearTimeout(marginSaveTimerRef.current);
-      marginSaveTimerRef.current = setTimeout(async () => {
-        setMarginSaving(true);
-        const res = await saveLetterheadMargins('rfp', next);
-        setMarginSaving(false);
-        if (!res.ok) toast({ title: 'Margin save failed', description: res.error, variant: 'destructive' });
-      }, 600);
-      return { ...prev, margins: next };
-    });
-  }, [toast]);
-
-  const handleGenerateDocx = async () => {
-    setError('');
-    if (!invoiceNumber.trim()) { setError('Invoice number required'); return; }
-    if (!recipientOrg.trim()) { setError('Recipient organization required'); return; }
-    if (!amountNum) { setError('Amount required'); return; }
-    if (!dueDate) { setError('Due date required'); return; }
-
-    setGeneratingDocx(true);
-    try {
-      const suffix = contractData?.contract_id ? `-${contractData.contract_id}` : '';
-      await generateRfpDocx(docxValues, `RfP-${invoiceNumber}${suffix}.docx`);
-      toast({ title: 'DOCX generated' });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to generate DOCX';
-      setError(msg);
-      toast({ title: 'DOCX generation failed', description: msg, variant: 'destructive' });
-    } finally {
-      setGeneratingDocx(false);
-    }
-  };
-
+  // ─── PDF generation ───────────────────────────────────────────────────────
   const handleGenerate = async () => {
     setError('');
     if (!invoiceNumber.trim()) { setError('Invoice number required'); return; }
     if (!recipientOrg.trim()) { setError('Recipient organization required'); return; }
     if (!amountNum) { setError('Amount required'); return; }
     if (!dueDate) { setError('Due date required'); return; }
+    if (!letterhead) { setError('Letterhead not configured'); return; }
 
     setGenerating(true);
     try {
-      const node = document.getElementById('rfp-printable');
-      if (!node) throw new Error('Preview missing');
+      // Preload the letterhead so html2canvas finds it cached.
+      await new Promise<void>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        img.src = letterhead.imageUrl;
+      });
 
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
+      // Build an offscreen 794×1123 page with letterhead + anchors filled.
+      const offscreen = document.createElement('div');
+      offscreen.style.cssText = [
+        'position: fixed',
+        'top: -10000px',
+        'left: 0',
+        'width: 794px',
+        'height: 1123px',
+        `background: #ffffff url("${letterhead.imageUrl}") no-repeat top center / 794px 1123px`,
+        'pointer-events: none',
+        'font-family: Calibri, Inter, sans-serif',
+        'color: #111',
+      ].join(';');
 
-      // In letterhead mode, capture the single page container directly.
-      // In docx-preview mode, capture each <section class="docx"> as a page.
-      const targets: HTMLElement[] = letterhead
-        ? [node]
-        : Array.from(node.querySelectorAll<HTMLElement>('section.docx'));
-      if (targets.length === 0) throw new Error('Preview not ready yet — wait a moment and try again');
+      anchors.forEach((a) => {
+        const el = document.createElement('div');
+        el.style.cssText = [
+          'position: absolute',
+          `left: ${a.x}px`,
+          `top: ${a.y}px`,
+          a.width > 0 ? `width: ${a.width}px` : '',
+          `font-size: ${a.fontSize}pt`,
+          a.fontWeight ? `font-weight: ${a.fontWeight}` : '',
+          a.fontStyle ? `font-style: ${a.fontStyle}` : '',
+          a.textDecoration ? `text-decoration: ${a.textDecoration}` : '',
+          a.textTransform ? `text-transform: ${a.textTransform}` : '',
+          a.align ? `text-align: ${a.align}` : '',
+          `line-height: ${a.lineHeight ?? 1.4}`,
+          `color: ${a.color ?? '#111'}`,
+          a.letterSpacing ? `letter-spacing: ${a.letterSpacing}px` : '',
+          'white-space: pre-wrap',
+        ].filter(Boolean).join(';');
+        el.textContent = renderAnchor(a.template, fieldValues);
+        offscreen.appendChild(el);
+      });
 
-      for (let i = 0; i < targets.length; i++) {
-        const canvas = await html2canvas(targets[i], {
+      document.body.appendChild(offscreen);
+      try {
+        const canvas = await html2canvas(offscreen, {
           scale: 2,
           backgroundColor: '#ffffff',
           useCORS: true,
-          // Pre-render hook: in the cloned doc we substitute placeholders into
-          // the editor's HTML and strip any CSS scale so the PDF captures the
-          // full-resolution A4 page, not the scaled preview.
-          onclone: (clonedDoc) => {
-            const clonedPage = clonedDoc.getElementById('rfp-printable');
-            if (clonedPage) (clonedPage.style as any).transform = 'none';
-            const body = clonedDoc.getElementById('rfp-editable-body');
-            if (body && previewEditor) {
-              body.innerHTML = mergePlaceholders(previewEditor.getHTML(), placeholderValues);
-            }
-            // Strip insert-box selection chrome AND merge placeholders inside each box
-            clonedDoc.querySelectorAll<HTMLElement>('[data-insert-id]').forEach((wrapper) => {
-              wrapper.classList.remove('insert-box-selected');
-              wrapper.querySelectorAll<HTMLElement>('button, [title="Drag to move"]').forEach((el) => el.remove());
-              wrapper.querySelectorAll<HTMLElement>('.insert-text-edit').forEach((el) => {
-                el.style.outline = 'none';
-                el.style.cursor = 'auto';
-                el.innerHTML = mergePlaceholders(el.innerHTML, placeholderValues);
-              });
-              // Remove any other absolutely-positioned decoration siblings
-              wrapper.querySelectorAll<HTMLElement>(':scope > div').forEach((el) => {
-                if (!el.classList.contains('insert-text-edit')) el.remove();
-              });
-            });
-          },
+          width: 794,
+          height: 1123,
+          windowWidth: 794,
+          windowHeight: 1123,
         });
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageW = pdf.internal.pageSize.getWidth();
+        const pageH = pdf.internal.pageSize.getHeight();
         const img = canvas.toDataURL('image/png');
-
         const widthRatio = pageW / canvas.width;
         const heightRatio = pageH / canvas.height;
         const ratio = Math.min(widthRatio, heightRatio);
@@ -665,13 +430,12 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
         const finalH = canvas.height * ratio;
         const offsetX = (pageW - finalW) / 2;
         const offsetY = (pageH - finalH) / 2;
-
-        if (i > 0) pdf.addPage();
         pdf.addImage(img, 'PNG', offsetX, offsetY, finalW, finalH);
+        const suffix = contractData?.contract_id ? `-${contractData.contract_id}` : '';
+        pdf.save(`RfP-${invoiceNumber}${suffix}.pdf`);
+      } finally {
+        document.body.removeChild(offscreen);
       }
-
-      const suffix = contractData?.contract_id ? `-${contractData.contract_id}` : '';
-      pdf.save(`RfP-${invoiceNumber}${suffix}.pdf`);
       setDone(true);
       setTimeout(() => setDone(false), 3000);
     } catch (e) {
@@ -680,6 +444,24 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       setGenerating(false);
     }
   };
+
+  // ─── Auto-fill helpers ────────────────────────────────────────────────────
+  const autoGenerateInvoiceNo = () => {
+    const today = new Date();
+    const yymm = `${String(today.getFullYear()).slice(-2)}${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const seq = String(Math.floor(Math.random() * 900) + 100);
+    setInvoiceNumber(`RfP-${yymm}-${seq}`);
+  };
+  const autoGenerateRefNo = () => setRefNo(String(Math.floor(Math.random() * 9000) + 1000));
+
+  useEffect(() => {
+    if (contractData) {
+      if (!recipientOrg) setRecipientOrg(contractData.client_company_name || '');
+      if (!recipientName && contractData.client_coordinator) setRecipientName(contractData.client_coordinator);
+      if (!refNo) autoGenerateRefNo();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractData]);
 
   const fillTest = () => {
     setContractId('WMA-NNBS-03-03-26-1');
@@ -697,8 +479,19 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     setNotes('Please process at the earliest convenience.');
   };
 
+  // ─── Styling shorthands ───────────────────────────────────────────────────
+  const card = `rounded-xl p-5 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
+  const labelCls = `text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`;
+  const inputCls = `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border focus:border-emerald-500`;
+
+  const selectedAnchor = useMemo(
+    () => anchors.find((a) => a.id === selectedAnchorId) ?? null,
+    [anchors, selectedAnchorId],
+  );
+
   return (
     <div className="space-y-5">
+      {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${ACCENT}20`, color: ACCENT }}>
@@ -706,7 +499,7 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
           </div>
           <div>
             <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-900'}`}>Request for Payment</h2>
-            <p className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-500'}`}>Generate a payment request linked to an existing contract</p>
+            <p className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-500'}`}>Fill the form — the letterhead fills in automatically.</p>
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={fillTest} className="gap-1.5" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
@@ -714,10 +507,10 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
         </Button>
       </div>
 
-      {/* Contract Lookup (optional) */}
+      {/* Contract lookup */}
       <div className={card}>
         <Label className={labelCls}>
-          Contract ID <span className="ml-1 text-[10px] normal-case font-normal text-gray-500">· optional — leave blank for a standalone RfP</span>
+          Contract ID <span className="ml-1 text-[10px] normal-case font-normal text-gray-500">· optional</span>
         </Label>
         <div className="relative mt-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" />
@@ -737,7 +530,6 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
             <Badge variant="secondary" style={{ color: ACCENT }}>{contractData.contract_id}</Badge>
             <span className={dm ? 'text-gray-300' : 'text-gray-700'}>{contractData.client_company_name}</span>
             {contractData.client_location && <span className={dm ? 'text-gray-500' : 'text-gray-500'}>· {contractData.client_location}</span>}
-            {contractData.payment_amount && <span className={dm ? 'text-gray-500' : 'text-gray-500'}>· Contract value: {formatNPR(Number(contractData.payment_amount))}</span>}
           </div>
         )}
       </div>
@@ -748,39 +540,39 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
           <div>
             <Label className={labelCls}>Ref. No</Label>
             <div className="flex gap-2 mt-2">
-              <Input value={refNo} onChange={e => setRefNo(e.target.value)} placeholder="980" className={inputCls} />
+              <Input value={refNo} onChange={(e) => setRefNo(e.target.value)} placeholder="980" className={inputCls} />
               <Button type="button" variant="outline" size="sm" onClick={autoGenerateRefNo} className="shrink-0">Auto</Button>
             </div>
           </div>
           <div>
             <Label className={labelCls}>Invoice / RfP Number</Label>
             <div className="flex gap-2 mt-2">
-              <Input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="RfP-2604-001" className={inputCls} />
+              <Input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="RfP-2604-001" className={inputCls} />
               <Button type="button" variant="outline" size="sm" onClick={autoGenerateInvoiceNo} className="shrink-0">Auto</Button>
             </div>
           </div>
           <div>
             <Label className={labelCls}>Letter Date</Label>
-            <Input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} className={`${inputCls} mt-2`} />
+            <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Due Date</Label>
-            <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className={`${inputCls} mt-2`} />
+            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Recipient Salutation / Title</Label>
-            <Input value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="The SOMTU" className={`${inputCls} mt-2`} />
+            <Input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="The SOMTU" className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Recipient Organization</Label>
-            <Input value={recipientOrg} onChange={e => setRecipientOrg(e.target.value)} placeholder="School Of Management Tribhuvan University" className={`${inputCls} mt-2`} />
+            <Input value={recipientOrg} onChange={(e) => setRecipientOrg(e.target.value)} placeholder="School Of Management Tribhuvan University" className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Amount (NRs.)</Label>
             <Input
               inputMode="numeric"
               value={amount}
-              onChange={e => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
+              onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
               placeholder="50000"
               className={`${inputCls} mt-2`}
             />
@@ -788,51 +580,47 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
           </div>
           <div>
             <Label className={labelCls}>Payee Name (in favor of)</Label>
-            <Input value={payeeName} onChange={e => setPayeeName(e.target.value)} className={`${inputCls} mt-2`} />
+            <Input value={payeeName} onChange={(e) => setPayeeName(e.target.value)} className={`${inputCls} mt-2`} />
           </div>
           <div className="md:col-span-2">
-            <Label className={labelCls}>Service / Subject (e.g. "domain and hosting services")</Label>
-            <Input value={serviceFor} onChange={e => setServiceFor(e.target.value)} className={`${inputCls} mt-2`} />
+            <Label className={labelCls}>Service / Subject</Label>
+            <Input value={serviceFor} onChange={(e) => setServiceFor(e.target.value)} className={`${inputCls} mt-2`} />
           </div>
           <div>
-            <Label className={labelCls}>Reference (e.g. "provided quotes")</Label>
-            <Input value={serviceReference} onChange={e => setServiceReference(e.target.value)} className={`${inputCls} mt-2`} />
+            <Label className={labelCls}>Reference</Label>
+            <Input value={serviceReference} onChange={(e) => setServiceReference(e.target.value)} className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Service Term</Label>
-            <Input value={serviceTerm} onChange={e => setServiceTerm(e.target.value)} placeholder="5 years (Domain and Hosting)" className={`${inputCls} mt-2`} />
+            <Input value={serviceTerm} onChange={(e) => setServiceTerm(e.target.value)} placeholder="5 years (Domain and Hosting)" className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Bank Name</Label>
-            <Input value={bankName} onChange={e => setBankName(e.target.value)} className={`${inputCls} mt-2`} />
+            <Input value={bankName} onChange={(e) => setBankName(e.target.value)} className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Account No.</Label>
-            <Input value={bankAccount} onChange={e => setBankAccount(e.target.value)} className={`${inputCls} mt-2`} />
+            <Input value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Signatory Name</Label>
-            <Input value={signatoryName} onChange={e => setSignatoryName(e.target.value)} className={`${inputCls} mt-2`} />
+            <Input value={signatoryName} onChange={(e) => setSignatoryName(e.target.value)} className={`${inputCls} mt-2`} />
           </div>
           <div>
             <Label className={labelCls}>Signatory Position</Label>
-            <Input value={signatoryPosition} onChange={e => setSignatoryPosition(e.target.value)} className={`${inputCls} mt-2`} />
+            <Input value={signatoryPosition} onChange={(e) => setSignatoryPosition(e.target.value)} className={`${inputCls} mt-2`} />
           </div>
           <div className="md:col-span-2">
-            <Label className={labelCls}>Additional Description (optional, shown on summary line)</Label>
-            <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
-              placeholder="e.g. Workspace subscription for May 2026 — 25 users"
-              className={inputCls} />
+            <Label className={labelCls}>Description (optional)</Label>
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={inputCls} />
           </div>
           <div className="md:col-span-2">
             <Label className={labelCls}>Notes (optional)</Label>
-            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={inputCls} />
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} />
           </div>
         </div>
 
-        {error && (
-          <p className="text-xs mt-3 text-red-500 flex items-center gap-1.5"><AlertCircle className="w-3 h-3" /> {error}</p>
-        )}
+        {error && <p className="text-xs mt-3 text-red-500 flex items-center gap-1.5"><AlertCircle className="w-3 h-3" /> {error}</p>}
 
         <div className="flex items-center gap-3 mt-5 flex-wrap">
           <Button onClick={handleGenerate} disabled={generating}
@@ -841,13 +629,6 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
               : done ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Downloaded</>
               : <><Download className="w-4 h-4 mr-2" /> Generate PDF</>}
           </Button>
-          {!letterhead && (
-            <Button onClick={handleGenerateDocx} disabled={generatingDocx} variant="outline">
-              {generatingDocx
-                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Generating…</>
-                : <><FileText className="w-4 h-4 mr-2" /> Generate DOCX</>}
-            </Button>
-          )}
           {isAdmin && (
             <Button variant="outline" onClick={handleSaveToArchive} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
@@ -860,7 +641,7 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
         </div>
       </div>
 
-      {/* Printable preview — Sejda-style editor (breaks out of inner card padding) */}
+      {/* Preview */}
       <div
         className={cn(
           'rounded-xl border overflow-hidden relative',
@@ -869,102 +650,112 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
           fullscreen && 'fixed inset-0 z-50 rounded-none flex flex-col',
         )}
       >
-        {/* Sticky toolbar */}
+        {/* Toolbar */}
         <div className={cn(
-          'sticky top-0 z-20 flex flex-wrap items-center gap-1 px-2 py-1.5 border-b',
+          'sticky top-0 z-20 flex flex-wrap items-center gap-2 px-3 py-1.5 border-b text-xs',
           dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200',
         )}>
-          <div className="flex items-center gap-2 mr-2 px-1.5">
-            <button
-              type="button"
-              onClick={() => setShowMerged(v => !v)}
-              title={showMerged ? 'Currently live preview — click to edit' : 'Currently editing — click to preview'}
-              className={cn(
-                'inline-flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium transition-colors',
-                showMerged
-                  ? (dm ? 'bg-emerald-900/40 text-emerald-300' : 'bg-emerald-100 text-emerald-700')
-                  : (dm ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'),
-              )}
-            >
-              {showMerged ? <Eye className="w-3.5 h-3.5" /> : <PenLine className="w-3.5 h-3.5" />}
-              {showMerged ? 'Preview' : 'Edit'}
-            </button>
-            {letterhead && <Badge variant="outline" className="text-[9px] h-4">{letterhead.name}</Badge>}
-            {letterheadLoading && <Loader2 className="w-3 h-3 animate-spin opacity-60" />}
-            {!letterhead && templateLoading && <Loader2 className="w-3 h-3 animate-spin opacity-60" />}
-            {!letterhead && !templateLoading && previewing && <Loader2 className="w-3 h-3 animate-spin opacity-60" />}
-          </div>
+          {letterheadLoading && <Loader2 className="w-3 h-3 animate-spin opacity-60" />}
+          {letterhead && <Badge variant="outline" className="text-[10px] h-5">{letterhead.name}</Badge>}
 
-          {letterhead && previewEditor && (
+          <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px]', dm ? 'text-gray-500' : 'text-gray-400')}>
+            <CheckCircle2 className="w-3 h-3" /> Layout auto-saved (this browser)
+          </span>
+
+          {isAdmin && (
             <>
               <span className="w-px h-4 bg-gray-400/30 mx-1" />
-              <ToolbarBtn dm={dm} title="Bold" active={previewEditor.isActive('bold')} onClick={() => previewEditor.chain().focus().toggleBold().run()}><Bold className="w-3.5 h-3.5" /></ToolbarBtn>
-              <ToolbarBtn dm={dm} title="Italic" active={previewEditor.isActive('italic')} onClick={() => previewEditor.chain().focus().toggleItalic().run()}><Italic className="w-3.5 h-3.5" /></ToolbarBtn>
-              <ToolbarBtn dm={dm} title="Underline" active={previewEditor.isActive('underline')} onClick={() => previewEditor.chain().focus().toggleUnderline().run()}><UnderlineIcon className="w-3.5 h-3.5" /></ToolbarBtn>
-              <ToolbarBtn dm={dm} title="Strike" active={previewEditor.isActive('strike')} onClick={() => previewEditor.chain().focus().toggleStrike().run()}><Strikethrough className="w-3.5 h-3.5" /></ToolbarBtn>
-              <span className="w-px h-4 bg-gray-400/30 mx-1" />
-              <ToolbarBtn dm={dm} title="H1" active={previewEditor.isActive('heading', { level: 1 })} onClick={() => previewEditor.chain().focus().toggleHeading({ level: 1 }).run()}><Heading1 className="w-3.5 h-3.5" /></ToolbarBtn>
-              <ToolbarBtn dm={dm} title="H2" active={previewEditor.isActive('heading', { level: 2 })} onClick={() => previewEditor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 className="w-3.5 h-3.5" /></ToolbarBtn>
-              <ToolbarBtn dm={dm} title="Bulleted list" active={previewEditor.isActive('bulletList')} onClick={() => previewEditor.chain().focus().toggleBulletList().run()}><List className="w-3.5 h-3.5" /></ToolbarBtn>
-              <ToolbarBtn dm={dm} title="Numbered list" active={previewEditor.isActive('orderedList')} onClick={() => previewEditor.chain().focus().toggleOrderedList().run()}><ListOrdered className="w-3.5 h-3.5" /></ToolbarBtn>
-              <span className="w-px h-4 bg-gray-400/30 mx-1" />
-              <ToolbarBtn dm={dm} title="Align left" active={previewEditor.isActive({ textAlign: 'left' })} onClick={() => previewEditor.chain().focus().setTextAlign('left').run()}><AlignLeft className="w-3.5 h-3.5" /></ToolbarBtn>
-              <ToolbarBtn dm={dm} title="Align center" active={previewEditor.isActive({ textAlign: 'center' })} onClick={() => previewEditor.chain().focus().setTextAlign('center').run()}><AlignCenter className="w-3.5 h-3.5" /></ToolbarBtn>
-              <ToolbarBtn dm={dm} title="Align right" active={previewEditor.isActive({ textAlign: 'right' })} onClick={() => previewEditor.chain().focus().setTextAlign('right').run()}><AlignRight className="w-3.5 h-3.5" /></ToolbarBtn>
-              <ToolbarBtn dm={dm} title="Justify" active={previewEditor.isActive({ textAlign: 'justify' })} onClick={() => previewEditor.chain().focus().setTextAlign('justify').run()}><AlignJustify className="w-3.5 h-3.5" /></ToolbarBtn>
-              <span className="w-px h-4 bg-gray-400/30 mx-1" />
-              <ToolbarBtn dm={dm} title="Undo" disabled={!previewEditor.can().undo()} onClick={() => previewEditor.chain().focus().undo().run()}><Undo className="w-3.5 h-3.5" /></ToolbarBtn>
-              <ToolbarBtn dm={dm} title="Redo" disabled={!previewEditor.can().redo()} onClick={() => previewEditor.chain().focus().redo().run()}><Redo className="w-3.5 h-3.5" /></ToolbarBtn>
-              <span className="w-px h-4 bg-gray-400/30 mx-1" />
               <button
                 type="button"
-                onClick={() => setInsertMode(v => !v)}
-                title="Insert text anywhere (Esc to cancel)"
+                onClick={() => setDesignerMode((v) => !v)}
+                disabled={locked && !isAdmin}
+                title="Designer mode — drag anchors to reposition, click one to edit its template"
                 className={cn(
-                  'inline-flex items-center gap-1 h-7 px-2 rounded text-xs transition-colors',
-                  insertMode
+                  'inline-flex items-center gap-1 h-7 px-2 rounded transition-colors',
+                  designerMode
                     ? 'bg-emerald-500 text-white'
-                    : (dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'),
+                    : (dm ? 'text-gray-300 hover:bg-gray-700 border border-gray-700' : 'text-gray-700 hover:bg-gray-100 border border-gray-300'),
                 )}
               >
-                <Type className="w-3.5 h-3.5" />
-                {insertMode ? 'Click on page…' : 'Insert text'}
+                <LayoutGrid className="w-3.5 h-3.5" />
+                {designerMode ? 'Designer ON' : 'Edit layout'}
               </button>
               <button
                 type="button"
-                onClick={() => refillFromForm()}
-                title="Restore the default RfP body. Confirms before discarding edits."
+                onClick={() => setLocked((v) => !v)}
+                title={locked ? 'Layout locked — non-admins cannot move anchors. Click to unlock.' : 'Lock layout so non-admins cannot move anchors.'}
                 className={cn(
-                  'inline-flex items-center gap-1 h-7 px-2 rounded text-xs transition-colors border',
-                  dm
-                    ? 'border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-gray-600'
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-100',
+                  'inline-flex items-center gap-1 h-7 px-2 rounded transition-colors',
+                  locked
+                    ? (dm ? 'bg-amber-900/40 text-amber-300' : 'bg-amber-100 text-amber-700')
+                    : (dm ? 'text-gray-300 hover:bg-gray-700 border border-gray-700' : 'text-gray-700 hover:bg-gray-100 border border-gray-300'),
                 )}
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Reset to default
+                {locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                {locked ? 'Locked' : 'Lock'}
               </button>
+              <button
+                type="button"
+                onClick={handleSaveAsDefault}
+                disabled={marginSaving}
+                title="Save current layout + margins as the default everyone gets on load"
+                className={cn(
+                  'inline-flex items-center gap-1 h-7 px-2 rounded font-medium transition-colors',
+                  dm ? 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-900/60' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200',
+                )}
+              >
+                {marginSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                Save as default
+              </button>
+              {designerMode && (
+                <>
+                  <button type="button" onClick={addAnchor}
+                    className={cn(
+                      'inline-flex items-center gap-1 h-7 px-2 rounded transition-colors',
+                      dm ? 'text-gray-300 hover:bg-gray-700 border border-gray-700' : 'text-gray-700 hover:bg-gray-100 border border-gray-300',
+                    )}>
+                    <Plus className="w-3.5 h-3.5" /> Add text
+                  </button>
+                  <button type="button" onClick={resetAnchorsToDefault}
+                    className={cn(
+                      'inline-flex items-center gap-1 h-7 px-2 rounded transition-colors',
+                      dm ? 'text-gray-300 hover:bg-gray-700 border border-gray-700' : 'text-gray-700 hover:bg-gray-100 border border-gray-300',
+                    )}>
+                    <RotateCcw className="w-3.5 h-3.5" /> Reset
+                  </button>
+                </>
+              )}
             </>
           )}
 
-          {/* Zoom + fullscreen — right side */}
+          {locked && !isAdmin && (
+            <span className={cn(
+              'inline-flex items-center gap-1 h-7 px-2 rounded text-[10px]',
+              dm ? 'bg-amber-900/40 text-amber-300' : 'bg-amber-100 text-amber-700',
+            )}>
+              <Lock className="w-3.5 h-3.5" /> Layout locked
+            </span>
+          )}
+
           <span className="flex-1" />
           <div className={cn('flex items-center gap-0.5 px-1 rounded', dm ? 'bg-gray-800' : 'bg-white border border-gray-200')}>
-            <ToolbarBtn dm={dm} title="Zoom out" onClick={zoomOut}><ZoomOut className="w-3.5 h-3.5" /></ToolbarBtn>
-            <button onClick={zoomFit} title="Fit width" className={cn('h-7 px-2 text-xs tabular-nums rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}>
+            <button onClick={zoomOut} className={cn('h-7 w-7 inline-flex items-center justify-center rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}><ZoomOut className="w-3.5 h-3.5" /></button>
+            <button onClick={zoomFit} className={cn('h-7 px-2 text-xs tabular-nums rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}>
               {Math.round(pageScale * 100)}%
             </button>
-            <ToolbarBtn dm={dm} title="Zoom in" onClick={zoomIn}><ZoomIn className="w-3.5 h-3.5" /></ToolbarBtn>
+            <button onClick={zoomIn} className={cn('h-7 w-7 inline-flex items-center justify-center rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}><ZoomIn className="w-3.5 h-3.5" /></button>
           </div>
-          <ToolbarBtn dm={dm} title={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'} onClick={() => setFullscreen(!fullscreen)}>
+          <button onClick={() => setFullscreen(!fullscreen)} className={cn('h-7 w-7 inline-flex items-center justify-center rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}>
             {fullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-          </ToolbarBtn>
+          </button>
           {fullscreen && (
-            <ToolbarBtn dm={dm} title="Close" onClick={() => setFullscreen(false)}><X className="w-3.5 h-3.5" /></ToolbarBtn>
+            <button onClick={() => setFullscreen(false)} className={cn('h-7 w-7 inline-flex items-center justify-center rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}>
+              <X className="w-3.5 h-3.5" />
+            </button>
           )}
         </div>
 
-        {/* Margins nudger (admin only, letterhead only) */}
+        {/* Margins nudger (admin) */}
         {letterhead && isAdmin && (
           <div className={cn(
             'flex flex-wrap items-center gap-2 px-3 py-1.5 border-b text-[11px]',
@@ -976,9 +767,9 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
               return (
                 <div key={side} className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded', dm ? 'bg-gray-800' : 'bg-white border border-gray-200')}>
                   <Icon className="w-3 h-3 opacity-60" />
-                  <button type="button" onClick={() => nudgeMargin(side, -8)} className={cn('w-5 h-5 rounded inline-flex items-center justify-center', dm ? 'hover:bg-gray-700' : 'hover:bg-gray-100')} title="Decrease 8px"><Minus className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => nudgeMargin(side, -8)} className={cn('w-5 h-5 rounded inline-flex items-center justify-center', dm ? 'hover:bg-gray-700' : 'hover:bg-gray-100')}><Minus className="w-3 h-3" /></button>
                   <span className="tabular-nums w-8 text-center font-medium">{letterhead.margins[side]}</span>
-                  <button type="button" onClick={() => nudgeMargin(side, 8)} className={cn('w-5 h-5 rounded inline-flex items-center justify-center', dm ? 'hover:bg-gray-700' : 'hover:bg-gray-100')} title="Increase 8px"><Plus className="w-3 h-3" /></button>
+                  <button type="button" onClick={() => nudgeMargin(side, 8)} className={cn('w-5 h-5 rounded inline-flex items-center justify-center', dm ? 'hover:bg-gray-700' : 'hover:bg-gray-100')}><Plus className="w-3 h-3" /></button>
                 </div>
               );
             })}
@@ -986,11 +777,146 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
           </div>
         )}
 
-        {templateError && !letterhead && (
-          <p className="text-xs text-red-500 flex items-center gap-1.5 px-3 py-2"><AlertCircle className="w-3 h-3" /> {templateError}</p>
+        {/* Anchor inspector (designer mode + selected) */}
+        {designerMode && selectedAnchor && (
+          <div className={cn(
+            'flex flex-wrap items-center gap-2 px-3 py-2 border-b text-[11px]',
+            dm ? 'bg-gray-900 border-gray-800 text-gray-300' : 'bg-emerald-50 border-emerald-200 text-gray-700',
+          )}>
+            <span className="font-medium">{selectedAnchor.id}</span>
+            <input
+              type="text"
+              value={selectedAnchor.template}
+              onChange={(e) => updateAnchor(selectedAnchor.id, { template: e.target.value })}
+              placeholder="Template — use {field_name} for form values"
+              className={cn('flex-1 min-w-[200px] px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+            />
+            <label className="inline-flex items-center gap-1">
+              <span>Size</span>
+              <input
+                type="number"
+                value={selectedAnchor.fontSize}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { fontSize: Math.max(6, Math.min(48, parseInt(e.target.value) || 11)) })}
+                className={cn('w-14 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+              />pt
+            </label>
+            <label className="inline-flex items-center gap-1">
+              <span>W</span>
+              <input
+                type="number"
+                value={selectedAnchor.width}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { width: Math.max(0, parseInt(e.target.value) || 0) })}
+                className={cn('w-16 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+              />px
+            </label>
+            <label className="inline-flex items-center gap-1" title="Line spacing (1 = tight, 1.4 = default, 2 = double)">
+              <span>Line</span>
+              <input
+                type="number"
+                step="0.1"
+                min={0.8}
+                max={4}
+                value={selectedAnchor.lineHeight ?? 1.4}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { lineHeight: Math.max(0.8, Math.min(4, parseFloat(e.target.value) || 1.4)) })}
+                className={cn('w-14 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+              />
+            </label>
+            <label className="inline-flex items-center gap-1" title="Letter spacing in px">
+              <span>Spacing</span>
+              <input
+                type="number"
+                step="0.1"
+                value={selectedAnchor.letterSpacing ?? 0}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { letterSpacing: parseFloat(e.target.value) || 0 })}
+                className={cn('w-14 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => updateAnchor(selectedAnchor.id, { fontWeight: selectedAnchor.fontWeight === 'bold' ? 'normal' : 'bold' })}
+              title="Bold"
+              className={cn('h-6 px-2 rounded border', selectedAnchor.fontWeight === 'bold' ? 'bg-emerald-500 text-white border-emerald-500' : (dm ? 'border-gray-700' : 'border-gray-300'))}
+            >
+              <strong>B</strong>
+            </button>
+            <button
+              type="button"
+              onClick={() => updateAnchor(selectedAnchor.id, { fontStyle: selectedAnchor.fontStyle === 'italic' ? 'normal' : 'italic' })}
+              title="Italic"
+              className={cn('h-6 px-2 rounded border italic', selectedAnchor.fontStyle === 'italic' ? 'bg-emerald-500 text-white border-emerald-500' : (dm ? 'border-gray-700' : 'border-gray-300'))}
+            >
+              I
+            </button>
+            <button
+              type="button"
+              onClick={() => updateAnchor(selectedAnchor.id, { textDecoration: selectedAnchor.textDecoration === 'underline' ? 'none' : 'underline' })}
+              title="Underline"
+              className={cn('h-6 px-2 rounded border underline', selectedAnchor.textDecoration === 'underline' ? 'bg-emerald-500 text-white border-emerald-500' : (dm ? 'border-gray-700' : 'border-gray-300'))}
+            >
+              U
+            </button>
+            <button
+              type="button"
+              onClick={() => updateAnchor(selectedAnchor.id, { textTransform: selectedAnchor.textTransform === 'uppercase' ? 'none' : 'uppercase' })}
+              title="UPPERCASE"
+              className={cn('h-6 px-2 rounded border text-[10px] font-semibold', selectedAnchor.textTransform === 'uppercase' ? 'bg-emerald-500 text-white border-emerald-500' : (dm ? 'border-gray-700' : 'border-gray-300'))}
+            >
+              AA
+            </button>
+            <button
+              type="button"
+              onClick={() => updateAnchor(selectedAnchor.id, { align: 'left' })}
+              title="Align left"
+              className={cn('h-6 w-6 rounded border inline-flex items-center justify-center', selectedAnchor.align === 'left' ? 'bg-emerald-500 text-white border-emerald-500' : (dm ? 'border-gray-700' : 'border-gray-300'))}
+            ><AlignLeft className="w-3 h-3" /></button>
+            <button
+              type="button"
+              onClick={() => updateAnchor(selectedAnchor.id, { align: 'center' })}
+              title="Align center"
+              className={cn('h-6 w-6 rounded border inline-flex items-center justify-center', selectedAnchor.align === 'center' ? 'bg-emerald-500 text-white border-emerald-500' : (dm ? 'border-gray-700' : 'border-gray-300'))}
+            ><AlignCenter className="w-3 h-3" /></button>
+            <button
+              type="button"
+              onClick={() => updateAnchor(selectedAnchor.id, { align: 'right' })}
+              title="Align right"
+              className={cn('h-6 w-6 rounded border inline-flex items-center justify-center', selectedAnchor.align === 'right' ? 'bg-emerald-500 text-white border-emerald-500' : (dm ? 'border-gray-700' : 'border-gray-300'))}
+            ><AlignRight className="w-3 h-3" /></button>
+            <label className="inline-flex items-center gap-1" title="Text colour">
+              <span>Color</span>
+              <input
+                type="color"
+                value={selectedAnchor.color ?? '#111111'}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { color: e.target.value })}
+                className="h-6 w-8 rounded border cursor-pointer"
+              />
+            </label>
+            <label className="inline-flex items-center gap-1" title="X/Y position in pixels on the 794×1123 page">
+              <span>X</span>
+              <input
+                type="number"
+                value={selectedAnchor.x}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { x: Math.max(0, parseInt(e.target.value) || 0) })}
+                className={cn('w-14 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+              />
+              <span>Y</span>
+              <input
+                type="number"
+                value={selectedAnchor.y}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { y: Math.max(0, parseInt(e.target.value) || 0) })}
+                className={cn('w-14 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => deleteAnchor(selectedAnchor.id)}
+              className="inline-flex items-center gap-1 h-6 px-2 rounded text-red-500 border border-red-300 hover:bg-red-50"
+            >
+              <Trash2 className="w-3 h-3" /> Delete
+            </button>
+          </div>
         )}
 
-        {/* Page canvas (gray bg, centered page with shadow) */}
+        {/* Page canvas */}
         <div
           ref={pageContainerRef}
           className={cn(
@@ -999,6 +925,7 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
             fullscreen ? 'flex-1' : '',
           )}
           style={fullscreen ? undefined : { maxHeight: '80vh', minHeight: 320 }}
+          onClick={() => setSelectedAnchorId(null)}
         >
           {letterhead ? (
             <div
@@ -1011,11 +938,9 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
             >
               <div
                 id="rfp-printable"
-                className="rfp-letterhead-page"
                 style={{
                   position: 'absolute',
-                  top: 0,
-                  left: 0,
+                  top: 0, left: 0,
                   width: '794px',
                   height: '1123px',
                   transform: `scale(${pageScale})`,
@@ -1026,174 +951,61 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
                   backgroundRepeat: 'no-repeat',
                   backgroundPosition: 'center top',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.10)',
+                  fontFamily: 'Calibri, Inter, sans-serif',
+                  color: '#111',
                 }}
               >
-                <div
-                  id="rfp-editable-body"
-                  className="rfp-letterhead-body"
-                  style={{
-                    position: 'absolute',
-                    top: `${letterhead.margins.top}px`,
-                    right: `${letterhead.margins.right}px`,
-                    bottom: `${letterhead.margins.bottom}px`,
-                    left: `${letterhead.margins.left}px`,
-                    overflow: 'auto',
-                    color: '#111',
-                    fontFamily: 'Calibri, Inter, sans-serif',
-                    fontSize: '11pt',
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {showMerged ? (
-                    <div
-                      onClick={() => setShowMerged(false)}
-                      title="Click to edit"
-                      style={{ cursor: 'text', minHeight: '100%' }}
-                      dangerouslySetInnerHTML={{ __html: mergePlaceholders(editorHtml, placeholderValues) }}
-                    />
-                  ) : (
-                    <EditorContent editor={previewEditor} />
-                  )}
-                </div>
-
-                {/* Free-position inserted text boxes (rendered on top, captured in PDF) */}
-                {insertedBoxes.map(box => {
-                  const isSelected = selectedBoxId === box.id;
+                {anchors.map((a) => {
+                  const isSelected = selectedAnchorId === a.id;
+                  const rendered = renderAnchor(a.template, fieldValues);
                   return (
                     <div
-                      key={box.id}
-                      data-insert-id={box.id}
-                      onClick={(e) => { e.stopPropagation(); setSelectedBoxId(box.id); }}
+                      key={a.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (designerMode) setSelectedAnchorId(a.id);
+                      }}
+                      onMouseDown={(e) => {
+                        if (designerMode) startAnchorDrag(e, a);
+                      }}
                       style={{
                         position: 'absolute',
-                        left: box.x,
-                        top: box.y,
-                        width: box.width,
-                        minHeight: 18,
-                        zIndex: 5,
-                        // Selection ring is visual-only — stripped at PDF capture via data attribute
+                        left: a.x,
+                        top: a.y,
+                        width: a.width > 0 ? a.width : undefined,
+                        minHeight: 16,
+                        fontSize: `${a.fontSize}pt`,
+                        fontWeight: a.fontWeight,
+                        fontStyle: a.fontStyle,
+                        textDecoration: a.textDecoration,
+                        textTransform: a.textTransform,
+                        textAlign: a.align,
+                        lineHeight: a.lineHeight ?? 1.4,
+                        color: a.color ?? '#111',
+                        letterSpacing: a.letterSpacing ? `${a.letterSpacing}px` : undefined,
+                        whiteSpace: 'pre-wrap',
+                        cursor: designerMode && canEdit ? 'move' : 'default',
+                        padding: '1px 3px',
+                        outline: isSelected ? '2px solid #10B981' : (designerMode ? '1px dashed rgba(16, 185, 129, 0.4)' : 'none'),
+                        outlineOffset: 1,
+                        userSelect: designerMode ? 'none' : 'auto',
                       }}
-                      className={isSelected ? 'insert-box-selected' : undefined}
                     >
-                      {isSelected && (
-                        <>
-                          <div
-                            onMouseDown={(e) => startBoxDrag(e, box)}
-                            title="Drag to move"
-                            style={{
-                              position: 'absolute', top: -10, left: -10,
-                              width: 18, height: 18, background: '#10B981',
-                              color: '#fff', borderRadius: 4, cursor: 'move',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-                              zIndex: 6,
-                            }}
-                          >
-                            <Move className="w-3 h-3" />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); deleteBox(box.id); }}
-                            title="Delete"
-                            style={{
-                              position: 'absolute', top: -10, right: -10,
-                              width: 18, height: 18, background: '#ef4444',
-                              color: '#fff', borderRadius: 4, border: 'none', cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-                              fontSize: 11, lineHeight: 1, padding: 0,
-                              zIndex: 6,
-                            }}
-                          >
-                            ×
-                          </button>
-                          <div style={{ position: 'absolute', bottom: -22, left: 0, display: 'flex', gap: 4, zIndex: 6 }}>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); updateBoxFontSize(box.id, -1); }} className="bg-white border text-xs h-5 w-5 rounded shadow-sm">−</button>
-                            <span className="text-[10px] px-1 bg-white border rounded shadow-sm h-5 inline-flex items-center tabular-nums">{box.fontSize}pt</span>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); updateBoxFontSize(box.id, 1); }} className="bg-white border text-xs h-5 w-5 rounded shadow-sm">+</button>
-                          </div>
-                        </>
-                      )}
-                      {showMerged ? (
-                        // Preview mode: dangerouslySetInnerHTML re-renders reactively on form changes
-                        <div
-                          className="insert-text-edit"
-                          onClick={() => setShowMerged(false)}
-                          title="Click to edit"
-                          style={{
-                            outline: isSelected ? '1px dashed #10B981' : '1px dashed transparent',
-                            outlineOffset: 2,
-                            padding: '1px 3px',
-                            minHeight: 16,
-                            fontSize: `${box.fontSize}pt`,
-                            fontFamily: 'Calibri, Inter, sans-serif',
-                            color: '#111',
-                            lineHeight: 1.35,
-                            cursor: 'pointer',
-                            background: 'transparent',
-                          }}
-                          dangerouslySetInnerHTML={{ __html: mergePlaceholders(box.text, placeholderValues) || '<span style="opacity:0.4">(empty)</span>' }}
-                        />
-                      ) : (
-                        // Edit mode: uncontrolled contenteditable, initial HTML set once via ref
-                        <div
-                          className="insert-text-edit"
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={(e) => updateBoxText(box.id, e.currentTarget.innerHTML)}
-                          ref={(el) => {
-                            if (!el) return;
-                            if (el.getAttribute('data-init') !== 'yes') {
-                              el.innerHTML = box.text;
-                              el.setAttribute('data-init', 'yes');
-                            }
-                          }}
-                          style={{
-                            outline: isSelected ? '1px dashed #10B981' : '1px dashed transparent',
-                            outlineOffset: 2,
-                            padding: '1px 3px',
-                            minHeight: 16,
-                            fontSize: `${box.fontSize}pt`,
-                            fontFamily: 'Calibri, Inter, sans-serif',
-                            color: '#111',
-                            lineHeight: 1.35,
-                            cursor: 'text',
-                            background: 'transparent',
-                          }}
-                        />
-                      )}
+                      {rendered || (designerMode ? <span style={{ opacity: 0.4, fontStyle: 'italic' }}>{a.id}</span> : null)}
                     </div>
                   );
                 })}
-
-                {/* Insert-mode overlay: captures clicks anywhere on the page */}
-                {insertMode && (
-                  <div
-                    onClick={handlePageClickForInsert}
-                    title="Click to insert a text box"
-                    style={{
-                      position: 'absolute', inset: 0,
-                      cursor: 'crosshair',
-                      zIndex: 20,
-                      background: 'rgba(16, 185, 129, 0.06)',
-                      border: '2px dashed rgba(16, 185, 129, 0.4)',
-                    }}
-                  />
-                )}
               </div>
             </div>
           ) : (
-            <div
-              id="rfp-printable"
-              ref={previewContainerRef}
-              className="rfp-docx-preview"
-              style={{ transform: `scale(${pageScale})`, transformOrigin: 'top center' }}
-            />
+            <div className={`text-center py-12 text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+              {letterheadLoading ? 'Loading letterhead…' : 'No letterhead configured. Add one in CGAP → Settings → Templates.'}
+            </div>
           )}
         </div>
       </div>
 
-      {/* RfP Archive (admin only) */}
+      {/* Archive (admin) */}
       {isAdmin && (
         <div className={card}>
           <div className="flex items-center justify-between mb-3">
@@ -1249,11 +1061,8 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
                               .from('rfp_submissions')
                               .update({ pdf_path: path } as any)
                               .eq('id', s.id);
-                            if (e) {
-                              toast({ title: 'Error', description: e.message, variant: 'destructive' });
-                            } else {
-                              fetchSubmissions();
-                            }
+                            if (e) toast({ title: 'Error', description: e.message, variant: 'destructive' });
+                            else fetchSubmissions();
                           }}
                         />
                       </td>
