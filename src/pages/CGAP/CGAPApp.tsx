@@ -93,6 +93,12 @@ const CGAPApp: React.FC = () => {
                 activeTab === 'amendment' ? 'Amendment' :
                 'Request for Payment'
               }
+              templateType={
+                activeTab === 'contract' ? 'contract' :
+                activeTab === 'addendum' ? 'addendum' :
+                activeTab === 'rfp' ? 'rfp' :
+                undefined
+              }
               darkMode
             />
           </div>

@@ -9,9 +9,11 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   FileText, Upload, Link as LinkIcon, Trash2, Star, ExternalLink,
-  Loader2, Plus, AlertCircle, CheckCircle2, FileType,
+  Loader2, Plus, AlertCircle, CheckCircle2, FileType, Image as ImageIcon, Wand2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { DEFAULT_MARGINS, encodeMarginsToNotes, decodeMarginsFromNotes, isLetterheadStoragePath, type LetterheadMargins } from '@/utils/letterheadTemplate';
+import LetterheadComposer from './LetterheadComposer';
 
 const BUCKET = 'templates';
 const TYPES = [
@@ -21,13 +23,13 @@ const TYPES = [
 ] as const;
 
 type TemplateType = typeof TYPES[number]['value'];
-type SourceKind = 'docx' | 'gdoc';
+type SourceKind = 'docx' | 'gdoc' | 'letterhead_image';
 
 interface Template {
   id: string;
   name: string;
   template_type: TemplateType;
-  source_kind: SourceKind;
+  source_kind: SourceKind | string;
   storage_path: string | null;
   gdoc_url: string | null;
   is_default: boolean;
@@ -49,6 +51,7 @@ const TemplateManager: React.FC<Props> = ({ darkMode = false }) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
 
   // form
   const [name, setName] = useState('');
@@ -57,6 +60,7 @@ const TemplateManager: React.FC<Props> = ({ darkMode = false }) => {
   const [gdocUrl, setGdocUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [margins, setMargins] = useState<LetterheadMargins>(DEFAULT_MARGINS);
 
   const card = `rounded-xl p-5 border ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'}`;
   const labelCls = `text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`;
@@ -93,6 +97,7 @@ const TemplateManager: React.FC<Props> = ({ darkMode = false }) => {
     setGdocUrl('');
     setNotes('');
     setPendingFile(null);
+    setMargins(DEFAULT_MARGINS);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -104,6 +109,16 @@ const TemplateManager: React.FC<Props> = ({ darkMode = false }) => {
     }
     if (sourceKind === 'docx' && pendingFile && pendingFile.size > 20 * 1024 * 1024) {
       return 'File must be under 20 MB';
+    }
+    if (sourceKind === 'letterhead_image') {
+      if (!pendingFile) return 'Choose a PNG or JPG image';
+      if (!/\.(png|jpe?g)$/i.test(pendingFile.name)) return 'Image must be PNG or JPG';
+      if (pendingFile.size > 10 * 1024 * 1024) return 'Image must be under 10 MB';
+      const m = margins;
+      if (!Number.isFinite(m.top) || !Number.isFinite(m.right) || !Number.isFinite(m.bottom) || !Number.isFinite(m.left)) {
+        return 'Margins must be numbers';
+      }
+      if (m.top < 0 || m.right < 0 || m.bottom < 0 || m.left < 0) return 'Margins cannot be negative';
     }
     if (sourceKind === 'gdoc') {
       if (!gdocUrl.trim()) return 'Google Docs link is required';
@@ -133,15 +148,35 @@ const TemplateManager: React.FC<Props> = ({ darkMode = false }) => {
           });
         if (upErr) throw upErr;
         storagePath = path;
+      } else if (sourceKind === 'letterhead_image' && pendingFile) {
+        const safeName = name.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+        const ext = pendingFile.name.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+        const path = `${type}/letterhead-${safeName}-${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from(BUCKET)
+          .upload(path, pendingFile, {
+            contentType: pendingFile.type || (ext === 'png' ? 'image/png' : 'image/jpeg'),
+            upsert: false,
+          });
+        if (upErr) throw upErr;
+        storagePath = path;
       }
+
+      const finalNotes = sourceKind === 'letterhead_image'
+        ? encodeMarginsToNotes(margins, notes.trim())
+        : (notes.trim() || null);
+
+      // DB CHECK constraint only permits 'docx' or 'gdoc'. Letterhead images
+      // piggyback on 'docx'; readers disambiguate via storage_path extension.
+      const dbSourceKind = sourceKind === 'letterhead_image' ? 'docx' : sourceKind;
 
       const { error: dbErr } = await supabase.from('document_templates').insert({
         name: name.trim(),
         template_type: type,
-        source_kind: sourceKind,
+        source_kind: dbSourceKind,
         storage_path: storagePath,
         gdoc_url: sourceKind === 'gdoc' ? gdocUrl.trim() : null,
-        notes: notes.trim() || null,
+        notes: finalNotes,
         created_by: currentUsername,
       } as any);
 
@@ -208,10 +243,16 @@ const TemplateManager: React.FC<Props> = ({ darkMode = false }) => {
     <div className="space-y-5">
       {/* Add form */}
       <div className={card}>
-        <div className="flex items-center gap-2 mb-4">
-          <Plus className="w-4 h-4" />
-          <h3 className={`text-sm font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Add Template</h3>
+        <div className="flex items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2">
+            <Plus className="w-4 h-4" />
+            <h3 className={`text-sm font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Add Template</h3>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setComposerOpen(true)} className="gap-1.5 h-7 text-xs">
+            <Wand2 className="w-3 h-3" /> Compose Letterhead
+          </Button>
         </div>
+        <LetterheadComposer open={composerOpen} onOpenChange={setComposerOpen} onSaved={fetchTemplates} />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -241,12 +282,13 @@ const TemplateManager: React.FC<Props> = ({ darkMode = false }) => {
               <SelectTrigger className="mt-2"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="docx">Upload .docx file</SelectItem>
+                <SelectItem value="letterhead_image">Letterhead image (PNG/JPG)</SelectItem>
                 <SelectItem value="gdoc">Google Docs link</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {sourceKind === 'docx' ? (
+          {sourceKind === 'docx' && (
             <div>
               <Label className={labelCls}>File (.docx, ≤20 MB)</Label>
               <div className="flex gap-2 mt-2">
@@ -263,7 +305,58 @@ const TemplateManager: React.FC<Props> = ({ darkMode = false }) => {
                 </Button>
               </div>
             </div>
-          ) : (
+          )}
+
+          {sourceKind === 'letterhead_image' && (
+            <>
+              <div>
+                <Label className={labelCls}>Image (PNG/JPG, ≤10 MB) — A4 portrait recommended</Label>
+                <div className="flex gap-2 mt-2">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    className="hidden"
+                    onChange={e => setPendingFile(e.target.files?.[0] || null)}
+                  />
+                  <Button type="button" variant="outline" onClick={() => fileRef.current?.click()} className="flex-1 justify-start">
+                    <ImageIcon className="w-3.5 h-3.5 mr-2" />
+                    {pendingFile ? pendingFile.name : 'Choose image…'}
+                  </Button>
+                </div>
+              </div>
+              <div className="md:col-span-2">
+                <Label className={labelCls}>Writable-area margins (px on 794×1123 A4)</Label>
+                <div className="grid grid-cols-4 gap-2 mt-2">
+                  <div>
+                    <span className="text-[10px] text-gray-500">Top</span>
+                    <Input type="number" min={0} value={margins.top}
+                      onChange={e => setMargins({ ...margins, top: Number(e.target.value) || 0 })} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-500">Right</span>
+                    <Input type="number" min={0} value={margins.right}
+                      onChange={e => setMargins({ ...margins, right: Number(e.target.value) || 0 })} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-500">Bottom</span>
+                    <Input type="number" min={0} value={margins.bottom}
+                      onChange={e => setMargins({ ...margins, bottom: Number(e.target.value) || 0 })} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-500">Left</span>
+                    <Input type="number" min={0} value={margins.left}
+                      onChange={e => setMargins({ ...margins, left: Number(e.target.value) || 0 })} />
+                  </div>
+                </div>
+                <p className={`text-[10px] mt-1 ${dm ? 'text-gray-500' : 'text-gray-500'}`}>
+                  Top should clear your logo/header; bottom should clear your footer. Default {DEFAULT_MARGINS.top}/{DEFAULT_MARGINS.right}/{DEFAULT_MARGINS.bottom}/{DEFAULT_MARGINS.left}.
+                </p>
+              </div>
+            </>
+          )}
+
+          {sourceKind === 'gdoc' && (
             <div>
               <Label className={labelCls}>Google Docs Link</Label>
               <Input
@@ -318,14 +411,19 @@ const TemplateManager: React.FC<Props> = ({ darkMode = false }) => {
               <p className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>No templates yet.</p>
             ) : (
               <div className="space-y-2">
-                {group.items.map(t => (
+                {group.items.map(t => {
+                  const isLetterhead = isLetterheadStoragePath(t.storage_path);
+                  const decoded = isLetterhead ? decodeMarginsFromNotes(t.notes) : null;
+                  return (
                   <div
                     key={t.id}
                     className={`flex items-center gap-3 p-3 rounded-lg border ${dm ? 'bg-gray-800/50 border-gray-800' : 'bg-white border-gray-200'}`}
                   >
                     <div className={`w-8 h-8 rounded flex items-center justify-center shrink-0`}
                       style={{ background: `${group.color}20`, color: group.color }}>
-                      {t.source_kind === 'docx' ? <FileType className="w-4 h-4" /> : <LinkIcon className="w-4 h-4" />}
+                      {isLetterhead ? <ImageIcon className="w-4 h-4" />
+                        : t.source_kind === 'docx' ? <FileType className="w-4 h-4" />
+                        : <LinkIcon className="w-4 h-4" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -335,25 +433,34 @@ const TemplateManager: React.FC<Props> = ({ darkMode = false }) => {
                             <Star className="w-2.5 h-2.5 fill-current" /> Default
                           </Badge>
                         )}
-                        <Badge variant="outline" className="text-[9px]">{t.source_kind === 'docx' ? 'DOCX' : 'Google Doc'}</Badge>
+                        <Badge variant="outline" className="text-[9px]">
+                          {isLetterhead ? 'Letterhead Image'
+                            : t.source_kind === 'docx' ? 'DOCX'
+                            : 'Google Doc'}
+                        </Badge>
                       </div>
-                      {t.notes && (
+                      {decoded ? (
+                        <p className={`text-[11px] mt-0.5 truncate ${dm ? 'text-gray-500' : 'text-gray-500'}`}>
+                          Margins T{decoded.margins.top} R{decoded.margins.right} B{decoded.margins.bottom} L{decoded.margins.left}{decoded.userNotes ? ` · ${decoded.userNotes}` : ''}
+                        </p>
+                      ) : t.notes ? (
                         <p className={`text-[11px] mt-0.5 truncate ${dm ? 'text-gray-500' : 'text-gray-500'}`}>{t.notes}</p>
-                      )}
+                      ) : null}
                       <p className={`text-[10px] ${dm ? 'text-gray-600' : 'text-gray-400'}`}>
                         {new Date(t.created_at).toLocaleDateString()}{t.created_by ? ` · ${t.created_by}` : ''}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
-                      {t.source_kind === 'docx' && t.storage_path ? (
+                      {(t.source_kind === 'docx' || isLetterhead) && t.storage_path ? (
                         <a
                           href={publicUrl(t.storage_path)}
                           target="_blank"
                           rel="noreferrer"
                           className="text-[11px] inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
                         >
-                          <FileText className="w-3 h-3" /> Download
+                          {isLetterhead ? <ImageIcon className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+                          {isLetterhead ? 'View' : 'Download'}
                         </a>
                       ) : t.gdoc_url ? (
                         <a
@@ -389,7 +496,8 @@ const TemplateManager: React.FC<Props> = ({ darkMode = false }) => {
                       </Button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

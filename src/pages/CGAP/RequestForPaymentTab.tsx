@@ -1,22 +1,45 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Receipt, Download, Loader2, CheckCircle2, AlertCircle, Search, Printer, Archive, RefreshCw, Save, Sparkles } from 'lucide-react';
+import { Receipt, Download, Loader2, CheckCircle2, AlertCircle, Search, Printer, Archive, RefreshCw, Save, Sparkles, FileText } from 'lucide-react';
 import { useContractLookup } from '@/hooks/useContractLookup';
 import { getTodayISO, numberToWords } from '@/utils/cgapAutoFill';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import AdminFileUpload from '@/components/AdminFileUpload';
 import { useToast } from '@/hooks/use-toast';
+import { generateRfpDocx, fetchDefaultRfpTemplateBuffer, mergeRfpDocx, type RfpDocxData } from '@/utils/generateRfpDocx';
+import { renderAsync } from 'docx-preview';
+import { fetchDefaultLetterhead, mergePlaceholders, saveLetterheadMargins, type LetterheadConfig, type LetterheadMargins } from '@/utils/letterheadTemplate';
+import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
 
 const formatNPR = (n: number) => `NRs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 const ACCENT = '#10B981'; // emerald
+
+// Fallback body when the TipTap editor is empty. Placeholders match the
+// merge keys in `placeholderValues` and the form field labels.
+const DEFAULT_RFP_BODY_HTML = `
+<p>Ref.No: <<ref_no>></p>
+<h2 style="text-align:center;text-decoration:underline;text-transform:uppercase;margin-top:16px;margin-bottom:16px">Payment Release Request Letter</h2>
+<p>Date: [<<issue_date>>]</p>
+<p>To:</p>
+<p><strong><<recipient_name>></strong></p>
+<p><<recipient_org>></p>
+<p><strong>Subject: Request for Payment Release</strong></p>
+<p>Dear Sir/Madam,</p>
+<p>I would like to request the release of payment <strong>for <<service_for>></strong> in favor of <strong>[<<payee_name>>]</strong> against <strong><<service_reference>></strong> as we will be providing provisioned services for the term of <<service_term>>.</p>
+<p>Also here is the bank details for the payment delivery.</p>
+<p>Name : <<payee_name>><br/>Bank Name : <<bank_name>><br/>Account No: <<bank_account>></p>
+<p>Kindly process the payment at your earliest convenience.</p>
+<p>Thank you for your cooperation.</p>
+<p>Warm Regards,<br/><strong><<signatory_name>></strong><br/>Position: <<signatory_position>><br/>Nest Nepal Business Solutions Pvt.Ltd</p>
+`;
 
 interface RequestForPaymentTabProps {
   darkMode?: boolean;
@@ -46,9 +69,26 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [generatingDocx, setGeneratingDocx] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Template-driven preview state
+  const templateBufferRef = useRef<ArrayBuffer | null>(null);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateError, setTemplateError] = useState('');
+  const [previewing, setPreviewing] = useState(false);
+
+  // Letterhead-image preview state
+  const [letterhead, setLetterhead] = useState<LetterheadConfig | null>(null);
+  const [letterheadLoading, setLetterheadLoading] = useState(true);
+  const [marginSaving, setMarginSaving] = useState(false);
+  const marginSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [editorBodyHtml, setEditorBodyHtml] = useState<string>(
+    () => localStorage.getItem('cgap-editor-rfp') || '',
+  );
 
   // Archive state
   const [submissions, setSubmissions] = useState<any[]>([]);
@@ -117,6 +157,148 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   const amountWords = useMemo(() => amountNum > 0 ? numberToWords(amountNum) : '', [amountNum]);
   const formattedAmount = amountNum > 0 ? formatNPR(amountNum) : '';
 
+  const docxValues: RfpDocxData = useMemo(() => ({
+    ref_no: refNo,
+    invoice_number: invoiceNumber,
+    issue_date: formatDateDDMMYYYY(issueDate),
+    due_date: formatDateDDMMYYYY(dueDate),
+    amount: formattedAmount,
+    amount_words: amountWords,
+    recipient_name: recipientName,
+    recipient_org: recipientOrg,
+    service_for: serviceFor,
+    service_term: serviceTerm,
+    service_reference: serviceReference,
+    payee_name: payeeName,
+    bank_name: bankName,
+    bank_account: bankAccount,
+    signatory_name: signatoryName,
+    signatory_position: signatoryPosition,
+    description,
+    notes,
+    contract_id: contractData?.contract_id ?? '',
+    client_company_name: contractData?.client_company_name ?? '',
+    client_location: contractData?.client_location ?? '',
+  }), [refNo, invoiceNumber, issueDate, dueDate, formattedAmount, amountWords, recipientName, recipientOrg, serviceFor, serviceTerm, serviceReference, payeeName, bankName, bankAccount, signatoryName, signatoryPosition, description, notes, contractData]);
+
+  // Fetch letterhead config once on mount
+  useEffect(() => {
+    let cancelled = false;
+    setLetterheadLoading(true);
+    fetchDefaultLetterhead('rfp')
+      .then(cfg => { if (!cancelled) setLetterhead(cfg); })
+      .catch(() => { /* swallow — letterhead is optional */ })
+      .finally(() => { if (!cancelled) setLetterheadLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Live-subscribe to TipTap editor updates so body overlay refreshes
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ storageKey: string; html: string }>).detail;
+      if (detail?.storageKey === 'cgap-editor-rfp') setEditorBodyHtml(detail.html);
+    };
+    window.addEventListener('cgap-editor-update', handler);
+    return () => window.removeEventListener('cgap-editor-update', handler);
+  }, []);
+
+  const placeholderValues = useMemo<Record<string, string>>(() => ({
+    ref_no: refNo,
+    invoice_number: invoiceNumber,
+    issue_date: formatDateDDMMYYYY(issueDate),
+    due_date: formatDateDDMMYYYY(dueDate),
+    amount: formattedAmount,
+    amount_words: amountWords,
+    recipient_name: recipientName,
+    recipient_org: recipientOrg,
+    service_for: serviceFor,
+    service_term: serviceTerm,
+    service_reference: serviceReference,
+    payee_name: payeeName,
+    bank_name: bankName,
+    bank_account: bankAccount,
+    signatory_name: signatoryName,
+    signatory_position: signatoryPosition,
+    description,
+    notes,
+    contract_id: contractData?.contract_id ?? '',
+    client_company_name: contractData?.client_company_name ?? '',
+    client_location: contractData?.client_location ?? '',
+  }), [refNo, invoiceNumber, issueDate, dueDate, formattedAmount, amountWords, recipientName, recipientOrg, serviceFor, serviceTerm, serviceReference, payeeName, bankName, bankAccount, signatoryName, signatoryPosition, description, notes, contractData]);
+
+  const mergedBodyHtml = useMemo(() => {
+    const raw = editorBodyHtml || DEFAULT_RFP_BODY_HTML;
+    return mergePlaceholders(raw, placeholderValues);
+  }, [editorBodyHtml, placeholderValues]);
+
+  // Fetch docx template once when contract is looked up (only if no letterhead override)
+  useEffect(() => {
+    if (letterhead) return; // letterhead path supersedes docx path
+    if (!contractData || templateBufferRef.current) return;
+    let cancelled = false;
+    setTemplateLoading(true);
+    setTemplateError('');
+    fetchDefaultRfpTemplateBuffer()
+      .then(buf => { if (!cancelled) templateBufferRef.current = buf; })
+      .catch(e => { if (!cancelled) setTemplateError(e instanceof Error ? e.message : 'Template load failed'); })
+      .finally(() => { if (!cancelled) setTemplateLoading(false); });
+    return () => { cancelled = true; };
+  }, [contractData]);
+
+  // Debounced preview render via docx-preview (renders headers, footers, watermarks)
+  useEffect(() => {
+    if (letterhead) return; // letterhead path supersedes docx-preview path
+    if (!templateBufferRef.current || !contractData) return;
+    setPreviewing(true);
+    const t = setTimeout(async () => {
+      try {
+        const merged = mergeRfpDocx(templateBufferRef.current!, docxValues);
+        const blob = new Blob([merged], {
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        });
+        const container = previewContainerRef.current;
+        if (!container) return;
+        container.innerHTML = '';
+        await renderAsync(blob, container, undefined, {
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: true,
+          experimental: true,
+          useBase64URL: true,
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+        });
+
+        // Fade watermark-like elements: large, absolutely-positioned images that
+        // span most of a page. Word's "Washout" should produce this effect in the
+        // source XML but isn't always honored by the docx parser.
+        container.querySelectorAll<HTMLElement>('section.docx').forEach((section) => {
+          const sectionRect = section.getBoundingClientRect();
+          section.querySelectorAll<HTMLElement>('img, svg').forEach((el) => {
+            const positioned = el.closest<HTMLElement>('[style*="position"]') ?? el;
+            const cs = window.getComputedStyle(positioned);
+            const r = el.getBoundingClientRect();
+            const isPositioned = cs.position === 'absolute' || cs.position === 'fixed';
+            const coversPage = r.width >= sectionRect.width * 0.4 && r.height >= sectionRect.height * 0.3;
+            if (isPositioned && coversPage) {
+              el.classList.add('rfp-watermark');
+            }
+          });
+        });
+
+        setTemplateError('');
+      } catch (e) {
+        setTemplateError(e instanceof Error ? e.message : 'Preview render failed');
+      } finally {
+        setPreviewing(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [docxValues, contractData, templateLoading, letterhead]);
+
   const autoGenerateInvoiceNo = () => {
     const today = new Date();
     const yymm = `${String(today.getFullYear()).slice(-2)}${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -137,6 +319,41 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   }, [contractData]);
 
 
+  const nudgeMargin = useCallback((side: keyof LetterheadMargins, delta: number) => {
+    setLetterhead(prev => {
+      if (!prev) return prev;
+      const next = { ...prev.margins, [side]: Math.max(0, prev.margins[side] + delta) };
+      if (marginSaveTimerRef.current) clearTimeout(marginSaveTimerRef.current);
+      marginSaveTimerRef.current = setTimeout(async () => {
+        setMarginSaving(true);
+        const res = await saveLetterheadMargins('rfp', next);
+        setMarginSaving(false);
+        if (!res.ok) toast({ title: 'Margin save failed', description: res.error, variant: 'destructive' });
+      }, 600);
+      return { ...prev, margins: next };
+    });
+  }, [toast]);
+
+  const handleGenerateDocx = async () => {
+    setError('');
+    if (!contractData) { setError('Look up a contract first'); return; }
+    if (!invoiceNumber.trim()) { setError('Invoice number required'); return; }
+    if (!amountNum) { setError('Amount required'); return; }
+    if (!dueDate) { setError('Due date required'); return; }
+
+    setGeneratingDocx(true);
+    try {
+      await generateRfpDocx(docxValues, `RfP-${invoiceNumber}-${contractData.contract_id}.docx`);
+      toast({ title: 'DOCX generated' });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to generate DOCX';
+      setError(msg);
+      toast({ title: 'DOCX generation failed', description: msg, variant: 'destructive' });
+    } finally {
+      setGeneratingDocx(false);
+    }
+  };
+
   const handleGenerate = async () => {
     setError('');
     if (!contractData) { setError('Look up a contract first'); return; }
@@ -148,23 +365,34 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     try {
       const node = document.getElementById('rfp-printable');
       if (!node) throw new Error('Preview missing');
-      const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-      const img = canvas.toDataURL('image/png');
+
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW - 20;
-      const imgH = (canvas.height * imgW) / canvas.width;
-      let position = 10;
-      let heightLeft = imgH;
-      pdf.addImage(img, 'PNG', 10, position, imgW, imgH);
-      heightLeft -= pageH - 20;
-      while (heightLeft > 0) {
-        position = heightLeft - imgH + 10;
-        pdf.addPage();
-        pdf.addImage(img, 'PNG', 10, position, imgW, imgH);
-        heightLeft -= pageH - 20;
+
+      // In letterhead mode, capture the single page container directly.
+      // In docx-preview mode, capture each <section class="docx"> as a page.
+      const targets: HTMLElement[] = letterhead
+        ? [node]
+        : Array.from(node.querySelectorAll<HTMLElement>('section.docx'));
+      if (targets.length === 0) throw new Error('Preview not ready yet — wait a moment and try again');
+
+      for (let i = 0; i < targets.length; i++) {
+        const canvas = await html2canvas(targets[i], { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+        const img = canvas.toDataURL('image/png');
+
+        const widthRatio = pageW / canvas.width;
+        const heightRatio = pageH / canvas.height;
+        const ratio = Math.min(widthRatio, heightRatio);
+        const finalW = canvas.width * ratio;
+        const finalH = canvas.height * ratio;
+        const offsetX = (pageW - finalW) / 2;
+        const offsetY = (pageH - finalH) / 2;
+
+        if (i > 0) pdf.addPage();
+        pdf.addImage(img, 'PNG', offsetX, offsetY, finalW, finalH);
       }
+
       pdf.save(`RfP-${invoiceNumber}-${contractData.contract_id}.pdf`);
       setDone(true);
       setTimeout(() => setDone(false), 3000);
@@ -333,6 +561,13 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
               : done ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Downloaded</>
               : <><Download className="w-4 h-4 mr-2" /> Generate PDF</>}
           </Button>
+          {!letterhead && (
+            <Button onClick={handleGenerateDocx} disabled={generatingDocx || !contractData} variant="outline">
+              {generatingDocx
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Generating…</>
+                : <><FileText className="w-4 h-4 mr-2" /> Generate DOCX</>}
+            </Button>
+          )}
           {isAdmin && (
             <Button variant="outline" onClick={handleSaveToArchive} disabled={saving || !contractData}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
@@ -348,109 +583,77 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       {/* Printable preview */}
       {contractData && (
         <div className={card}>
-          <Label className={labelCls}>Preview</Label>
-          <div className="mt-3 overflow-auto rounded-lg border" style={{ borderColor: dm ? '#2A2A2A' : '#E5E7EB' }}>
-            <div id="rfp-printable" className="bg-white text-gray-900 mx-auto" style={{ width: '794px', minHeight: '1123px', fontFamily: 'Inter, sans-serif', padding: '48px 56px', display: 'flex', flexDirection: 'column' }}>
-              {/* Letterhead */}
-              <div className="flex items-center justify-between pb-3 mb-2 border-b-2" style={{ borderColor: ACCENT }}>
-                <div>
-                  <h1 className="text-3xl font-bold tracking-wide" style={{ color: ACCENT, fontFamily: 'Playfair Display, serif' }}>NEST NEPAL</h1>
-                </div>
-                <div className="text-xs text-gray-600 text-right">
-                  <p><span className="text-gray-500">Ref.No:</span> <span className="font-semibold">{refNo || '—'}</span></p>
-                </div>
-              </div>
-
-              {/* Title */}
-              <h2 className="text-center text-lg font-bold uppercase tracking-wider mt-6 mb-4 underline">
-                Payment Release Request Letter
-              </h2>
-
-              {/* Date */}
-              <p className="text-sm mb-4">Date: [{formatDateDDMMYYYY(issueDate) || '—'}]</p>
-
-              {/* Recipient */}
-              <div className="text-sm mb-4">
-                <p>To:</p>
-                <p className="font-semibold">{recipientName || '—'}</p>
-                <p>{recipientOrg || '—'}</p>
-              </div>
-
-              {/* Subject */}
-              <p className="text-sm font-semibold mb-4">Subject: Request for Payment Release</p>
-
-              {/* Body */}
-              <p className="text-sm mb-4">Dear Sir/Madam,</p>
-
-              <p className="text-sm leading-relaxed mb-4">
-                I would like to request the release of payment <strong>for {serviceFor}</strong> in favor of <strong>[{payeeName}]</strong> against <strong>{serviceReference}</strong> as we will be providing provisioned services for the term of {serviceTerm}.
-              </p>
-
-              {amountNum > 0 && (
-                <p className="text-sm leading-relaxed mb-4">
-                  Total amount: <strong>{formattedAmount}</strong>
-                  {amountWords && <span className="italic text-gray-700"> ({amountWords})</span>}
-                  {dueDate && <> &middot; Due by <strong>{formatDateDDMMYYYY(dueDate)}</strong></>}
-                  {invoiceNumber && <> &middot; Ref Invoice: <strong>{invoiceNumber}</strong></>}
-                  {contractData?.contract_id && <> &middot; Contract: <strong>{contractData.contract_id}</strong></>}
-                </p>
-              )}
-
-              {description && (
-                <p className="text-sm leading-relaxed mb-4 whitespace-pre-wrap">{description}</p>
-              )}
-
-              <p className="text-sm leading-relaxed mb-3">
-                Also here is the bank details for the payment delivery.
-              </p>
-
-              <div className="text-sm leading-relaxed mb-4 space-y-1">
-                <p>Name : {payeeName}</p>
-                <p>Bank Name : {bankName}</p>
-                <p>Account No: {bankAccount}</p>
-              </div>
-
-              <p className="text-sm leading-relaxed mb-2">Kindly process the payment at your earliest convenience.</p>
-              <p className="text-sm leading-relaxed mb-6">Thank you for your cooperation.</p>
-
-              {notes && (
-                <p className="text-xs italic text-gray-700 mb-4 whitespace-pre-wrap">{notes}</p>
-              )}
-
-              {/* Signature */}
-              <div className="text-sm mt-6">
-                <p>-</p>
-                <p>Warm Regards,</p>
-                <p className="font-semibold mt-1">{signatoryName || '—'}</p>
-                <p>Position: {signatoryPosition || '—'}</p>
-                <p>Nest Nepal Business Solutions Pvt.Ltd</p>
-              </div>
-
-              {/* Footer */}
-              <div className="mt-auto pt-8 border-t text-[10px] text-gray-600 text-center leading-relaxed" style={{ borderColor: ACCENT }}>
-                <p>Nest Nepal Business Solutions Pvt. Ltd., Birendrachowk, Kathmandu, Nepal, Tel: 977-1-5917627/927, WhatsApp: +977-9815111199</p>
-                <p>Noticeboard No.: 1618015917627 Email:contact@nestnepal.com, VAT No.: 609828128, Website: www.nestnepal.com</p>
-              </div>
-
-              {notes && (
-                <div className="mb-8 p-3 rounded text-xs" style={{ background: '#FEF3C7', borderLeft: `3px solid #F59E0B` }}>
-                  <p className="font-semibold mb-1 text-amber-900">Notes</p>
-                  <p className="whitespace-pre-wrap text-amber-900">{notes}</p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-12 mt-16 text-xs">
-                <div className="border-t pt-2 text-center" style={{ borderColor: '#9CA3AF' }}>
-                  <p className="font-semibold">Authorized Signatory</p>
-                  <p className="text-gray-500 mt-0.5">Nepal NNBS Pvt. Ltd.</p>
-                </div>
-                <div className="border-t pt-2 text-center" style={{ borderColor: '#9CA3AF' }}>
-                  <p className="font-semibold">Received By</p>
-                  <p className="text-gray-500 mt-0.5">{contractData.client_company_name}</p>
-                </div>
-              </div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className={labelCls}>
+              Preview {letterhead && <span className="ml-1 text-[10px] normal-case font-normal text-gray-500">· letterhead: {letterhead.name}</span>}
+            </Label>
+            <div className="flex items-center gap-2 text-[10px] text-gray-500">
+              {letterheadLoading && <><Loader2 className="w-3 h-3 animate-spin" /> Loading letterhead…</>}
+              {!letterhead && templateLoading && <><Loader2 className="w-3 h-3 animate-spin" /> Loading template…</>}
+              {!letterhead && !templateLoading && previewing && <><Loader2 className="w-3 h-3 animate-spin" /> Refreshing…</>}
             </div>
           </div>
+          {templateError && !letterhead && (
+            <p className="text-xs text-red-500 flex items-center gap-1.5 mb-2"><AlertCircle className="w-3 h-3" /> {templateError}</p>
+          )}
+          {letterhead && isAdmin && (
+            <div className={`flex flex-wrap items-center gap-2 mb-2 p-2 rounded-lg text-[11px] ${dm ? 'bg-gray-800/50 text-gray-300' : 'bg-white text-gray-600'}`}>
+              <span className="font-medium opacity-70">Margins (px):</span>
+              {(['top', 'right', 'bottom', 'left'] as const).map((side) => {
+                const Icon = side === 'top' ? ChevronUp : side === 'bottom' ? ChevronDown : side === 'left' ? ChevronLeft : ChevronRight;
+                return (
+                  <div key={side} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${dm ? 'bg-gray-900' : 'bg-gray-100'}`}>
+                    <Icon className="w-3 h-3 opacity-60" />
+                    <button type="button" onClick={() => nudgeMargin(side, -8)} className={`w-5 h-5 rounded inline-flex items-center justify-center ${dm ? 'hover:bg-gray-800' : 'hover:bg-white'}`} title="Decrease 8px"><Minus className="w-3 h-3" /></button>
+                    <span className="tabular-nums w-8 text-center font-medium">{letterhead.margins[side]}</span>
+                    <button type="button" onClick={() => nudgeMargin(side, 8)} className={`w-5 h-5 rounded inline-flex items-center justify-center ${dm ? 'hover:bg-gray-800' : 'hover:bg-white'}`} title="Increase 8px"><Plus className="w-3 h-3" /></button>
+                  </div>
+                );
+              })}
+              {marginSaving && <span className="inline-flex items-center gap-1 text-[10px] opacity-70"><Loader2 className="w-3 h-3 animate-spin" /> saving…</span>}
+            </div>
+          )}
+          {letterhead ? (
+            <div className="mt-1 overflow-auto rounded-lg border bg-gray-100" style={{ borderColor: dm ? '#2A2A2A' : '#E5E7EB' }}>
+              <div
+                id="rfp-printable"
+                className="rfp-letterhead-page mx-auto relative bg-white"
+                style={{
+                  width: '794px',
+                  height: '1123px',
+                  backgroundImage: `url("${letterhead.imageUrl}")`,
+                  backgroundSize: '794px 1123px',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'center top',
+                }}
+              >
+                <div
+                  className="rfp-letterhead-body"
+                  style={{
+                    position: 'absolute',
+                    top: `${letterhead.margins.top}px`,
+                    right: `${letterhead.margins.right}px`,
+                    bottom: `${letterhead.margins.bottom}px`,
+                    left: `${letterhead.margins.left}px`,
+                    overflow: 'hidden',
+                    color: '#111',
+                    fontFamily: 'Calibri, Inter, sans-serif',
+                    fontSize: '11pt',
+                    lineHeight: 1.5,
+                  }}
+                  dangerouslySetInnerHTML={{ __html: mergedBodyHtml }}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="mt-1 overflow-auto rounded-lg border bg-gray-100" style={{ borderColor: dm ? '#2A2A2A' : '#E5E7EB' }}>
+              <div
+                id="rfp-printable"
+                ref={previewContainerRef}
+                className="rfp-docx-preview mx-auto"
+              />
+            </div>
+          )}
         </div>
       )}
 

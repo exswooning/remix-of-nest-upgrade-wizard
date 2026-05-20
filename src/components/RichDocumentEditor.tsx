@@ -12,16 +12,24 @@ import {
   List, ListOrdered, Heading1, Heading2, Heading3,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Quote, Undo, Redo, Link as LinkIcon, Download, Printer, FileText,
-  Upload, RotateCcw, BookmarkPlus
+  Upload, RotateCcw, BookmarkPlus, CloudDownload, Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+
+type SupabaseTemplateType = 'contract' | 'addendum' | 'rfp';
 
 interface RichDocumentEditorProps {
   storageKey: string;
   title?: string;
   darkMode?: boolean;
   initialContent?: string;
+  /** When set, the editor will auto-load the default Supabase template for this
+   *  type (via document_templates table → templates bucket → mammoth → HTML) on
+   *  first mount if no local content exists. A "Load default" button is also
+   *  shown so users can re-fetch on demand. */
+  templateType?: SupabaseTemplateType;
 }
 
 const ToolbarBtn: React.FC<{
@@ -46,9 +54,10 @@ const ToolbarBtn: React.FC<{
 );
 
 const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
-  storageKey, title = 'Document Editor', darkMode = false, initialContent = ''
+  storageKey, title = 'Document Editor', darkMode = false, initialContent = '', templateType
 }) => {
   const { toast } = useToast();
+  const [loadingDefault, setLoadingDefault] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -72,7 +81,50 @@ const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
   const templateKey = `${storageKey}-template`;
   const [hasTemplate, setHasTemplate] = useState<boolean>(() => !!localStorage.getItem(templateKey));
 
-  // Load saved content (or template if no saved content)
+  const loadSupabaseDefault = useCallback(async (opts: { silent?: boolean; persist?: boolean } = {}): Promise<string | null> => {
+    if (!templateType) return null;
+    setLoadingDefault(true);
+    try {
+      const { data, error } = await supabase
+        .from('document_templates')
+        .select('storage_path, source_kind, name')
+        .eq('template_type', templateType)
+        .eq('is_default', true)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        if (!opts.silent) toast({ title: 'No default template', description: `Set one in Settings → Templates (${templateType}).`, variant: 'destructive' });
+        return null;
+      }
+      if (data.source_kind !== 'docx' || !data.storage_path) {
+        if (!opts.silent) toast({ title: 'Not a .docx', description: `Default ${templateType} template "${data.name}" is not a .docx file.`, variant: 'destructive' });
+        return null;
+      }
+      const dl = await supabase.storage.from('templates').download(data.storage_path);
+      if (dl.error || !dl.data) throw dl.error ?? new Error('Download failed');
+      const buf = await dl.data.arrayBuffer();
+      const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+      const html = result.value || '<p></p>';
+      if (editor) editor.commands.setContent(html);
+      if (opts.persist !== false) {
+        try {
+          localStorage.setItem(templateKey, html);
+          localStorage.setItem(storageKey, html);
+          setHasTemplate(true);
+        } catch {}
+      }
+      if (!opts.silent) toast({ title: 'Default template loaded', description: data.name });
+      return html;
+    } catch (e: any) {
+      if (!opts.silent) toast({ title: 'Load failed', description: e?.message || String(e), variant: 'destructive' });
+      return null;
+    } finally {
+      setLoadingDefault(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, templateType, storageKey, templateKey, toast]);
+
+  // Load saved content, then local template, then Supabase default, then initialContent
   useEffect(() => {
     if (!editor) return;
     const saved = localStorage.getItem(storageKey);
@@ -81,16 +133,25 @@ const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
       editor.commands.setContent(saved);
     } else if (template) {
       editor.commands.setContent(template);
+    } else if (templateType) {
+      void loadSupabaseDefault({ silent: true });
     } else if (initialContent) {
       editor.commands.setContent(initialContent);
     }
-  }, [editor, storageKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, storageKey, templateType]);
 
-  // Autosave
+  // Autosave + broadcast for other components (e.g., letterhead preview)
   useEffect(() => {
     if (!editor) return;
     const handler = () => {
-      try { localStorage.setItem(storageKey, editor.getHTML()); } catch {}
+      const html = editor.getHTML();
+      try { localStorage.setItem(storageKey, html); } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent('cgap-editor-update', {
+          detail: { storageKey, html },
+        }));
+      } catch {}
     };
     editor.on('update', handler);
     return () => { editor.off('update', handler); };
@@ -221,6 +282,21 @@ const RichDocumentEditor: React.FC<RichDocumentEditorProps> = ({
           <Button size="sm" variant="outline" onClick={handleResetToTemplate} disabled={!hasTemplate} className="h-7 text-xs" title="Reset to template">
             <RotateCcw className="w-3 h-3 mr-1" />Reset
           </Button>
+          {templateType && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => loadSupabaseDefault({ silent: false })}
+              disabled={loadingDefault}
+              className="h-7 text-xs"
+              title={`Load default ${templateType} template from Settings → Templates`}
+            >
+              {loadingDefault
+                ? <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                : <CloudDownload className="w-3 h-3 mr-1" />}
+              Load default
+            </Button>
+          )}
           <Separator orientation="vertical" className="h-5 mx-1" />
           <Button size="sm" variant="outline" onClick={handlePrint} className="h-7 text-xs">
             <Printer className="w-3 h-3 mr-1" />Print/PDF

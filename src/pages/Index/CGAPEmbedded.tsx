@@ -15,7 +15,7 @@ interface CGAPEmbeddedProps {
   darkMode: boolean;
 }
 
-const EditorSection: React.FC<{ storageKey: string; title: string; darkMode: boolean }> = ({ storageKey, title, darkMode }) => (
+const EditorSection: React.FC<{ storageKey: string; title: string; darkMode: boolean; templateType?: 'contract' | 'addendum' | 'rfp' }> = ({ storageKey, title, darkMode, templateType }) => (
   <Collapsible className="mt-4">
     <CollapsibleTrigger className={cn(
       'w-full flex items-center justify-between px-4 py-2.5 rounded-lg border transition-colors',
@@ -29,7 +29,7 @@ const EditorSection: React.FC<{ storageKey: string; title: string; darkMode: boo
       <ChevronDown className="w-4 h-4 transition-transform data-[state=open]:rotate-180" />
     </CollapsibleTrigger>
     <CollapsibleContent className="mt-3">
-      <RichDocumentEditor storageKey={storageKey} title={title} darkMode={darkMode} />
+      <RichDocumentEditor storageKey={storageKey} title={title} darkMode={darkMode} templateType={templateType} />
     </CollapsibleContent>
   </Collapsible>
 );
@@ -61,11 +61,11 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
 
         <TabsContent value="contract" className="mt-4">
           <ContractTab darkMode={darkMode} />
-          <EditorSection storageKey="cgap-editor-contract" title="Contract" darkMode={darkMode} />
+          <EditorSection storageKey="cgap-editor-contract" title="Contract" darkMode={darkMode} templateType="contract" />
         </TabsContent>
         <TabsContent value="addendum" className="mt-4">
           <AddendumTab darkMode={darkMode} />
-          <EditorSection storageKey="cgap-editor-addendum" title="Addendum" darkMode={darkMode} />
+          <EditorSection storageKey="cgap-editor-addendum" title="Addendum" darkMode={darkMode} templateType="addendum" />
         </TabsContent>
         <TabsContent value="amendment" className="mt-4">
           <QuickAmendmentTab darkMode={darkMode} />
@@ -73,7 +73,7 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
         </TabsContent>
         <TabsContent value="rfp" className="mt-4">
           <RequestForPaymentTab darkMode={darkMode} />
-          <EditorSection storageKey="cgap-editor-rfp" title="Request for Payment" darkMode={darkMode} />
+          <EditorSection storageKey="cgap-editor-rfp" title="Request for Payment" darkMode={darkMode} templateType="rfp" />
         </TabsContent>
         <TabsContent value="database" className="mt-4">
           <ContractsDatabase darkMode={darkMode} />
