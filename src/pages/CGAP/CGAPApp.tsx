@@ -9,19 +9,30 @@ import RichDocumentEditor from '@/components/RichDocumentEditor';
 import SettingsTab from './SettingsTab';
 import { LogOut, FileText, FilePlus, Zap, Settings, Receipt } from 'lucide-react';
 
-type Tab = 'contract' | 'addendum' | 'amendment' | 'rfp' | 'settings';
+type Tab = 'contract' | 'rfp' | 'settings';
+type ContractSubTab = 'contract' | 'addendum' | 'amendment';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode; accent: string; adminOnly?: boolean }[] = [
   { id: 'contract', label: 'Contract', icon: <FileText className="w-4 h-4" />, accent: '#4F7FFF' },
-  { id: 'addendum', label: 'Addendum', icon: <FilePlus className="w-4 h-4" />, accent: '#F59E0B' },
-  { id: 'amendment', label: 'Quick Amendment', icon: <Zap className="w-4 h-4" />, accent: '#A78BFA' },
   { id: 'rfp', label: 'Request for Payment', icon: <Receipt className="w-4 h-4" />, accent: '#10B981' },
   { id: 'settings', label: 'Settings', icon: <Settings className="w-4 h-4" />, accent: '#888', adminOnly: true },
+];
+
+const CONTRACT_SUB_TABS: { id: ContractSubTab; label: string; icon: React.ReactNode; accent: string }[] = [
+  { id: 'contract', label: 'Contract', icon: <FileText className="w-3.5 h-3.5" />, accent: '#4F7FFF' },
+  { id: 'addendum', label: 'Addendum', icon: <FilePlus className="w-3.5 h-3.5" />, accent: '#F59E0B' },
+  { id: 'amendment', label: 'Quick Amendment', icon: <Zap className="w-3.5 h-3.5" />, accent: '#A78BFA' },
 ];
 
 const CGAPApp: React.FC = () => {
   const { isLoggedIn, logout } = useCGAP();
   const [activeTab, setActiveTab] = useState<Tab>('contract');
+  const [contractSubTab, setContractSubTab] = useState<ContractSubTab>('contract');
+
+  // The "effective" tab is what drives the editor's storage key/title — uses the
+  // sub-tab when we're under Contract, otherwise the top-level tab.
+  const effectiveTab: ContractSubTab | 'rfp' | 'settings' =
+    activeTab === 'contract' ? contractSubTab : activeTab;
 
   if (!isLoggedIn) return <CGAPLogin />;
 
@@ -76,27 +87,46 @@ const CGAPApp: React.FC = () => {
 
       {/* Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+        {activeTab === 'contract' && (
+          <div className="mb-3 flex gap-1 overflow-x-auto">
+            {CONTRACT_SUB_TABS.map(sub => (
+              <button
+                key={sub.id}
+                onClick={() => setContractSubTab(sub.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap transition-all"
+                style={{
+                  color: contractSubTab === sub.id ? sub.accent : '#777',
+                  background: contractSubTab === sub.id ? `${sub.accent}18` : 'transparent',
+                  border: `1px solid ${contractSubTab === sub.id ? `${sub.accent}55` : '#2A2A2A'}`,
+                }}
+              >
+                {sub.icon}
+                {sub.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="rounded-2xl p-6 sm:p-8" style={{ background: '#161616', border: '1px solid #2A2A2A' }}>
-          {activeTab === 'contract' && <ContractTab />}
-          {activeTab === 'addendum' && <AddendumTab />}
-          {activeTab === 'amendment' && <QuickAmendmentTab />}
+          {activeTab === 'contract' && contractSubTab === 'contract' && <ContractTab />}
+          {activeTab === 'contract' && contractSubTab === 'addendum' && <AddendumTab />}
+          {activeTab === 'contract' && contractSubTab === 'amendment' && <QuickAmendmentTab />}
           {activeTab === 'rfp' && <RequestForPaymentTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </div>
-        {activeTab !== 'settings' && (
+        {activeTab !== 'settings' && activeTab !== 'rfp' && (
           <div className="mt-6 rounded-2xl p-4 sm:p-6" style={{ background: '#161616', border: '1px solid #2A2A2A' }}>
             <RichDocumentEditor
-              storageKey={`cgap-editor-${activeTab}`}
+              storageKey={`cgap-editor-${effectiveTab}`}
               title={
-                activeTab === 'contract' ? 'Contract' :
-                activeTab === 'addendum' ? 'Addendum' :
-                activeTab === 'amendment' ? 'Amendment' :
+                effectiveTab === 'contract' ? 'Contract' :
+                effectiveTab === 'addendum' ? 'Addendum' :
+                effectiveTab === 'amendment' ? 'Amendment' :
                 'Request for Payment'
               }
               templateType={
-                activeTab === 'contract' ? 'contract' :
-                activeTab === 'addendum' ? 'addendum' :
-                activeTab === 'rfp' ? 'rfp' :
+                effectiveTab === 'contract' ? 'contract' :
+                effectiveTab === 'addendum' ? 'addendum' :
+                effectiveTab === 'rfp' ? 'rfp' :
                 undefined
               }
               darkMode

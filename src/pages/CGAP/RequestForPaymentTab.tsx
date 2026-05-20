@@ -4,7 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Receipt, Download, Loader2, CheckCircle2, AlertCircle, Search, Printer, Archive, RefreshCw, Save, Sparkles, FileText } from 'lucide-react';
+import { Receipt, Download, Loader2, CheckCircle2, AlertCircle, Search, Printer, Archive, RefreshCw, Save, Sparkles, FileText, Bold, Italic, Underline as UnderlineIcon, Strikethrough, AlignLeft, AlignCenter, AlignRight, AlignJustify, Heading1, Heading2, List, ListOrdered, Undo, Redo, RotateCcw, ZoomIn, ZoomOut, Maximize2, Minimize2, X, Type, Move, Eye, PenLine } from 'lucide-react';
 import { useContractLookup } from '@/hooks/useContractLookup';
 import { getTodayISO, numberToWords } from '@/utils/cgapAutoFill';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,7 +14,14 @@ import { useToast } from '@/hooks/use-toast';
 import { generateRfpDocx, fetchDefaultRfpTemplateBuffer, mergeRfpDocx, type RfpDocxData } from '@/utils/generateRfpDocx';
 import { renderAsync } from 'docx-preview';
 import { fetchDefaultLetterhead, mergePlaceholders, saveLetterheadMargins, type LetterheadConfig, type LetterheadMargins } from '@/utils/letterheadTemplate';
+import { findOrCreateClient } from '@/utils/clients';
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Underline from '@tiptap/extension-underline';
+import Link from '@tiptap/extension-link';
+import TextAlign from '@tiptap/extension-text-align';
+import { cn } from '@/lib/utils';
 
 const formatNPR = (n: number) => `NRs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 import jsPDF from 'jspdf';
@@ -22,23 +29,55 @@ import html2canvas from 'html2canvas';
 
 const ACCENT = '#10B981'; // emerald
 
+const ToolbarBtn: React.FC<{
+  onClick: () => void;
+  active?: boolean;
+  disabled?: boolean;
+  title: string;
+  children: React.ReactNode;
+  dm?: boolean;
+}> = ({ onClick, active, disabled, title, children, dm }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    title={title}
+    className={cn(
+      'inline-flex items-center justify-center h-7 w-7 rounded transition-colors',
+      'disabled:opacity-40 disabled:cursor-not-allowed',
+      active
+        ? (dm ? 'bg-emerald-900/40 text-emerald-300' : 'bg-emerald-100 text-emerald-700')
+        : (dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'),
+    )}
+  >
+    {children}
+  </button>
+);
+
 // Fallback body when the TipTap editor is empty. Placeholders match the
 // merge keys in `placeholderValues` and the form field labels.
+//
+// IMPORTANT: tokens are written as `&lt;&lt;name&gt;&gt;`, not `<<name>>`. The
+// HTML5 parser treats a bare `<<` as `<` text + `<name>` unknown-tag, and
+// ProseMirror strips the unknown tag — destroying the placeholder. Encoding
+// them as entities means the parser decodes them back to plain text `<<name>>`
+// inside the editor's text node, where they survive round-tripping through
+// `getHTML()` and `mergePlaceholders` can find them.
 const DEFAULT_RFP_BODY_HTML = `
-<p>Ref.No: <<ref_no>></p>
+<p>Ref.No: &lt;&lt;ref_no&gt;&gt;</p>
 <h2 style="text-align:center;text-decoration:underline;text-transform:uppercase;margin-top:16px;margin-bottom:16px">Payment Release Request Letter</h2>
-<p>Date: [<<issue_date>>]</p>
+<p>Date: [&lt;&lt;issue_date&gt;&gt;]</p>
 <p>To:</p>
-<p><strong><<recipient_name>></strong></p>
-<p><<recipient_org>></p>
+<p><strong>&lt;&lt;recipient_name&gt;&gt;</strong></p>
+<p>&lt;&lt;recipient_org&gt;&gt;</p>
 <p><strong>Subject: Request for Payment Release</strong></p>
 <p>Dear Sir/Madam,</p>
-<p>I would like to request the release of payment <strong>for <<service_for>></strong> in favor of <strong>[<<payee_name>>]</strong> against <strong><<service_reference>></strong> as we will be providing provisioned services for the term of <<service_term>>.</p>
+<p>I would like to request the release of payment <strong>for &lt;&lt;service_for&gt;&gt;</strong> in favor of <strong>[&lt;&lt;payee_name&gt;&gt;]</strong> against <strong>&lt;&lt;service_reference&gt;&gt;</strong> as we will be providing provisioned services for the term of &lt;&lt;service_term&gt;&gt;.</p>
 <p>Also here is the bank details for the payment delivery.</p>
-<p>Name : <<payee_name>><br/>Bank Name : <<bank_name>><br/>Account No: <<bank_account>></p>
+<p>Name : &lt;&lt;payee_name&gt;&gt;<br/>Bank Name : &lt;&lt;bank_name&gt;&gt;<br/>Account No: &lt;&lt;bank_account&gt;&gt;</p>
 <p>Kindly process the payment at your earliest convenience.</p>
 <p>Thank you for your cooperation.</p>
-<p>Warm Regards,<br/><strong><<signatory_name>></strong><br/>Position: <<signatory_position>><br/>Nest Nepal Business Solutions Pvt.Ltd</p>
+<p>Warm Regards,<br/><strong>&lt;&lt;signatory_name&gt;&gt;</strong><br/>Position: &lt;&lt;signatory_position&gt;&gt;<br/>Nest Nepal Business Solutions Pvt.Ltd</p>
 `;
 
 interface RequestForPaymentTabProps {
@@ -86,9 +125,204 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   const [letterheadLoading, setLetterheadLoading] = useState(true);
   const [marginSaving, setMarginSaving] = useState(false);
   const marginSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [editorBodyHtml, setEditorBodyHtml] = useState<string>(
-    () => localStorage.getItem('cgap-editor-rfp') || '',
-  );
+
+  // Scaling: A4 page is 794×1123; we scale it to fit the available container width
+  const pageContainerRef = useRef<HTMLDivElement | null>(null);
+  const [autoScale, setAutoScale] = useState(1);
+  const [zoomOverride, setZoomOverride] = useState<number | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    const el = pageContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect;
+      if (!r) return;
+      const wScale = (r.width - 24) / 794;
+      // In fullscreen, also fit height so the whole page is visible at once
+      const hScale = (r.height - 24) / 1123;
+      const fit = fullscreen ? Math.min(wScale, hScale) : wScale;
+      setAutoScale(Math.min(2.0, Math.max(0.25, fit)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fullscreen]);
+  const pageScale = zoomOverride ?? autoScale;
+  const zoomIn = () => setZoomOverride(Math.min(3.0, Math.round((pageScale + 0.1) * 100) / 100));
+  const zoomOut = () => setZoomOverride(Math.max(0.25, Math.round((pageScale - 0.1) * 100) / 100));
+  const zoomFit = () => setZoomOverride(null);
+  // ESC closes fullscreen / cancels insert mode
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (insertMode) setInsertMode(false);
+        else if (fullscreen) setFullscreen(false);
+        else if (selectedBoxId) setSelectedBoxId(null);
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullscreen]);
+
+  // Free-position text inserts (Sejda-style "Add text" tool)
+  interface InsertBox {
+    id: string;
+    x: number; y: number;
+    width: number;
+    fontSize: number; // pt
+    text: string;
+  }
+  const INSERTS_KEY = 'cgap-rfp-inserts';
+  const [insertedBoxes, setInsertedBoxes] = useState<InsertBox[]>(() => {
+    try {
+      const raw = localStorage.getItem(INSERTS_KEY);
+      return raw ? (JSON.parse(raw) as InsertBox[]) : [];
+    } catch { return []; }
+  });
+  const [insertMode, setInsertMode] = useState(false);
+  const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
+  const [draggingBox, setDraggingBox] = useState<{ id: string; startMouseX: number; startMouseY: number; origX: number; origY: number } | null>(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(INSERTS_KEY, JSON.stringify(insertedBoxes)); } catch {}
+  }, [insertedBoxes]);
+
+  const handlePageClickForInsert = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!insertMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const pageEl = document.getElementById('rfp-printable');
+    if (!pageEl) return;
+    const rect = pageEl.getBoundingClientRect();
+    // Coordinates in unscaled page space (the page is 794×1123, the rect is scaled)
+    const x = Math.max(0, Math.min(794 - 60, (e.clientX - rect.left) / pageScale));
+    const y = Math.max(0, Math.min(1123 - 24, (e.clientY - rect.top) / pageScale));
+    const id = Math.random().toString(36).slice(2, 9);
+    setInsertedBoxes(prev => [...prev, { id, x, y, width: 220, fontSize: 11, text: '' }]);
+    setSelectedBoxId(id);
+    setInsertMode(false);
+    // Focus the new box's contenteditable on next tick
+    setTimeout(() => {
+      const el = document.querySelector<HTMLDivElement>(`[data-insert-id="${id}"] .insert-text-edit`);
+      if (el) { el.focus(); }
+    }, 0);
+  };
+
+  const startBoxDrag = (e: React.MouseEvent, box: InsertBox) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedBoxId(box.id);
+    setDraggingBox({
+      id: box.id,
+      startMouseX: e.clientX, startMouseY: e.clientY,
+      origX: box.x, origY: box.y,
+    });
+  };
+
+  useEffect(() => {
+    if (!draggingBox) return;
+    const onMove = (e: MouseEvent) => {
+      const dx = (e.clientX - draggingBox.startMouseX) / pageScale;
+      const dy = (e.clientY - draggingBox.startMouseY) / pageScale;
+      setInsertedBoxes(prev => prev.map(b => b.id === draggingBox.id
+        ? { ...b, x: Math.max(0, Math.min(794 - 40, draggingBox.origX + dx)), y: Math.max(0, Math.min(1123 - 16, draggingBox.origY + dy)) }
+        : b));
+    };
+    const onUp = () => setDraggingBox(null);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [draggingBox, pageScale]);
+
+  const updateBoxText = (id: string, text: string) => {
+    setInsertedBoxes(prev => prev.map(b => b.id === id ? { ...b, text } : b));
+  };
+  const deleteBox = (id: string) => {
+    setInsertedBoxes(prev => prev.filter(b => b.id !== id));
+    if (selectedBoxId === id) setSelectedBoxId(null);
+  };
+  const updateBoxFontSize = (id: string, delta: number) => {
+    setInsertedBoxes(prev => prev.map(b => b.id === id
+      ? { ...b, fontSize: Math.max(6, Math.min(48, b.fontSize + delta)) } : b));
+  };
+
+  // Inline editable preview — TipTap mounted right inside the writable area
+  const previewEditor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      Underline,
+      Link.configure({ openOnClick: false, autolink: true }),
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    ],
+    content: '',
+    editorProps: {
+      attributes: {
+        class: 'focus:outline-none prose prose-sm max-w-none text-[11pt] leading-[1.5]',
+      },
+    },
+  });
+
+  // Load saved body on first mount; if none, seed with default RFP body
+  // (merged with current form values so the user starts pre-filled).
+  //
+  // Backwards-compat guard: earlier versions of DEFAULT_RFP_BODY_HTML used
+  // literal `<<token>>`, which the HTML5 parser corrupted into text `<>` (the
+  // unknown `<token>` element was stripped by ProseMirror). If the saved
+  // content has zero detectable placeholders, treat it as corrupted and fall
+  // back to the (now properly entity-encoded) default.
+  const previewSeededRef = useRef(false);
+  useEffect(() => {
+    if (!previewEditor || previewSeededRef.current) return;
+    const saved = localStorage.getItem('cgap-editor-rfp');
+    const PLACEHOLDER_RE = /(<<|&lt;&lt;)\s*[\w_]+\s*(>>|&gt;&gt;)/;
+    const seed = saved && PLACEHOLDER_RE.test(saved) ? saved : DEFAULT_RFP_BODY_HTML;
+    previewEditor.commands.setContent(seed);
+    setEditorHtml(seed); // mirror immediately — setContent doesn't emit 'update'
+    previewSeededRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewEditor]);
+
+  // Mirror editor HTML into state so the merged view re-renders on every keystroke
+  const [editorHtml, setEditorHtml] = useState<string>('');
+  useEffect(() => {
+    if (!previewEditor) return;
+    const sync = () => {
+      const h = previewEditor.getHTML();
+      setEditorHtml(h);
+      try { localStorage.setItem('cgap-editor-rfp', h); } catch {}
+    };
+    previewEditor.on('update', sync);
+    // initial mirror after seed
+    sync();
+    return () => { previewEditor.off('update', sync); };
+  }, [previewEditor]);
+
+  // Toggle: live merged "preview" vs raw "edit" view. Default: preview ON.
+  const [showMerged, setShowMerged] = useState(true);
+
+  const refillFromForm = (opts: { skipConfirm?: boolean; clearInserts?: boolean } = {}) => {
+    if (!previewEditor) return;
+    const hasContent = previewEditor.getText().trim().length > 0;
+    if (!opts.skipConfirm && hasContent) {
+      const msg = opts.clearInserts
+        ? 'Reset the body to the default template AND remove all inserted text boxes? This can\'t be undone.'
+        : 'Reset the body to the default template? This will discard your current edits.';
+      if (!window.confirm(msg)) return;
+    }
+    previewEditor.commands.setContent(DEFAULT_RFP_BODY_HTML);
+    // setContent doesn't emit an 'update' event by default; mirror manually so
+    // the live preview re-renders with the fresh content.
+    setEditorHtml(DEFAULT_RFP_BODY_HTML);
+    try { localStorage.setItem('cgap-editor-rfp', DEFAULT_RFP_BODY_HTML); } catch {}
+    if (opts.clearInserts) setInsertedBoxes([]);
+    toast({
+      title: 'Reset to default',
+      description: opts.clearInserts ? 'Default body restored and inserts cleared.' : 'Default body restored. Form values fill <<placeholders>> at export.',
+    });
+  };
 
   // Archive state
   const [submissions, setSubmissions] = useState<any[]>([]);
@@ -113,23 +347,46 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   }, [isAdmin, fetchSubmissions]);
 
   const handleSaveToArchive = async () => {
-    if (!contractData) { toast({ title: 'Lookup contract first', variant: 'destructive' }); return; }
+    const companyName = (contractData?.client_company_name || recipientOrg).trim();
+    if (!companyName) {
+      toast({ title: 'Recipient organization required', description: 'Type a recipient org or look up a contract first.', variant: 'destructive' });
+      return;
+    }
     if (!invoiceNumber.trim() || !amountNum) {
       toast({ title: 'Fill invoice number and amount', variant: 'destructive' });
       return;
     }
     setSaving(true);
+
+    // Find or create the client by company name (case-insensitive)
+    const clientRes = await findOrCreateClient({
+      company_name: companyName,
+      contact_person: contractData?.client_coordinator || recipientName || null,
+      location: contractData?.client_location ?? null,
+      created_by: currentUsername,
+    });
+    if (!clientRes.ok) {
+      setSaving(false);
+      toast({ title: 'Client save failed', description: clientRes.error, variant: 'destructive' });
+      return;
+    }
+
+    const notesLine = contractData?.contract_id
+      ? `Invoice ${invoiceNumber} · Amount ${formatNPR(amountNum)} · Due ${dueDate} · Contract ${contractData.contract_id}`
+      : `Invoice ${invoiceNumber} · Amount ${formatNPR(amountNum)} · Due ${dueDate}`;
+
     const { error: e } = await supabase.from('rfp_submissions').insert({
-      company_name: contractData.client_company_name,
-      contact_person: contractData.client_coordinator || '—',
+      company_name: companyName,
+      contact_person: contractData?.client_coordinator || recipientName || '—',
       contact_email: 'n/a@cgap.local',
-      client_location: contractData.client_location,
-      requested_users: contractData.num_users,
-      requested_period_months: contractData.contract_period_num,
+      client_location: contractData?.client_location ?? null,
+      requested_users: contractData?.num_users ?? null,
+      requested_period_months: contractData?.contract_period_num ?? null,
       requested_services: description || `RfP ${invoiceNumber}`,
-      notes: `Invoice ${invoiceNumber} · Amount ${formatNPR(amountNum)} · Due ${dueDate} · Contract ${contractData.contract_id}\n${notes}`,
+      notes: `${notesLine}\n${notes}`,
       status: 'submitted',
-      converted_contract_id: contractData.contract_id,
+      converted_contract_id: contractData?.contract_id ?? null,
+      client_id: clientRes.client.id,
       reviewed_by: currentUsername,
       reviewed_at: new Date().toISOString(),
     } as any);
@@ -137,7 +394,10 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     if (e) {
       toast({ title: 'Save failed', description: e.message, variant: 'destructive' });
     } else {
-      toast({ title: 'Saved to archive' });
+      toast({
+        title: clientRes.created ? `Saved · new client created` : `Saved to archive`,
+        description: clientRes.created ? `"${clientRes.client.company_name}" added to clients.` : undefined,
+      });
       fetchSubmissions();
     }
   };
@@ -193,15 +453,6 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   }, []);
 
   // Live-subscribe to TipTap editor updates so body overlay refreshes
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ storageKey: string; html: string }>).detail;
-      if (detail?.storageKey === 'cgap-editor-rfp') setEditorBodyHtml(detail.html);
-    };
-    window.addEventListener('cgap-editor-update', handler);
-    return () => window.removeEventListener('cgap-editor-update', handler);
-  }, []);
-
   const placeholderValues = useMemo<Record<string, string>>(() => ({
     ref_no: refNo,
     invoice_number: invoiceNumber,
@@ -226,15 +477,11 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     client_location: contractData?.client_location ?? '',
   }), [refNo, invoiceNumber, issueDate, dueDate, formattedAmount, amountWords, recipientName, recipientOrg, serviceFor, serviceTerm, serviceReference, payeeName, bankName, bankAccount, signatoryName, signatoryPosition, description, notes, contractData]);
 
-  const mergedBodyHtml = useMemo(() => {
-    const raw = editorBodyHtml || DEFAULT_RFP_BODY_HTML;
-    return mergePlaceholders(raw, placeholderValues);
-  }, [editorBodyHtml, placeholderValues]);
 
-  // Fetch docx template once when contract is looked up (only if no letterhead override)
+  // Fetch docx template once (only if no letterhead override)
   useEffect(() => {
     if (letterhead) return; // letterhead path supersedes docx path
-    if (!contractData || templateBufferRef.current) return;
+    if (templateBufferRef.current) return;
     let cancelled = false;
     setTemplateLoading(true);
     setTemplateError('');
@@ -248,7 +495,7 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   // Debounced preview render via docx-preview (renders headers, footers, watermarks)
   useEffect(() => {
     if (letterhead) return; // letterhead path supersedes docx-preview path
-    if (!templateBufferRef.current || !contractData) return;
+    if (!templateBufferRef.current) return;
     setPreviewing(true);
     const t = setTimeout(async () => {
       try {
@@ -336,14 +583,15 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
 
   const handleGenerateDocx = async () => {
     setError('');
-    if (!contractData) { setError('Look up a contract first'); return; }
     if (!invoiceNumber.trim()) { setError('Invoice number required'); return; }
+    if (!recipientOrg.trim()) { setError('Recipient organization required'); return; }
     if (!amountNum) { setError('Amount required'); return; }
     if (!dueDate) { setError('Due date required'); return; }
 
     setGeneratingDocx(true);
     try {
-      await generateRfpDocx(docxValues, `RfP-${invoiceNumber}-${contractData.contract_id}.docx`);
+      const suffix = contractData?.contract_id ? `-${contractData.contract_id}` : '';
+      await generateRfpDocx(docxValues, `RfP-${invoiceNumber}${suffix}.docx`);
       toast({ title: 'DOCX generated' });
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to generate DOCX';
@@ -356,8 +604,8 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
 
   const handleGenerate = async () => {
     setError('');
-    if (!contractData) { setError('Look up a contract first'); return; }
     if (!invoiceNumber.trim()) { setError('Invoice number required'); return; }
+    if (!recipientOrg.trim()) { setError('Recipient organization required'); return; }
     if (!amountNum) { setError('Amount required'); return; }
     if (!dueDate) { setError('Due date required'); return; }
 
@@ -378,7 +626,36 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       if (targets.length === 0) throw new Error('Preview not ready yet — wait a moment and try again');
 
       for (let i = 0; i < targets.length; i++) {
-        const canvas = await html2canvas(targets[i], { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+        const canvas = await html2canvas(targets[i], {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          // Pre-render hook: in the cloned doc we substitute placeholders into
+          // the editor's HTML and strip any CSS scale so the PDF captures the
+          // full-resolution A4 page, not the scaled preview.
+          onclone: (clonedDoc) => {
+            const clonedPage = clonedDoc.getElementById('rfp-printable');
+            if (clonedPage) (clonedPage.style as any).transform = 'none';
+            const body = clonedDoc.getElementById('rfp-editable-body');
+            if (body && previewEditor) {
+              body.innerHTML = mergePlaceholders(previewEditor.getHTML(), placeholderValues);
+            }
+            // Strip insert-box selection chrome AND merge placeholders inside each box
+            clonedDoc.querySelectorAll<HTMLElement>('[data-insert-id]').forEach((wrapper) => {
+              wrapper.classList.remove('insert-box-selected');
+              wrapper.querySelectorAll<HTMLElement>('button, [title="Drag to move"]').forEach((el) => el.remove());
+              wrapper.querySelectorAll<HTMLElement>('.insert-text-edit').forEach((el) => {
+                el.style.outline = 'none';
+                el.style.cursor = 'auto';
+                el.innerHTML = mergePlaceholders(el.innerHTML, placeholderValues);
+              });
+              // Remove any other absolutely-positioned decoration siblings
+              wrapper.querySelectorAll<HTMLElement>(':scope > div').forEach((el) => {
+                if (!el.classList.contains('insert-text-edit')) el.remove();
+              });
+            });
+          },
+        });
         const img = canvas.toDataURL('image/png');
 
         const widthRatio = pageW / canvas.width;
@@ -393,7 +670,8 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
         pdf.addImage(img, 'PNG', offsetX, offsetY, finalW, finalH);
       }
 
-      pdf.save(`RfP-${invoiceNumber}-${contractData.contract_id}.pdf`);
+      const suffix = contractData?.contract_id ? `-${contractData.contract_id}` : '';
+      pdf.save(`RfP-${invoiceNumber}${suffix}.pdf`);
       setDone(true);
       setTimeout(() => setDone(false), 3000);
     } catch (e) {
@@ -436,9 +714,11 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
         </Button>
       </div>
 
-      {/* Contract Lookup */}
+      {/* Contract Lookup (optional) */}
       <div className={card}>
-        <Label className={labelCls}>Contract ID</Label>
+        <Label className={labelCls}>
+          Contract ID <span className="ml-1 text-[10px] normal-case font-normal text-gray-500">· optional — leave blank for a standalone RfP</span>
+        </Label>
         <div className="relative mt-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" />
           <Input
@@ -555,79 +835,201 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
         )}
 
         <div className="flex items-center gap-3 mt-5 flex-wrap">
-          <Button onClick={handleGenerate} disabled={generating || !contractData}
+          <Button onClick={handleGenerate} disabled={generating}
             className="flex-1 min-w-[180px]" style={{ background: ACCENT, color: '#fff' }}>
             {generating ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Generating…</>
               : done ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Downloaded</>
               : <><Download className="w-4 h-4 mr-2" /> Generate PDF</>}
           </Button>
           {!letterhead && (
-            <Button onClick={handleGenerateDocx} disabled={generatingDocx || !contractData} variant="outline">
+            <Button onClick={handleGenerateDocx} disabled={generatingDocx} variant="outline">
               {generatingDocx
                 ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Generating…</>
                 : <><FileText className="w-4 h-4 mr-2" /> Generate DOCX</>}
             </Button>
           )}
           {isAdmin && (
-            <Button variant="outline" onClick={handleSaveToArchive} disabled={saving || !contractData}>
+            <Button variant="outline" onClick={handleSaveToArchive} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
               Save to Archive
             </Button>
           )}
-          <Button variant="outline" onClick={() => window.print()} disabled={!contractData}>
+          <Button variant="outline" onClick={() => window.print()}>
             <Printer className="w-4 h-4 mr-2" /> Print
           </Button>
         </div>
       </div>
 
-      {/* Printable preview */}
-      {contractData && (
-        <div className={card}>
-          <div className="flex items-center justify-between mb-2">
-            <Label className={labelCls}>
-              Preview {letterhead && <span className="ml-1 text-[10px] normal-case font-normal text-gray-500">· letterhead: {letterhead.name}</span>}
-            </Label>
-            <div className="flex items-center gap-2 text-[10px] text-gray-500">
-              {letterheadLoading && <><Loader2 className="w-3 h-3 animate-spin" /> Loading letterhead…</>}
-              {!letterhead && templateLoading && <><Loader2 className="w-3 h-3 animate-spin" /> Loading template…</>}
-              {!letterhead && !templateLoading && previewing && <><Loader2 className="w-3 h-3 animate-spin" /> Refreshing…</>}
-            </div>
+      {/* Printable preview — Sejda-style editor (breaks out of inner card padding) */}
+      <div
+        className={cn(
+          'rounded-xl border overflow-hidden relative',
+          dm ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-200',
+          !fullscreen && '-mx-5 sm:-mx-8',
+          fullscreen && 'fixed inset-0 z-50 rounded-none flex flex-col',
+        )}
+      >
+        {/* Sticky toolbar */}
+        <div className={cn(
+          'sticky top-0 z-20 flex flex-wrap items-center gap-1 px-2 py-1.5 border-b',
+          dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200',
+        )}>
+          <div className="flex items-center gap-2 mr-2 px-1.5">
+            <button
+              type="button"
+              onClick={() => setShowMerged(v => !v)}
+              title={showMerged ? 'Currently live preview — click to edit' : 'Currently editing — click to preview'}
+              className={cn(
+                'inline-flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium transition-colors',
+                showMerged
+                  ? (dm ? 'bg-emerald-900/40 text-emerald-300' : 'bg-emerald-100 text-emerald-700')
+                  : (dm ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'),
+              )}
+            >
+              {showMerged ? <Eye className="w-3.5 h-3.5" /> : <PenLine className="w-3.5 h-3.5" />}
+              {showMerged ? 'Preview' : 'Edit'}
+            </button>
+            {letterhead && <Badge variant="outline" className="text-[9px] h-4">{letterhead.name}</Badge>}
+            {letterheadLoading && <Loader2 className="w-3 h-3 animate-spin opacity-60" />}
+            {!letterhead && templateLoading && <Loader2 className="w-3 h-3 animate-spin opacity-60" />}
+            {!letterhead && !templateLoading && previewing && <Loader2 className="w-3 h-3 animate-spin opacity-60" />}
           </div>
-          {templateError && !letterhead && (
-            <p className="text-xs text-red-500 flex items-center gap-1.5 mb-2"><AlertCircle className="w-3 h-3" /> {templateError}</p>
+
+          {letterhead && previewEditor && (
+            <>
+              <span className="w-px h-4 bg-gray-400/30 mx-1" />
+              <ToolbarBtn dm={dm} title="Bold" active={previewEditor.isActive('bold')} onClick={() => previewEditor.chain().focus().toggleBold().run()}><Bold className="w-3.5 h-3.5" /></ToolbarBtn>
+              <ToolbarBtn dm={dm} title="Italic" active={previewEditor.isActive('italic')} onClick={() => previewEditor.chain().focus().toggleItalic().run()}><Italic className="w-3.5 h-3.5" /></ToolbarBtn>
+              <ToolbarBtn dm={dm} title="Underline" active={previewEditor.isActive('underline')} onClick={() => previewEditor.chain().focus().toggleUnderline().run()}><UnderlineIcon className="w-3.5 h-3.5" /></ToolbarBtn>
+              <ToolbarBtn dm={dm} title="Strike" active={previewEditor.isActive('strike')} onClick={() => previewEditor.chain().focus().toggleStrike().run()}><Strikethrough className="w-3.5 h-3.5" /></ToolbarBtn>
+              <span className="w-px h-4 bg-gray-400/30 mx-1" />
+              <ToolbarBtn dm={dm} title="H1" active={previewEditor.isActive('heading', { level: 1 })} onClick={() => previewEditor.chain().focus().toggleHeading({ level: 1 }).run()}><Heading1 className="w-3.5 h-3.5" /></ToolbarBtn>
+              <ToolbarBtn dm={dm} title="H2" active={previewEditor.isActive('heading', { level: 2 })} onClick={() => previewEditor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 className="w-3.5 h-3.5" /></ToolbarBtn>
+              <ToolbarBtn dm={dm} title="Bulleted list" active={previewEditor.isActive('bulletList')} onClick={() => previewEditor.chain().focus().toggleBulletList().run()}><List className="w-3.5 h-3.5" /></ToolbarBtn>
+              <ToolbarBtn dm={dm} title="Numbered list" active={previewEditor.isActive('orderedList')} onClick={() => previewEditor.chain().focus().toggleOrderedList().run()}><ListOrdered className="w-3.5 h-3.5" /></ToolbarBtn>
+              <span className="w-px h-4 bg-gray-400/30 mx-1" />
+              <ToolbarBtn dm={dm} title="Align left" active={previewEditor.isActive({ textAlign: 'left' })} onClick={() => previewEditor.chain().focus().setTextAlign('left').run()}><AlignLeft className="w-3.5 h-3.5" /></ToolbarBtn>
+              <ToolbarBtn dm={dm} title="Align center" active={previewEditor.isActive({ textAlign: 'center' })} onClick={() => previewEditor.chain().focus().setTextAlign('center').run()}><AlignCenter className="w-3.5 h-3.5" /></ToolbarBtn>
+              <ToolbarBtn dm={dm} title="Align right" active={previewEditor.isActive({ textAlign: 'right' })} onClick={() => previewEditor.chain().focus().setTextAlign('right').run()}><AlignRight className="w-3.5 h-3.5" /></ToolbarBtn>
+              <ToolbarBtn dm={dm} title="Justify" active={previewEditor.isActive({ textAlign: 'justify' })} onClick={() => previewEditor.chain().focus().setTextAlign('justify').run()}><AlignJustify className="w-3.5 h-3.5" /></ToolbarBtn>
+              <span className="w-px h-4 bg-gray-400/30 mx-1" />
+              <ToolbarBtn dm={dm} title="Undo" disabled={!previewEditor.can().undo()} onClick={() => previewEditor.chain().focus().undo().run()}><Undo className="w-3.5 h-3.5" /></ToolbarBtn>
+              <ToolbarBtn dm={dm} title="Redo" disabled={!previewEditor.can().redo()} onClick={() => previewEditor.chain().focus().redo().run()}><Redo className="w-3.5 h-3.5" /></ToolbarBtn>
+              <span className="w-px h-4 bg-gray-400/30 mx-1" />
+              <button
+                type="button"
+                onClick={() => setInsertMode(v => !v)}
+                title="Insert text anywhere (Esc to cancel)"
+                className={cn(
+                  'inline-flex items-center gap-1 h-7 px-2 rounded text-xs transition-colors',
+                  insertMode
+                    ? 'bg-emerald-500 text-white'
+                    : (dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'),
+                )}
+              >
+                <Type className="w-3.5 h-3.5" />
+                {insertMode ? 'Click on page…' : 'Insert text'}
+              </button>
+              <button
+                type="button"
+                onClick={() => refillFromForm()}
+                title="Restore the default RfP body. Confirms before discarding edits."
+                className={cn(
+                  'inline-flex items-center gap-1 h-7 px-2 rounded text-xs transition-colors border',
+                  dm
+                    ? 'border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-gray-600'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-100',
+                )}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reset to default
+              </button>
+            </>
           )}
-          {letterhead && isAdmin && (
-            <div className={`flex flex-wrap items-center gap-2 mb-2 p-2 rounded-lg text-[11px] ${dm ? 'bg-gray-800/50 text-gray-300' : 'bg-white text-gray-600'}`}>
-              <span className="font-medium opacity-70">Margins (px):</span>
-              {(['top', 'right', 'bottom', 'left'] as const).map((side) => {
-                const Icon = side === 'top' ? ChevronUp : side === 'bottom' ? ChevronDown : side === 'left' ? ChevronLeft : ChevronRight;
-                return (
-                  <div key={side} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${dm ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                    <Icon className="w-3 h-3 opacity-60" />
-                    <button type="button" onClick={() => nudgeMargin(side, -8)} className={`w-5 h-5 rounded inline-flex items-center justify-center ${dm ? 'hover:bg-gray-800' : 'hover:bg-white'}`} title="Decrease 8px"><Minus className="w-3 h-3" /></button>
-                    <span className="tabular-nums w-8 text-center font-medium">{letterhead.margins[side]}</span>
-                    <button type="button" onClick={() => nudgeMargin(side, 8)} className={`w-5 h-5 rounded inline-flex items-center justify-center ${dm ? 'hover:bg-gray-800' : 'hover:bg-white'}`} title="Increase 8px"><Plus className="w-3 h-3" /></button>
-                  </div>
-                );
-              })}
-              {marginSaving && <span className="inline-flex items-center gap-1 text-[10px] opacity-70"><Loader2 className="w-3 h-3 animate-spin" /> saving…</span>}
-            </div>
+
+          {/* Zoom + fullscreen — right side */}
+          <span className="flex-1" />
+          <div className={cn('flex items-center gap-0.5 px-1 rounded', dm ? 'bg-gray-800' : 'bg-white border border-gray-200')}>
+            <ToolbarBtn dm={dm} title="Zoom out" onClick={zoomOut}><ZoomOut className="w-3.5 h-3.5" /></ToolbarBtn>
+            <button onClick={zoomFit} title="Fit width" className={cn('h-7 px-2 text-xs tabular-nums rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}>
+              {Math.round(pageScale * 100)}%
+            </button>
+            <ToolbarBtn dm={dm} title="Zoom in" onClick={zoomIn}><ZoomIn className="w-3.5 h-3.5" /></ToolbarBtn>
+          </div>
+          <ToolbarBtn dm={dm} title={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'} onClick={() => setFullscreen(!fullscreen)}>
+            {fullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </ToolbarBtn>
+          {fullscreen && (
+            <ToolbarBtn dm={dm} title="Close" onClick={() => setFullscreen(false)}><X className="w-3.5 h-3.5" /></ToolbarBtn>
           )}
+        </div>
+
+        {/* Margins nudger (admin only, letterhead only) */}
+        {letterhead && isAdmin && (
+          <div className={cn(
+            'flex flex-wrap items-center gap-2 px-3 py-1.5 border-b text-[11px]',
+            dm ? 'bg-gray-900/60 border-gray-800 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-600',
+          )}>
+            <span className="font-medium opacity-70">Margins (px):</span>
+            {(['top', 'right', 'bottom', 'left'] as const).map((side) => {
+              const Icon = side === 'top' ? ChevronUp : side === 'bottom' ? ChevronDown : side === 'left' ? ChevronLeft : ChevronRight;
+              return (
+                <div key={side} className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded', dm ? 'bg-gray-800' : 'bg-white border border-gray-200')}>
+                  <Icon className="w-3 h-3 opacity-60" />
+                  <button type="button" onClick={() => nudgeMargin(side, -8)} className={cn('w-5 h-5 rounded inline-flex items-center justify-center', dm ? 'hover:bg-gray-700' : 'hover:bg-gray-100')} title="Decrease 8px"><Minus className="w-3 h-3" /></button>
+                  <span className="tabular-nums w-8 text-center font-medium">{letterhead.margins[side]}</span>
+                  <button type="button" onClick={() => nudgeMargin(side, 8)} className={cn('w-5 h-5 rounded inline-flex items-center justify-center', dm ? 'hover:bg-gray-700' : 'hover:bg-gray-100')} title="Increase 8px"><Plus className="w-3 h-3" /></button>
+                </div>
+              );
+            })}
+            {marginSaving && <span className="inline-flex items-center gap-1 text-[10px] opacity-70"><Loader2 className="w-3 h-3 animate-spin" /> saving…</span>}
+          </div>
+        )}
+
+        {templateError && !letterhead && (
+          <p className="text-xs text-red-500 flex items-center gap-1.5 px-3 py-2"><AlertCircle className="w-3 h-3" /> {templateError}</p>
+        )}
+
+        {/* Page canvas (gray bg, centered page with shadow) */}
+        <div
+          ref={pageContainerRef}
+          className={cn(
+            'flex justify-center items-start py-6 px-3 overflow-auto',
+            dm ? 'bg-gray-900' : 'bg-gray-200',
+            fullscreen ? 'flex-1' : '',
+          )}
+          style={fullscreen ? undefined : { maxHeight: '80vh', minHeight: 320 }}
+        >
           {letterhead ? (
-            <div className="mt-1 overflow-auto rounded-lg border bg-gray-100" style={{ borderColor: dm ? '#2A2A2A' : '#E5E7EB' }}>
+            <div
+              style={{
+                width: 794 * pageScale,
+                height: 1123 * pageScale,
+                position: 'relative',
+                flex: '0 0 auto',
+              }}
+            >
               <div
                 id="rfp-printable"
-                className="rfp-letterhead-page mx-auto relative bg-white"
+                className="rfp-letterhead-page"
                 style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
                   width: '794px',
                   height: '1123px',
+                  transform: `scale(${pageScale})`,
+                  transformOrigin: 'top left',
+                  background: '#fff',
                   backgroundImage: `url("${letterhead.imageUrl}")`,
                   backgroundSize: '794px 1123px',
                   backgroundRepeat: 'no-repeat',
                   backgroundPosition: 'center top',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.10)',
                 }}
               >
                 <div
+                  id="rfp-editable-body"
                   className="rfp-letterhead-body"
                   style={{
                     position: 'absolute',
@@ -635,27 +1037,161 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
                     right: `${letterhead.margins.right}px`,
                     bottom: `${letterhead.margins.bottom}px`,
                     left: `${letterhead.margins.left}px`,
-                    overflow: 'hidden',
+                    overflow: 'auto',
                     color: '#111',
                     fontFamily: 'Calibri, Inter, sans-serif',
                     fontSize: '11pt',
                     lineHeight: 1.5,
                   }}
-                  dangerouslySetInnerHTML={{ __html: mergedBodyHtml }}
-                />
+                >
+                  {showMerged ? (
+                    <div
+                      onClick={() => setShowMerged(false)}
+                      title="Click to edit"
+                      style={{ cursor: 'text', minHeight: '100%' }}
+                      dangerouslySetInnerHTML={{ __html: mergePlaceholders(editorHtml, placeholderValues) }}
+                    />
+                  ) : (
+                    <EditorContent editor={previewEditor} />
+                  )}
+                </div>
+
+                {/* Free-position inserted text boxes (rendered on top, captured in PDF) */}
+                {insertedBoxes.map(box => {
+                  const isSelected = selectedBoxId === box.id;
+                  return (
+                    <div
+                      key={box.id}
+                      data-insert-id={box.id}
+                      onClick={(e) => { e.stopPropagation(); setSelectedBoxId(box.id); }}
+                      style={{
+                        position: 'absolute',
+                        left: box.x,
+                        top: box.y,
+                        width: box.width,
+                        minHeight: 18,
+                        zIndex: 5,
+                        // Selection ring is visual-only — stripped at PDF capture via data attribute
+                      }}
+                      className={isSelected ? 'insert-box-selected' : undefined}
+                    >
+                      {isSelected && (
+                        <>
+                          <div
+                            onMouseDown={(e) => startBoxDrag(e, box)}
+                            title="Drag to move"
+                            style={{
+                              position: 'absolute', top: -10, left: -10,
+                              width: 18, height: 18, background: '#10B981',
+                              color: '#fff', borderRadius: 4, cursor: 'move',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                              zIndex: 6,
+                            }}
+                          >
+                            <Move className="w-3 h-3" />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); deleteBox(box.id); }}
+                            title="Delete"
+                            style={{
+                              position: 'absolute', top: -10, right: -10,
+                              width: 18, height: 18, background: '#ef4444',
+                              color: '#fff', borderRadius: 4, border: 'none', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                              fontSize: 11, lineHeight: 1, padding: 0,
+                              zIndex: 6,
+                            }}
+                          >
+                            ×
+                          </button>
+                          <div style={{ position: 'absolute', bottom: -22, left: 0, display: 'flex', gap: 4, zIndex: 6 }}>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); updateBoxFontSize(box.id, -1); }} className="bg-white border text-xs h-5 w-5 rounded shadow-sm">−</button>
+                            <span className="text-[10px] px-1 bg-white border rounded shadow-sm h-5 inline-flex items-center tabular-nums">{box.fontSize}pt</span>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); updateBoxFontSize(box.id, 1); }} className="bg-white border text-xs h-5 w-5 rounded shadow-sm">+</button>
+                          </div>
+                        </>
+                      )}
+                      {showMerged ? (
+                        // Preview mode: dangerouslySetInnerHTML re-renders reactively on form changes
+                        <div
+                          className="insert-text-edit"
+                          onClick={() => setShowMerged(false)}
+                          title="Click to edit"
+                          style={{
+                            outline: isSelected ? '1px dashed #10B981' : '1px dashed transparent',
+                            outlineOffset: 2,
+                            padding: '1px 3px',
+                            minHeight: 16,
+                            fontSize: `${box.fontSize}pt`,
+                            fontFamily: 'Calibri, Inter, sans-serif',
+                            color: '#111',
+                            lineHeight: 1.35,
+                            cursor: 'pointer',
+                            background: 'transparent',
+                          }}
+                          dangerouslySetInnerHTML={{ __html: mergePlaceholders(box.text, placeholderValues) || '<span style="opacity:0.4">(empty)</span>' }}
+                        />
+                      ) : (
+                        // Edit mode: uncontrolled contenteditable, initial HTML set once via ref
+                        <div
+                          className="insert-text-edit"
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => updateBoxText(box.id, e.currentTarget.innerHTML)}
+                          ref={(el) => {
+                            if (!el) return;
+                            if (el.getAttribute('data-init') !== 'yes') {
+                              el.innerHTML = box.text;
+                              el.setAttribute('data-init', 'yes');
+                            }
+                          }}
+                          style={{
+                            outline: isSelected ? '1px dashed #10B981' : '1px dashed transparent',
+                            outlineOffset: 2,
+                            padding: '1px 3px',
+                            minHeight: 16,
+                            fontSize: `${box.fontSize}pt`,
+                            fontFamily: 'Calibri, Inter, sans-serif',
+                            color: '#111',
+                            lineHeight: 1.35,
+                            cursor: 'text',
+                            background: 'transparent',
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Insert-mode overlay: captures clicks anywhere on the page */}
+                {insertMode && (
+                  <div
+                    onClick={handlePageClickForInsert}
+                    title="Click to insert a text box"
+                    style={{
+                      position: 'absolute', inset: 0,
+                      cursor: 'crosshair',
+                      zIndex: 20,
+                      background: 'rgba(16, 185, 129, 0.06)',
+                      border: '2px dashed rgba(16, 185, 129, 0.4)',
+                    }}
+                  />
+                )}
               </div>
             </div>
           ) : (
-            <div className="mt-1 overflow-auto rounded-lg border bg-gray-100" style={{ borderColor: dm ? '#2A2A2A' : '#E5E7EB' }}>
-              <div
-                id="rfp-printable"
-                ref={previewContainerRef}
-                className="rfp-docx-preview mx-auto"
-              />
-            </div>
+            <div
+              id="rfp-printable"
+              ref={previewContainerRef}
+              className="rfp-docx-preview"
+              style={{ transform: `scale(${pageScale})`, transformOrigin: 'top center' }}
+            />
           )}
         </div>
-      )}
+      </div>
 
       {/* RfP Archive (admin only) */}
       {isAdmin && (

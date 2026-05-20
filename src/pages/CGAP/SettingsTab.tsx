@@ -4,8 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Trash2, Save, Info, Database, X, FileText } from 'lucide-react';
+import { Plus, Trash2, Save, Info, Database, X, FileText, FileSpreadsheet, Receipt, Copy, Check } from 'lucide-react';
 import TemplateManager from '@/components/TemplateManager';
+import { loadQgapSettings, saveQgapSettings, DEFAULT_QGAP_SETTINGS, type QgapSettings } from '@/utils/qgapSettings';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 
 const STORAGE_KEYS = [
   { key: 'calculator-plan-data', label: 'Calculator Plan Data' },
@@ -17,6 +20,7 @@ const STORAGE_KEYS = [
   { key: 'cgap-addendum-logs', label: 'Addendum Logs' },
   { key: 'cgap-auth', label: 'CGAP Auth' },
   { key: 'calculator-auth', label: 'Calculator Auth' },
+  { key: 'qgap-settings', label: 'QGAP Settings' },
 ];
 
 interface SettingsTabProps { darkMode?: boolean; }
@@ -25,6 +29,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
   const [localMappings, setLocalMappings] = useState(fieldMappings);
   const [templateId, setTemplateId] = useState(addendumTemplateId);
   const [saved, setSaved] = useState(false);
+
+  // QGAP settings
+  const [qgapSettings, setQgapSettings] = useState<QgapSettings>(() => loadQgapSettings());
+  const [qgapSaved, setQgapSaved] = useState(false);
+  const handleSaveQgap = () => {
+    saveQgapSettings(qgapSettings);
+    setQgapSaved(true);
+    setTimeout(() => setQgapSaved(false), 2000);
+  };
+  const handleResetQgap = () => setQgapSettings({ ...DEFAULT_QGAP_SETTINGS });
 
   const dm = darkMode;
   const card = `rounded-xl p-6 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
@@ -50,6 +64,40 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
     { tag: '<<YY>>', desc: 'Year 2-digit (e.g. "26")' },
     { tag: '<<VERSION>>', desc: 'Contract sequence number' },
   ];
+
+  // RfP placeholders — every token the RFP tab merges into the body at export time.
+  const RFP_PLACEHOLDERS: { token: string; label: string; example: string }[] = [
+    { token: 'ref_no',              label: 'Ref. No',                example: '980' },
+    { token: 'invoice_number',      label: 'Invoice / RfP Number',   example: 'RfP-2605-001' },
+    { token: 'issue_date',          label: 'Letter Date',            example: '19/05/2026' },
+    { token: 'due_date',            label: 'Due Date',               example: '02/06/2026' },
+    { token: 'amount',              label: 'Amount (formatted)',     example: 'NRs. 1,50,000' },
+    { token: 'amount_words',        label: 'Amount in words',        example: 'One Hundred Fifty Thousand…' },
+    { token: 'recipient_name',      label: 'Recipient salutation',   example: 'The SOMTU' },
+    { token: 'recipient_org',       label: 'Recipient organization', example: 'Acme Corporation Pvt. Ltd.' },
+    { token: 'service_for',         label: 'Service / Subject',      example: 'domain and hosting services' },
+    { token: 'service_term',        label: 'Service term',           example: '5 years (Domain and Hosting)' },
+    { token: 'service_reference',   label: 'Reference',              example: 'provided quotes' },
+    { token: 'payee_name',          label: 'Payee name',             example: 'Nest Nepal Business Solutions Pvt. Ltd.' },
+    { token: 'bank_name',           label: 'Bank name',              example: 'Laxmi Sunrise Bank' },
+    { token: 'bank_account',        label: 'Bank account',           example: '03211002193' },
+    { token: 'signatory_name',      label: 'Signatory name',         example: 'Yashoda Ghimire' },
+    { token: 'signatory_position',  label: 'Signatory position',     example: 'Finance' },
+    { token: 'description',         label: 'Additional description', example: '(free-text from form)' },
+    { token: 'notes',               label: 'Notes',                  example: '(free-text from form)' },
+    { token: 'contract_id',         label: 'Linked contract ID',     example: 'WMA-NNBS-03-03-26-1' },
+    { token: 'client_company_name', label: 'Client company (from contract)', example: 'Acme Corporation Pvt. Ltd.' },
+    { token: 'client_location',     label: 'Client location (from contract)', example: 'Kathmandu' },
+  ];
+
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const copyToken = async (token: string) => {
+    try {
+      await navigator.clipboard.writeText(`<<${token}>>`);
+      setCopiedToken(token);
+      setTimeout(() => setCopiedToken(null), 1200);
+    } catch {/* clipboard blocked */}
+  };
 
   return (
     <div className="space-y-6">
@@ -118,6 +166,46 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
           ))}
         </div>
       </div>
+
+      {/* RfP Placeholders */}
+      <div className={card}>
+        <div className="flex items-center gap-2 mb-1">
+          <Receipt className={`w-4 h-4 ${dm ? 'text-emerald-400' : 'text-emerald-600'}`} />
+          <h3 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>RfP Placeholders</h3>
+        </div>
+        <p className={`text-xs mb-4 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+          Tokens you can use anywhere in the RfP body (editor, .docx template, letterhead overlay). They&apos;re
+          replaced with form values at PDF/DOCX export. Click any token to copy it as
+          {' '}<code className="font-mono" style={{ color: '#10B981' }}>&lt;&lt;name&gt;&gt;</code>.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
+          {RFP_PLACEHOLDERS.map(p => (
+            <button
+              key={p.token}
+              type="button"
+              onClick={() => copyToken(p.token)}
+              className={`flex items-center justify-between gap-3 py-1.5 px-2 rounded transition-colors text-left ${dm ? 'hover:bg-gray-800/60 border-gray-800' : 'hover:bg-white border-gray-200'} border-b`}
+              title={`Copy <<${p.token}>>`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {copiedToken === p.token
+                  ? <Check className="w-3 h-3 text-emerald-500 shrink-0" />
+                  : <Copy className={`w-3 h-3 shrink-0 ${dm ? 'text-gray-600' : 'text-gray-400'}`} />}
+                <code className="font-mono text-xs truncate" style={{ color: '#10B981' }}>{`<<${p.token}>>`}</code>
+              </div>
+              <div className="text-right min-w-0">
+                <div className={`text-[11px] font-medium truncate ${dm ? 'text-gray-300' : 'text-gray-700'}`}>{p.label}</div>
+                <div className={`text-[10px] truncate ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{p.example}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+        {copiedToken && (
+          <p className={`text-[11px] mt-2 ${dm ? 'text-emerald-400' : 'text-emerald-600'}`}>
+            Copied <code className="font-mono">{`<<${copiedToken}>>`}</code> to clipboard.
+          </p>
+        )}
+      </div>
       {/* Document Templates */}
       <div className={card}>
         <div className="flex items-center gap-2 mb-1">
@@ -128,6 +216,64 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
           Upload <code>.docx</code> files or paste Google Docs links for Contract, Addendum, and RfP. Use <code className="font-mono" style={{ color: '#A78BFA' }}>&lt;&lt;PLACEHOLDER&gt;&gt;</code> tokens inside your documents.
         </p>
         <TemplateManager darkMode={dm} />
+      </div>
+
+      {/* QGAP Defaults */}
+      <div className={card}>
+        <div className="flex items-center gap-2 mb-1">
+          <FileSpreadsheet className={`w-4 h-4 ${dm ? 'text-violet-400' : 'text-violet-600'}`} />
+          <h3 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>QGAP Defaults</h3>
+        </div>
+        <p className={`text-xs mb-4 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+          Pre-fill values for the Quote tab. Existing in-progress quotes are unaffected.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label className={`text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Prepared by</Label>
+            <Input
+              value={qgapSettings.preparedBy}
+              onChange={e => setQgapSettings({ ...qgapSettings, preparedBy: e.target.value })}
+              className={`mt-2 ${inputCls}`}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className={`text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Default VAT %</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={qgapSettings.defaultVatPct}
+                onChange={e => setQgapSettings({ ...qgapSettings, defaultVatPct: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+                className={`mt-2 ${inputCls}`}
+              />
+            </div>
+            <div>
+              <Label className={`text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Validity (days)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={qgapSettings.defaultValidityDays}
+                onChange={e => setQgapSettings({ ...qgapSettings, defaultValidityDays: Math.max(1, Number(e.target.value) || 1) })}
+                className={`mt-2 ${inputCls}`}
+              />
+            </div>
+          </div>
+          <div className="md:col-span-2">
+            <Label className={`text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Default notes / terms</Label>
+            <Textarea
+              value={qgapSettings.defaultNotes}
+              onChange={e => setQgapSettings({ ...qgapSettings, defaultNotes: e.target.value })}
+              rows={2}
+              className={`mt-2 ${inputCls}`}
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-2 mt-4">
+          <Button onClick={handleSaveQgap} className="gap-1.5"><Save className="w-3.5 h-3.5" /> Save QGAP Defaults</Button>
+          <Button variant="outline" onClick={handleResetQgap}>Reset to defaults</Button>
+          {qgapSaved && <span className={`text-xs ${dm ? 'text-green-400' : 'text-green-600'}`}>Saved.</span>}
+        </div>
       </div>
 
       {/* Diagnostics Panel */}

@@ -38,15 +38,9 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
   return (
     <div className="space-y-4">
       <Tabs defaultValue="contract" className="w-full">
-        <TabsList className={`grid w-full grid-cols-6 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+        <TabsList className={`grid w-full grid-cols-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
           <TabsTrigger value="contract" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-blue-900/50 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}>
             <FileText className="w-3.5 h-3.5" /> Contract
-          </TabsTrigger>
-          <TabsTrigger value="addendum" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-amber-900/50 data-[state=active]:text-amber-300' : 'data-[state=active]:bg-amber-100 data-[state=active]:text-amber-700'}`}>
-            <FilePlus className="w-3.5 h-3.5" /> Addendum
-          </TabsTrigger>
-          <TabsTrigger value="amendment" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-purple-900/50 data-[state=active]:text-purple-300' : 'data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700'}`}>
-            <Zap className="w-3.5 h-3.5" /> Amendment
           </TabsTrigger>
           <TabsTrigger value="rfp" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-emerald-900/50 data-[state=active]:text-emerald-300' : 'data-[state=active]:bg-emerald-100 data-[state=active]:text-emerald-700'}`}>
             <Receipt className="w-3.5 h-3.5" /> RfP
@@ -60,20 +54,34 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
         </TabsList>
 
         <TabsContent value="contract" className="mt-4">
-          <ContractTab darkMode={darkMode} />
-          <EditorSection storageKey="cgap-editor-contract" title="Contract" darkMode={darkMode} templateType="contract" />
-        </TabsContent>
-        <TabsContent value="addendum" className="mt-4">
-          <AddendumTab darkMode={darkMode} />
-          <EditorSection storageKey="cgap-editor-addendum" title="Addendum" darkMode={darkMode} templateType="addendum" />
-        </TabsContent>
-        <TabsContent value="amendment" className="mt-4">
-          <QuickAmendmentTab darkMode={darkMode} />
-          <EditorSection storageKey="cgap-editor-amendment" title="Amendment" darkMode={darkMode} />
+          <Tabs defaultValue="contract" className="w-full">
+            <TabsList className={`grid w-full grid-cols-3 mb-3 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+              <TabsTrigger value="contract" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-blue-900/50 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}>
+                <FileText className="w-3 h-3" /> Contract
+              </TabsTrigger>
+              <TabsTrigger value="addendum" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-amber-900/50 data-[state=active]:text-amber-300' : 'data-[state=active]:bg-amber-100 data-[state=active]:text-amber-700'}`}>
+                <FilePlus className="w-3 h-3" /> Addendum
+              </TabsTrigger>
+              <TabsTrigger value="amendment" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-purple-900/50 data-[state=active]:text-purple-300' : 'data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700'}`}>
+                <Zap className="w-3 h-3" /> Amendment
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="contract">
+              <ContractTab darkMode={darkMode} />
+              <EditorSection storageKey="cgap-editor-contract" title="Contract" darkMode={darkMode} templateType="contract" />
+            </TabsContent>
+            <TabsContent value="addendum">
+              <AddendumTab darkMode={darkMode} />
+              <EditorSection storageKey="cgap-editor-addendum" title="Addendum" darkMode={darkMode} templateType="addendum" />
+            </TabsContent>
+            <TabsContent value="amendment">
+              <QuickAmendmentTab darkMode={darkMode} />
+              <EditorSection storageKey="cgap-editor-amendment" title="Amendment" darkMode={darkMode} />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
         <TabsContent value="rfp" className="mt-4">
           <RequestForPaymentTab darkMode={darkMode} />
-          <EditorSection storageKey="cgap-editor-rfp" title="Request for Payment" darkMode={darkMode} templateType="rfp" />
         </TabsContent>
         <TabsContent value="database" className="mt-4">
           <ContractsDatabase darkMode={darkMode} />

@@ -74,10 +74,17 @@ export async function fetchDefaultLetterhead(
 }
 
 export function mergePlaceholders(html: string, values: Record<string, string>): string {
-  return html.replace(/<<\s*([\w_]+)\s*>>/g, (_, key) => {
+  const replaceFn = (_: string, key: string) => {
     const v = values[key];
     return v !== undefined && v !== null && v !== '' ? String(v) : '';
-  });
+  };
+  // HTML rich-text editors (TipTap, contenteditable, etc.) serialize "<" as
+  // "&lt;" inside text nodes, so a token typed as <<ref_no>> ends up stored as
+  // "&lt;&lt;ref_no&gt;&gt;". We have to handle both encodings — literal first
+  // (for the inline default body), then escaped (for editor-authored content).
+  return html
+    .replace(/<<\s*([\w_]+)\s*>>/g, replaceFn)
+    .replace(/&lt;&lt;\s*([\w_]+)\s*&gt;&gt;/g, replaceFn);
 }
 
 export async function saveLetterheadMargins(

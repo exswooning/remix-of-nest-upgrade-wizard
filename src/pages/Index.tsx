@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle, FileText, Server, FileCheck, History } from "lucide-react";
+import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle, FileText, Server, FileCheck, History, FileSpreadsheet } from "lucide-react";
+import QuotationTab from "./CGAP/QuotationTab";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -439,20 +440,27 @@ const Index = () => {
           <CardContent className="pt-6 space-y-6">
             {/* Top-level toggle: UCAP vs CGAP */}
             <Tabs defaultValue="ucap" className="w-full">
-              <TabsList className={`grid w-full grid-cols-2 h-12 mb-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                <TabsTrigger 
-                  value="ucap" 
+              <TabsList className={`grid w-full grid-cols-3 h-12 mb-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                <TabsTrigger
+                  value="ucap"
                   className={`flex items-center gap-2 text-base font-semibold py-3 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
                 >
                   <Calculator className="w-5 h-5" />
                   UCAP
                 </TabsTrigger>
-                <TabsTrigger 
-                  value="cgap" 
+                <TabsTrigger
+                  value="cgap"
                   className={`flex items-center gap-2 text-base font-semibold py-3 ${darkMode ? 'data-[state=active]:bg-blue-900 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}
                 >
                   <FileCheck className="w-5 h-5" />
                   CGAP
+                </TabsTrigger>
+                <TabsTrigger
+                  value="qgap"
+                  className={`flex items-center gap-2 text-base font-semibold py-3 ${darkMode ? 'data-[state=active]:bg-violet-900 data-[state=active]:text-violet-300' : 'data-[state=active]:bg-violet-100 data-[state=active]:text-violet-700'}`}
+                >
+                  <FileSpreadsheet className="w-5 h-5" />
+                  QGAP
                 </TabsTrigger>
               </TabsList>
 
@@ -529,6 +537,10 @@ const Index = () => {
 
               <TabsContent value="cgap">
                 <CGAPEmbedded darkMode={darkMode} />
+              </TabsContent>
+
+              <TabsContent value="qgap">
+                <QuotationTab darkMode={darkMode} />
               </TabsContent>
             </Tabs>
           </CardContent>
