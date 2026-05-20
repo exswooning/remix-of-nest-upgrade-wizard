@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -10,6 +9,7 @@ import {
   Receipt, Download, Loader2, CheckCircle2, AlertCircle, Search, Printer, Archive, RefreshCw, Save, Sparkles,
   RotateCcw, ZoomIn, ZoomOut, Maximize2, Minimize2, X, Move, Lock, Unlock, LayoutGrid, Plus, Minus, Trash2,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, AlignLeft, AlignCenter, AlignRight,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useContractLookup } from '@/hooks/useContractLookup';
 import { getTodayISO, numberToWords } from '@/utils/cgapAutoFill';
@@ -249,6 +249,7 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     const id = `custom_${Math.random().toString(36).slice(2, 7)}`;
     const newAnchor: FieldAnchor = {
       id,
+      kind: 'text',
       x: 200,
       y: 200,
       width: 300,
@@ -258,6 +259,65 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     setAnchors((prev) => [...prev, newAnchor]);
     setSelectedAnchorId(id);
   };
+
+  // Hidden file input that "Add image" / "Replace" triggers. Reading as data
+  // URL keeps the file entirely in localStorage — no upload step, no Supabase
+  // write. `imageUploadTargetRef` decides whether the next picked file becomes
+  // a new anchor (null) or replaces an existing one (id).
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const imageUploadTargetRef = useRef<string | null>(null);
+  const triggerImageUpload = () => {
+    imageUploadTargetRef.current = null;
+    imageInputRef.current?.click();
+  };
+  const triggerImageReplace = (id: string) => {
+    imageUploadTargetRef.current = id;
+    imageInputRef.current?.click();
+  };
+
+  const handleImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Pick a PNG / JPG image', variant: 'destructive' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      if (!dataUrl) return;
+      const probe = new Image();
+      probe.onload = () => {
+        const ratio = probe.naturalHeight > 0 ? probe.naturalWidth / probe.naturalHeight : 1;
+        const targetId = imageUploadTargetRef.current;
+        if (targetId) {
+          // Replace mode: keep existing position, refresh src + recompute size.
+          setAnchors((prev) => prev.map((a) => {
+            if (a.id !== targetId) return a;
+            const width = a.width || 140;
+            return { ...a, src: dataUrl, height: Math.round(width / Math.max(0.01, ratio)) };
+          }));
+          imageUploadTargetRef.current = null;
+          return;
+        }
+        const targetWidth = 140;
+        const newAnchor: FieldAnchor = {
+          id: `image_${Math.random().toString(36).slice(2, 7)}`,
+          kind: 'image',
+          x: 500,
+          y: 850, // sits near the signatory line by default
+          width: targetWidth,
+          height: Math.round(targetWidth / Math.max(0.01, ratio)),
+          src: dataUrl,
+        };
+        setAnchors((prev) => [...prev, newAnchor]);
+        setSelectedAnchorId(newAnchor.id);
+      };
+      probe.onerror = () => toast({ title: 'Could not read that image', variant: 'destructive' });
+      probe.src = dataUrl;
+    };
+    reader.onerror = () => toast({ title: 'File read failed', variant: 'destructive' });
+    reader.readAsDataURL(file);
+  };
+
   const resetAnchorsToDefault = () => {
     if (!window.confirm('Reset every anchor back to its default position and template? This discards your custom layout.')) return;
     setAnchors(freshDefaultAnchors());
@@ -363,79 +423,188 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
 
     setGenerating(true);
     try {
-      // Preload the letterhead so html2canvas finds it cached.
-      await new Promise<void>((resolve) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => resolve();
-        img.onerror = () => resolve();
-        img.src = letterhead.imageUrl;
+      // Hybrid pipeline:
+      //   1. addImage() the letterhead at its source resolution — no rasterising
+      //      twice, no html2canvas downsample → sharp logos / wave / gradient.
+      //   2. pdf.text() each anchor as native vector text → selectable,
+      //      crisp at any zoom, tiny file size.
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.crossOrigin = 'anonymous';
+        i.onload = () => resolve(i);
+        i.onerror = () => reject(new Error('Failed to load letterhead image'));
+        i.src = letterhead.imageUrl;
       });
 
-      // Build an offscreen 794×1123 page with letterhead + anchors filled.
-      const offscreen = document.createElement('div');
-      offscreen.style.cssText = [
-        'position: fixed',
-        'top: -10000px',
-        'left: 0',
-        'width: 794px',
-        'height: 1123px',
-        `background: #ffffff url("${letterhead.imageUrl}") no-repeat top center / 794px 1123px`,
-        'pointer-events: none',
-        'font-family: Calibri, Inter, sans-serif',
-        'color: #111',
-      ].join(';');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageW = pdf.internal.pageSize.getWidth();   // 210 mm
+      const pageH = pdf.internal.pageSize.getHeight();  // 297 mm
+      pdf.addImage(img, 'PNG', 0, 0, pageW, pageH);
+
+      // The designer canvas is 794×1123 px; map to mm for the PDF.
+      const xRatio = pageW / 794;
+      const yRatio = pageH / 1123;
+      const PT_TO_MM = 0.3527;
+
+      const hexToRgb = (hex: string): [number, number, number] => {
+        const s = hex.replace('#', '');
+        const full = s.length === 3 ? s.split('').map((c) => c + c).join('') : s;
+        return [
+          parseInt(full.slice(0, 2), 16) || 17,
+          parseInt(full.slice(2, 4), 16) || 17,
+          parseInt(full.slice(4, 6), 16) || 17,
+        ];
+      };
+
+      // Pre-load every image anchor's bitmap once so the rotation step
+      // below can paint straight to a canvas without awaiting per-anchor.
+      const imageCache = new Map<string, HTMLImageElement>();
+      await Promise.all(anchors
+        .filter((a) => a.kind === 'image' && a.src)
+        .map((a) => new Promise<void>((resolve) => {
+          const i = new Image();
+          i.crossOrigin = 'anonymous';
+          i.onload = () => { imageCache.set(a.id, i); resolve(); };
+          i.onerror = () => resolve();
+          i.src = a.src!;
+        })));
+
+      // jsPDF supports per-element opacity via graphics-state objects. We
+      // set a fresh one before each anchor and reset to fully-opaque after,
+      // so two adjacent anchors with different opacities don't leak into
+      // each other.
+      const pdfAny = pdf as unknown as { GState: (opts: { opacity?: number }) => unknown; setGState: (s: unknown) => void };
+      const applyOpacity = (op: number) => {
+        try { pdfAny.setGState(pdfAny.GState({ opacity: Math.max(0, Math.min(1, op)) })); } catch { /* no-op */ }
+      };
+      const resetOpacity = () => applyOpacity(1);
 
       anchors.forEach((a) => {
-        const el = document.createElement('div');
-        el.style.cssText = [
-          'position: absolute',
-          `left: ${a.x}px`,
-          `top: ${a.y}px`,
-          a.width > 0 ? `width: ${a.width}px` : '',
-          `font-size: ${a.fontSize}pt`,
-          a.fontWeight ? `font-weight: ${a.fontWeight}` : '',
-          a.fontStyle ? `font-style: ${a.fontStyle}` : '',
-          a.textDecoration ? `text-decoration: ${a.textDecoration}` : '',
-          a.textTransform ? `text-transform: ${a.textTransform}` : '',
-          a.align ? `text-align: ${a.align}` : '',
-          `line-height: ${a.lineHeight ?? 1.4}`,
-          `color: ${a.color ?? '#111'}`,
-          a.letterSpacing ? `letter-spacing: ${a.letterSpacing}px` : '',
-          'white-space: pre-wrap',
-        ].filter(Boolean).join(';');
-        el.textContent = renderAnchor(a.template, fieldValues);
-        offscreen.appendChild(el);
+        const op = a.opacity ?? 1;
+        const needsReset = op < 1;
+        if (needsReset) applyOpacity(op);
+        try {
+
+        if (a.kind === 'image') {
+          if (!a.src) return;
+          const baseW = a.width;
+          const baseH = a.height ?? a.width;
+          const rot = ((a.rotation ?? 0) % 360 + 360) % 360;
+
+          // Centre of the original (un-rotated) box in mm — stays fixed.
+          const cxMm = (a.x + baseW / 2) * xRatio;
+          const cyMm = (a.y + baseH / 2) * yRatio;
+
+          if (rot === 0) {
+            const format = a.src.startsWith('data:image/jpeg') || a.src.startsWith('data:image/jpg') ? 'JPEG'
+              : a.src.startsWith('data:image/webp') ? 'WEBP'
+              : 'PNG';
+            try {
+              pdf.addImage(
+                a.src, format,
+                cxMm - (baseW * xRatio) / 2,
+                cyMm - (baseH * yRatio) / 2,
+                baseW * xRatio,
+                baseH * yRatio,
+              );
+            } catch (err) {
+              console.error('Failed to add image anchor', a.id, err);
+            }
+            return;
+          }
+
+          // Rotated: paint to a transparent canvas sized to the rotated
+          // bounding box, then drop that canvas into the PDF at the centred
+          // position so the visual centre lines up with the preview.
+          const img = imageCache.get(a.id);
+          if (!img) return;
+          const angleRad = (rot * Math.PI) / 180;
+          const sin = Math.abs(Math.sin(angleRad));
+          const cos = Math.abs(Math.cos(angleRad));
+          const newWpx = baseW * cos + baseH * sin;
+          const newHpx = baseW * sin + baseH * cos;
+          // Render at 2× the on-page size to keep things sharp after jsPDF
+          // squishes the canvas down.
+          const SCALE = 2;
+          const cvs = document.createElement('canvas');
+          cvs.width = Math.max(1, Math.round(newWpx * SCALE));
+          cvs.height = Math.max(1, Math.round(newHpx * SCALE));
+          const ctx = cvs.getContext('2d');
+          if (!ctx) return;
+          ctx.translate(cvs.width / 2, cvs.height / 2);
+          ctx.rotate(angleRad);
+          ctx.drawImage(img, -(baseW * SCALE) / 2, -(baseH * SCALE) / 2, baseW * SCALE, baseH * SCALE);
+          try {
+            pdf.addImage(
+              cvs.toDataURL('image/png'),
+              'PNG',
+              cxMm - (newWpx * xRatio) / 2,
+              cyMm - (newHpx * yRatio) / 2,
+              newWpx * xRatio,
+              newHpx * yRatio,
+            );
+          } catch (err) {
+            console.error('Failed to add rotated image anchor', a.id, err);
+          }
+          return;
+        }
+
+        const rendered = renderAnchor(a.template ?? '', fieldValues);
+        if (!rendered) return;
+
+        const text = a.textTransform === 'uppercase'
+          ? rendered.toUpperCase()
+          : a.textTransform === 'lowercase'
+            ? rendered.toLowerCase()
+            : rendered;
+
+        const fontStyle: 'normal' | 'bold' | 'italic' | 'bolditalic' =
+          a.fontWeight === 'bold' && a.fontStyle === 'italic' ? 'bolditalic'
+            : a.fontWeight === 'bold' ? 'bold'
+              : a.fontStyle === 'italic' ? 'italic'
+                : 'normal';
+        pdf.setFont('helvetica', fontStyle);
+        pdf.setFontSize(a.fontSize);
+
+        const [r, g, b] = hexToRgb(a.color ?? '#111111');
+        pdf.setTextColor(r, g, b);
+
+        const x = a.x * xRatio;
+        const yTop = a.y * yRatio;
+        const widthMm = a.width > 0 ? a.width * xRatio : pageW - x;
+        const lineHeightMm = a.fontSize * PT_TO_MM * (a.lineHeight ?? 1.4);
+        const lines: string[] = pdf.splitTextToSize(text, widthMm);
+
+        const align: 'left' | 'center' | 'right' = a.align ?? 'left';
+
+        lines.forEach((line, idx) => {
+          const baselineY = yTop + idx * lineHeightMm;
+          let textX = x;
+          if (align === 'center') textX = x + widthMm / 2;
+          else if (align === 'right') textX = x + widthMm;
+
+          pdf.text(line, textX, baselineY, { align, baseline: 'top' });
+
+          if (a.textDecoration === 'underline') {
+            const w = pdf.getTextWidth(line);
+            let x1 = textX;
+            let x2 = textX + w;
+            if (align === 'center') { x1 = textX - w / 2; x2 = textX + w / 2; }
+            else if (align === 'right') { x1 = textX - w; x2 = textX; }
+            const underlineY = baselineY + (a.fontSize ?? 11) * PT_TO_MM * 0.95;
+            pdf.setDrawColor(r, g, b);
+            pdf.setLineWidth(0.15);
+            pdf.line(x1, underlineY, x2, underlineY);
+          }
+        });
+
+        } finally {
+          if (needsReset) resetOpacity();
+        }
       });
 
-      document.body.appendChild(offscreen);
-      try {
-        const canvas = await html2canvas(offscreen, {
-          scale: 2,
-          backgroundColor: '#ffffff',
-          useCORS: true,
-          width: 794,
-          height: 1123,
-          windowWidth: 794,
-          windowHeight: 1123,
-        });
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pageW = pdf.internal.pageSize.getWidth();
-        const pageH = pdf.internal.pageSize.getHeight();
-        const img = canvas.toDataURL('image/png');
-        const widthRatio = pageW / canvas.width;
-        const heightRatio = pageH / canvas.height;
-        const ratio = Math.min(widthRatio, heightRatio);
-        const finalW = canvas.width * ratio;
-        const finalH = canvas.height * ratio;
-        const offsetX = (pageW - finalW) / 2;
-        const offsetY = (pageH - finalH) / 2;
-        pdf.addImage(img, 'PNG', offsetX, offsetY, finalW, finalH);
-        const suffix = contractData?.contract_id ? `-${contractData.contract_id}` : '';
-        pdf.save(`RfP-${invoiceNumber}${suffix}.pdf`);
-      } finally {
-        document.body.removeChild(offscreen);
-      }
+      const suffix = contractData?.contract_id ? `-${contractData.contract_id}` : '';
+      pdf.save(`RfP-${invoiceNumber}${suffix}.pdf`);
       setDone(true);
       setTimeout(() => setDone(false), 3000);
     } catch (e) {
@@ -716,6 +885,25 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
                     )}>
                     <Plus className="w-3.5 h-3.5" /> Add text
                   </button>
+                  <button type="button" onClick={triggerImageUpload}
+                    title="Add a stamp or signature image (PNG / JPG). Saved in this browser."
+                    className={cn(
+                      'inline-flex items-center gap-1 h-7 px-2 rounded transition-colors',
+                      dm ? 'text-gray-300 hover:bg-gray-700 border border-gray-700' : 'text-gray-700 hover:bg-gray-100 border border-gray-300',
+                    )}>
+                    <ImageIcon className="w-3.5 h-3.5" /> Add image
+                  </button>
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleImageFile(f);
+                      if (e.target) e.target.value = ''; // allow re-picking the same file
+                    }}
+                  />
                   <button type="button" onClick={resetAnchorsToDefault}
                     className={cn(
                       'inline-flex items-center gap-1 h-7 px-2 rounded transition-colors',
@@ -777,8 +965,109 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
           </div>
         )}
 
-        {/* Anchor inspector (designer mode + selected) */}
-        {designerMode && selectedAnchor && (
+        {/* Anchor inspector — image branch (designer mode + selected image) */}
+        {designerMode && selectedAnchor && selectedAnchor.kind === 'image' && (
+          <div className={cn(
+            'flex flex-wrap items-center gap-2 px-3 py-2 border-b text-[11px]',
+            dm ? 'bg-gray-900 border-gray-800 text-gray-300' : 'bg-emerald-50 border-emerald-200 text-gray-700',
+          )}>
+            <span className="font-medium inline-flex items-center gap-1"><ImageIcon className="w-3 h-3" /> {selectedAnchor.id}</span>
+            <label className="inline-flex items-center gap-1" title="Display width in px on the 794×1123 page">
+              <span>W</span>
+              <input
+                type="number"
+                value={selectedAnchor.width}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { width: Math.max(8, parseInt(e.target.value) || 8) })}
+                className={cn('w-16 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+              />
+            </label>
+            <label className="inline-flex items-center gap-1" title="Display height in px">
+              <span>H</span>
+              <input
+                type="number"
+                value={selectedAnchor.height ?? 0}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { height: Math.max(8, parseInt(e.target.value) || 8) })}
+                className={cn('w-16 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+              />
+            </label>
+            <label className="inline-flex items-center gap-1" title="X/Y position on the 794×1123 page">
+              <span>X</span>
+              <input
+                type="number"
+                value={selectedAnchor.x}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { x: Math.max(0, parseInt(e.target.value) || 0) })}
+                className={cn('w-14 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+              />
+              <span>Y</span>
+              <input
+                type="number"
+                value={selectedAnchor.y}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { y: Math.max(0, parseInt(e.target.value) || 0) })}
+                className={cn('w-14 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+              />
+            </label>
+            <label className="inline-flex items-center gap-1" title="Rotation in degrees (positive = clockwise). Click 0 to reset.">
+              <span>Rotate</span>
+              <input
+                type="range"
+                min={-180}
+                max={180}
+                step={1}
+                value={selectedAnchor.rotation ?? 0}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { rotation: parseInt(e.target.value) || 0 })}
+                className="w-24"
+              />
+              <input
+                type="number"
+                value={selectedAnchor.rotation ?? 0}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value) || 0;
+                  updateAnchor(selectedAnchor.id, { rotation: ((v + 180) % 360 + 360) % 360 - 180 });
+                }}
+                className={cn('w-14 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
+              />°
+              <button
+                type="button"
+                onClick={() => updateAnchor(selectedAnchor.id, { rotation: 0 })}
+                title="Reset rotation"
+                className={cn('h-6 px-1.5 rounded text-[10px] border', dm ? 'border-gray-700' : 'border-gray-300')}
+              >
+                0°
+              </button>
+            </label>
+            <label className="inline-flex items-center gap-1" title="Opacity (1 = solid, 0 = invisible). Handy for stamp watermarks.">
+              <span>Opacity</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round((selectedAnchor.opacity ?? 1) * 100)}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { opacity: Math.max(0, Math.min(1, (parseInt(e.target.value) || 0) / 100)) })}
+                className="w-20"
+              />
+              <span className="tabular-nums w-8 text-right">{Math.round((selectedAnchor.opacity ?? 1) * 100)}%</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => triggerImageReplace(selectedAnchor.id)}
+              title="Replace this image with a different file"
+              className={cn('inline-flex items-center gap-1 h-6 px-2 rounded border', dm ? 'border-gray-700' : 'border-gray-300')}
+            >
+              <ImageIcon className="w-3 h-3" /> Replace
+            </button>
+            <button
+              type="button"
+              onClick={() => deleteAnchor(selectedAnchor.id)}
+              className="inline-flex items-center gap-1 h-6 px-2 rounded text-red-500 border border-red-300 hover:bg-red-50"
+            >
+              <Trash2 className="w-3 h-3" /> Delete
+            </button>
+          </div>
+        )}
+
+        {/* Anchor inspector — text branch (designer mode + selected text) */}
+        {designerMode && selectedAnchor && selectedAnchor.kind !== 'image' && (
           <div className={cn(
             'flex flex-wrap items-center gap-2 px-3 py-2 border-b text-[11px]',
             dm ? 'bg-gray-900 border-gray-800 text-gray-300' : 'bg-emerald-50 border-emerald-200 text-gray-700',
@@ -786,7 +1075,7 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
             <span className="font-medium">{selectedAnchor.id}</span>
             <input
               type="text"
-              value={selectedAnchor.template}
+              value={selectedAnchor.template ?? ''}
               onChange={(e) => updateAnchor(selectedAnchor.id, { template: e.target.value })}
               placeholder="Template — use {field_name} for form values"
               className={cn('flex-1 min-w-[200px] px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
@@ -795,7 +1084,7 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
               <span>Size</span>
               <input
                 type="number"
-                value={selectedAnchor.fontSize}
+                value={selectedAnchor.fontSize ?? 11}
                 onChange={(e) => updateAnchor(selectedAnchor.id, { fontSize: Math.max(6, Math.min(48, parseInt(e.target.value) || 11)) })}
                 className={cn('w-14 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
               />pt
@@ -906,6 +1195,19 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
                 className={cn('w-14 px-2 py-1 rounded text-xs border', dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300')}
               />
             </label>
+            <label className="inline-flex items-center gap-1" title="Opacity (1 = solid, 0 = invisible)">
+              <span>Opacity</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round((selectedAnchor.opacity ?? 1) * 100)}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { opacity: Math.max(0, Math.min(1, (parseInt(e.target.value) || 0) / 100)) })}
+                className="w-20"
+              />
+              <span className="tabular-nums w-8 text-right">{Math.round((selectedAnchor.opacity ?? 1) * 100)}%</span>
+            </label>
             <button
               type="button"
               onClick={() => deleteAnchor(selectedAnchor.id)}
@@ -957,7 +1259,42 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
               >
                 {anchors.map((a) => {
                   const isSelected = selectedAnchorId === a.id;
-                  const rendered = renderAnchor(a.template, fieldValues);
+
+                  if (a.kind === 'image') {
+                    const rot = a.rotation ?? 0;
+                    return (
+                      <img
+                        key={a.id}
+                        src={a.src}
+                        alt={a.id}
+                        draggable={false}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (designerMode) setSelectedAnchorId(a.id);
+                        }}
+                        onMouseDown={(e) => {
+                          if (designerMode) startAnchorDrag(e, a);
+                        }}
+                        style={{
+                          position: 'absolute',
+                          left: a.x,
+                          top: a.y,
+                          width: a.width,
+                          height: a.height,
+                          transform: rot ? `rotate(${rot}deg)` : undefined,
+                          transformOrigin: 'center center',
+                          opacity: a.opacity ?? 1,
+                          cursor: designerMode && canEdit ? 'move' : 'default',
+                          outline: isSelected ? '2px solid #10B981' : (designerMode ? '1px dashed rgba(16, 185, 129, 0.4)' : 'none'),
+                          outlineOffset: 1,
+                          userSelect: 'none',
+                          pointerEvents: 'auto',
+                        }}
+                      />
+                    );
+                  }
+
+                  const rendered = renderAnchor(a.template ?? '', fieldValues);
                   return (
                     <div
                       key={a.id}
@@ -974,7 +1311,7 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
                         top: a.y,
                         width: a.width > 0 ? a.width : undefined,
                         minHeight: 16,
-                        fontSize: `${a.fontSize}pt`,
+                        fontSize: `${a.fontSize ?? 11}pt`,
                         fontWeight: a.fontWeight,
                         fontStyle: a.fontStyle,
                         textDecoration: a.textDecoration,
@@ -983,6 +1320,7 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
                         lineHeight: a.lineHeight ?? 1.4,
                         color: a.color ?? '#111',
                         letterSpacing: a.letterSpacing ? `${a.letterSpacing}px` : undefined,
+                        opacity: a.opacity ?? 1,
                         whiteSpace: 'pre-wrap',
                         cursor: designerMode && canEdit ? 'move' : 'default',
                         padding: '1px 3px',

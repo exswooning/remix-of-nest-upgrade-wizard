@@ -1,29 +1,45 @@
-/** A field anchor is one stamp on the letterhead: a position, a font, and a
- *  template string that gets `{field_name}` placeholders replaced with the
- *  current form values at render time. Admins drag these once in designer
- *  mode; daily users never see them as anything but rendered text. */
+/** Anchors stamped onto the letterhead. Two flavours:
+ *  - text   (default): template string + font props, form values fill `{field}`
+ *  - image  (`kind: 'image'`): a base64 PNG/JPG for stamps & signatures
+ *
+ *  Discriminator is optional so anchors saved by older versions (which had no
+ *  `kind` field) still load as text. */
 export interface FieldAnchor {
   id: string;
+  /** Absent / "text" → text anchor. "image" → stamp / signature. */
+  kind?: 'text' | 'image';
   /** Unscaled px on the 794×1123 A4 page. */
   x: number;
   y: number;
-  /** Width box for text wrapping (0 = auto, single line). */
+  /** Width box for text wrapping (0 = auto, single line). For image anchors,
+   *  the rendered display width in px. */
   width: number;
-  fontSize: number;        // pt
+
+  // ─── Text-anchor properties (ignored when kind === 'image') ────────────
+  fontSize?: number;        // pt
   fontWeight?: 'normal' | 'bold';
   fontStyle?: 'normal' | 'italic';
   textDecoration?: 'none' | 'underline';
   textTransform?: 'none' | 'uppercase' | 'lowercase';
   align?: 'left' | 'center' | 'right';
-  /** Unitless line-height. Default 1.4 if not set. */
   lineHeight?: number;
-  /** Hex colour string, e.g. "#111111". Default "#111111" if not set. */
   color?: string;
-  /** Letter spacing in px. Default 0. */
   letterSpacing?: number;
   /** Liquid-style template with `{field}` placeholders, e.g.
    *  "I would like to request payment for {service_for}". */
-  template: string;
+  template?: string;
+
+  // ─── Image-anchor properties (used only when kind === 'image') ─────────
+  /** Base64 data URL (kept entirely in localStorage — no upload needed). */
+  src?: string;
+  /** Display height in px on the 794×1123 page. */
+  height?: number;
+  /** Rotation in degrees, rotates around the image centre. Default 0. */
+  rotation?: number;
+
+  // ─── Common (text or image) ─────────────────────────────────────────────
+  /** 0–1 opacity. Default 1. Applies to both text and image anchors. */
+  opacity?: number;
 }
 
 /** Default layout matching the existing Payment Release Request Letter.
