@@ -15,7 +15,11 @@ import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
-const ACCENT = '#A78BFA'; // soft violet
+// Nest Nepal brand colours — deep brand blue from the letterhead, with two
+// matching tints used for the table header row and the notes call-out.
+const ACCENT = '#1E40AF';            // primary brand blue (Tailwind blue-800)
+const ACCENT_TINT_STRONG = '#E0E7FF'; // table header background
+const ACCENT_TINT_SOFT = '#EFF6FF';   // notes call-out background
 
 const formatNPR = (n: number) => `NRs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -604,7 +608,7 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
               {/* Items table */}
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9.5pt', marginTop: 8 }}>
                 <thead>
-                  <tr style={{ background: '#F3F0FA' }}>
+                  <tr style={{ background: ACCENT_TINT_STRONG }}>
                     <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>#</th>
                     <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Item</th>
                     <th style={{ textAlign: 'center', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Cycle</th>
@@ -652,16 +656,10 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
 
               {/* Notes */}
               {notes && (
-                <div style={{ marginTop: 24, padding: '10px 12px', background: '#FAF8FF', borderLeft: `3px solid ${ACCENT}`, fontSize: '9pt', color: '#444' }}>
+                <div style={{ marginTop: 24, padding: '10px 12px', background: ACCENT_TINT_SOFT, borderLeft: `3px solid ${ACCENT}`, fontSize: '9pt', color: '#444' }}>
                   <strong>Notes:</strong> {notes}
                 </div>
               )}
-
-              {/* Signature */}
-              <div style={{ marginTop: 32, fontSize: '9pt' }}>
-                <div style={{ borderTop: '1px solid #888', width: 220, paddingTop: 4 }}>Authorized Signatory</div>
-                <div style={{ color: '#666' }}>{preparedBy}</div>
-              </div>
             </div>
           </div>
         </div>

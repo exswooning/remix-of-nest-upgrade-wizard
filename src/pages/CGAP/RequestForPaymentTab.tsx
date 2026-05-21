@@ -118,6 +118,17 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     id: string; startMouseX: number; startMouseY: number; origX: number; origY: number;
   } | null>(null);
 
+  // The moment designer mode turns on, auto-select the first anchor so the
+  // inspector bar opens with full controls populated. Without this the user
+  // has to remember to click an anchor on the page to see anything beyond
+  // the toolbar.
+  useEffect(() => {
+    if (designerMode && !selectedAnchorId && anchors.length > 0) {
+      setSelectedAnchorId(anchors[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [designerMode]);
+
   // Auto-save: whenever the layout changes, persist to localStorage. No
   // debounce needed — localStorage writes are sync and cheap.
   useEffect(() => {
@@ -1227,7 +1238,13 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
             fullscreen ? 'flex-1' : '',
           )}
           style={fullscreen ? undefined : { maxHeight: '80vh', minHeight: 320 }}
-          onClick={() => setSelectedAnchorId(null)}
+          onClick={() => {
+            // Outside designer mode, click-anywhere is harmless. Inside
+            // designer mode we keep the selection sticky so the inspector
+            // doesn't blink away when the user clicks empty page — Esc
+            // still clears the selection.
+            if (!designerMode) setSelectedAnchorId(null);
+          }}
         >
           {letterhead ? (
             <div
