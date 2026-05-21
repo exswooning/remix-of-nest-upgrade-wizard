@@ -38,9 +38,22 @@ interface LineItem {
   unitPrice: number; // can be overridden
 }
 
+/** Sentinel category-key for items that aren't in the UCAP product catalogue.
+ *  Custom items get free-text product name + free numeric cycle + free price. */
+const CUSTOM_KEY = 'custom';
+
 const newLineItem = (): LineItem => ({
   id: Math.random().toString(36).slice(2, 9),
   categoryKey: '',
+  planName: '',
+  cycle: 0,
+  qty: 1,
+  unitPrice: 0,
+});
+
+const newCustomLineItem = (): LineItem => ({
+  id: Math.random().toString(36).slice(2, 9),
+  categoryKey: CUSTOM_KEY,
   planName: '',
   cycle: 0,
   qty: 1,
@@ -153,8 +166,11 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
     setItems(prev => prev.map(it => {
       if (it.id !== id) return it;
       const merged = { ...it, ...patch };
-      // Re-derive unitPrice when category/plan/cycle change (unless user manually edits price elsewhere)
-      if (patch.categoryKey !== undefined || patch.planName !== undefined || patch.cycle !== undefined) {
+      // Re-derive unitPrice for *catalogue* items when category/plan/cycle
+      // changes. Custom items (categoryKey === CUSTOM_KEY) keep whatever
+      // price the user typed — looking them up would just zero it out.
+      const isCustom = merged.categoryKey === CUSTOM_KEY;
+      if (!isCustom && (patch.categoryKey !== undefined || patch.planName !== undefined || patch.cycle !== undefined)) {
         merged.unitPrice = lookupUnitPrice(merged);
       }
       return merged;
@@ -163,6 +179,7 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
 
   const removeItem = (id: string) => setItems(prev => prev.length > 1 ? prev.filter(it => it.id !== id) : prev);
   const addItem = () => setItems(prev => [...prev, newLineItem()]);
+  const addCustomItem = () => setItems(prev => [...prev, newCustomLineItem()]);
 
   // Totals
   const subtotal = useMemo(() => items.reduce((sum, it) => sum + (it.unitPrice * it.qty), 0), [items]);
@@ -174,6 +191,7 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
 
   // Cycle unit labels
   const cycleLabel = (n: number) => {
+    if (!n) return 'one-time';
     if (n === 1) return 'mo';
     if (n === 12) return 'year';
     if (n === 36) return '3-year';
@@ -425,9 +443,14 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
       <div className={card}>
         <div className="flex items-center justify-between mb-3">
           <Label className={labelCls}>Line Items</Label>
-          <Button variant="outline" size="sm" onClick={addItem} className="gap-1.5 h-7" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
-            <Plus className="w-3 h-3" /> Add row
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={addItem} className="gap-1.5 h-7" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
+              <Plus className="w-3 h-3" /> Add product
+            </Button>
+            <Button variant="outline" size="sm" onClick={addCustomItem} className="gap-1.5 h-7" title="Add an ad-hoc product not in the UCAP catalogue — type name + price freely.">
+              <Plus className="w-3 h-3" /> Add custom
+            </Button>
+          </div>
         </div>
         <div className={`grid grid-cols-12 gap-2 px-2 pb-1 text-[10px] uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
           <div className="col-span-4">Product</div>
@@ -439,43 +462,65 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
         </div>
         <div className="space-y-2">
           {items.map((it) => {
-            const cat = it.categoryKey ? planData[it.categoryKey] : null;
+            const isCustom = it.categoryKey === CUSTOM_KEY;
+            const cat = !isCustom && it.categoryKey ? planData[it.categoryKey] : null;
             const plan = cat ? cat.options.find(o => o.name === it.planName) : null;
             const cycles: number[] = cat?.cycles || (plan?.price !== undefined ? [1] : []);
             const lineTotal = it.unitPrice * it.qty;
             // Combined product picker: pass "categoryKey::planName" as the value.
-            const productValue = it.categoryKey && it.planName ? `${it.categoryKey}::${it.planName}` : '';
+            const productValue = !isCustom && it.categoryKey && it.planName ? `${it.categoryKey}::${it.planName}` : '';
             return (
-              <div key={it.id} className={`grid grid-cols-12 gap-2 items-center p-2 rounded-lg ${dm ? 'bg-gray-800/40' : 'bg-white border border-gray-200'}`}>
+              <div key={it.id} className={`grid grid-cols-12 gap-2 items-center p-2 rounded-lg ${dm ? 'bg-gray-800/40' : 'bg-white border border-gray-200'} ${isCustom ? (dm ? 'ring-1 ring-blue-900/40' : 'ring-1 ring-blue-200') : ''}`}>
                 <div className="col-span-4">
-                  <Select
-                    value={productValue}
-                    onValueChange={(v) => {
-                      const [categoryKey, planName] = v.split('::');
-                      const cat2 = planData[categoryKey];
-                      updateItem(it.id, { categoryKey, planName, cycle: cat2?.cycles?.[0] ?? 0 });
-                    }}
-                  >
-                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pick product…" /></SelectTrigger>
-                    <SelectContent>
-                      {categories.map(c => (
-                        <React.Fragment key={c.key}>
-                          <div className={`px-2 py-1 text-[10px] uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{c.name}</div>
-                          {c.options.map(o => (
-                            <SelectItem key={`${c.key}::${o.name}`} value={`${c.key}::${o.name}`}>{o.name}</SelectItem>
-                          ))}
-                        </React.Fragment>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {isCustom ? (
+                    <Input
+                      value={it.planName}
+                      onChange={e => updateItem(it.id, { planName: e.target.value })}
+                      placeholder="Custom product / service name…"
+                      className="h-8 text-xs"
+                    />
+                  ) : (
+                    <Select
+                      value={productValue}
+                      onValueChange={(v) => {
+                        const [categoryKey, planName] = v.split('::');
+                        const cat2 = planData[categoryKey];
+                        updateItem(it.id, { categoryKey, planName, cycle: cat2?.cycles?.[0] ?? 0 });
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pick product…" /></SelectTrigger>
+                      <SelectContent>
+                        {categories.map(c => (
+                          <React.Fragment key={c.key}>
+                            <div className={`px-2 py-1 text-[10px] uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{c.name}</div>
+                            {c.options.map(o => (
+                              <SelectItem key={`${c.key}::${o.name}`} value={`${c.key}::${o.name}`}>{o.name}</SelectItem>
+                            ))}
+                          </React.Fragment>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div className="col-span-2">
-                  <Select value={String(it.cycle || '')} onValueChange={(v) => updateItem(it.id, { cycle: Number(v) })} disabled={cycles.length === 0}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                    <SelectContent>
-                      {cycles.map(c => <SelectItem key={c} value={String(c)}>{cycleLabel(c)}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  {isCustom ? (
+                    <Input
+                      type="number"
+                      min={0}
+                      value={it.cycle || 0}
+                      onChange={e => updateItem(it.id, { cycle: Math.max(0, Number(e.target.value) || 0) })}
+                      placeholder="months (0 = one-time)"
+                      className="h-8 text-xs"
+                      title="Billing cycle in months. 0 = one-time, 1 = monthly, 12 = yearly."
+                    />
+                  ) : (
+                    <Select value={String(it.cycle || '')} onValueChange={(v) => updateItem(it.id, { cycle: Number(v) })} disabled={cycles.length === 0}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                      <SelectContent>
+                        {cycles.map(c => <SelectItem key={c} value={String(c)}>{cycleLabel(c)}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div className="col-span-1">
                   <Input type="number" min={1} value={it.qty} onChange={e => updateItem(it.id, { qty: Math.max(1, Number(e.target.value) || 1) })} className="h-8 text-xs text-right" />
