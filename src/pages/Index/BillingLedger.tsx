@@ -8,6 +8,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar, Plus, X, ArrowDown, ChevronDown, Sparkles, Download, FileSpreadsheet } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { logActivity } from "@/utils/activityLog";
 import { parseDate, formatDate } from "./dateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 import jsPDF from "jspdf";
@@ -417,7 +418,9 @@ const BillingLedger: React.FC<BillingLedgerProps> = ({ darkMode }) => {
     pdf.text("Auto-generated billing ledger • Plan Upgrade Chain Calculator", margin, ph - 8);
     pdf.text(`Page 1 of ${pdf.getNumberOfPages()}`, pw - margin, ph - 8, { align: "right" });
 
-    pdf.save(`billing-ledger-${new Date().toISOString().split("T")[0]}.pdf`);
+    const filename = `billing-ledger-${new Date().toISOString().split("T")[0]}.pdf`;
+    pdf.save(filename);
+    logActivity({ kind: 'pdf', module: 'UCAP/Ledger', action: 'Billing ledger PDF generated', meta: { filename } });
   };
 
   const inputClass = darkMode ? "bg-gray-700 border-gray-600 text-white" : "";

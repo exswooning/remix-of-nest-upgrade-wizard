@@ -4,12 +4,15 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileSpreadsheet, Download, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, Printer, Sparkles, Save, Search, History, AlertTriangle } from 'lucide-react';
+import { FileSpreadsheet, Download, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, Printer, Sparkles, Save, Search, History, AlertTriangle, Wand2, Eraser } from 'lucide-react';
+import { parseQuoteRequest, type ParsedQuoteRequest } from '@/utils/quoteParser';
 import { useAuth } from '@/contexts/AuthContext';
 import { getTodayISO, numberToWords } from '@/utils/cgapAutoFill';
-import { fetchDefaultLetterhead, type LetterheadConfig } from '@/utils/letterheadTemplate';
+import { type LetterheadConfig } from '@/utils/letterheadTemplate';
+import { resolveLetterhead } from '@/utils/templateAssignments';
 import { loadQgapSettings, type QgapSettings } from '@/utils/qgapSettings';
 import { saveQuote, searchQuotesByProduct, isQuoteOld, quoteTotal, type QgapStoredQuote } from '@/utils/qgapQuotes';
+import { logActivity } from '@/utils/activityLog';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
@@ -82,6 +85,12 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
   const [notes, setNotes] = useState(settings.defaultNotes);
 
   // Optional contact info — not required, shown only in preview if filled
+  // Paste-and-parse panel state — lets the user dump the customer's email
+  // reply into a textarea and have the customer fields auto-fill instead
+  // of typing them in.
+  const [parseInput, setParseInput] = useState('');
+  const [parsed, setParsed] = useState<ParsedQuoteRequest | null>(null);
+
   const [customerCompany, setCustomerCompany] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -122,10 +131,21 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
     [productSearch],
   );
 
-  // Letterhead state — same as RFP pipeline
+  // Letterhead — resolved via the doc-type → template assignment, with
+  // fallback to the RfP default when no QGAP-specific assignment is set.
+  // Also re-resolves whenever the user changes assignments from Settings.
   const [letterhead, setLetterhead] = useState<LetterheadConfig | null>(null);
   useEffect(() => {
-    fetchDefaultLetterhead('rfp').then(setLetterhead).catch(() => {});
+    let cancelled = false;
+    const reload = () => {
+      resolveLetterhead('qgap').then((lh) => { if (!cancelled) setLetterhead(lh); }).catch(() => {});
+    };
+    reload();
+    window.addEventListener('cgap-template-assignments-update', reload);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('cgap-template-assignments-update', reload);
+    };
   }, []);
 
   const previewRef = useRef<HTMLDivElement | null>(null);
@@ -192,10 +212,12 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
   // Cycle unit labels
   const cycleLabel = (n: number) => {
     if (!n) return 'one-time';
-    if (n === 1) return 'mo';
-    if (n === 12) return 'year';
-    if (n === 36) return '3-year';
-    return `${n} mo`;
+    if (n === 1) return 'monthly';
+    if (n === 12) return 'yearly';
+    if (n === 24) return '2 years';
+    if (n === 36) return '3 years';
+    if (n % 12 === 0) return `${n / 12} years`;
+    return `${n} months`;
   };
 
   const handleSaveQuote = () => {
@@ -270,7 +292,7 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
     ]);
   };
 
-  const card = `rounded-xl p-5 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
+  const card = `glass-card rounded-2xl p-5`;
   const labelCls = `text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`;
   const inputCls = `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border focus:border-violet-400`;
 
@@ -297,6 +319,7 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
       const offsetY = (pageH - finalH) / 2;
       pdf.addImage(img, 'PNG', offsetX, offsetY, finalW, finalH);
       pdf.save(`Quote-${quoteNumber}.pdf`);
+      logActivity({ kind: 'pdf', module: 'QGAP', action: 'Quote PDF generated', meta: { filename: `Quote-${quoteNumber}.pdf`, quoteNumber, customer: customerCompany } });
       setDone(true);
       setTimeout(() => setDone(false), 3000);
       toast({ title: 'Quote PDF downloaded' });
@@ -414,6 +437,157 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
         )}
       </div>
 
+      {/* Paste & parse — dump the customer's email reply, click parse,
+          form fields auto-populate. Regex-driven; works offline. */}
+      <div className={card}>
+        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+          <Label className={labelCls}><Wand2 className="w-3 h-3 inline mr-1" /> Quick fill from customer's reply</Label>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button" variant="outline" size="sm" className="gap-1.5 h-7"
+              onClick={() => { setParseInput(''); setParsed(null); }}
+              disabled={!parseInput && !parsed}
+            >
+              <Eraser className="w-3 h-3" /> Clear
+            </Button>
+            <Button
+              type="button" size="sm" className="gap-1.5 h-7"
+              style={{ background: ACCENT, color: '#fff' }}
+              onClick={() => {
+                if (!parseInput.trim()) return;
+                // Flatten the UCAP catalogue to the shape the parser needs:
+                // category-key + category-name + every plan name underneath.
+                const catalog = Object.entries(planData).flatMap(([key, cat]) =>
+                  cat.options.map((opt) => ({
+                    categoryKey: key,
+                    categoryName: cat.name,
+                    planName: opt.name,
+                  })));
+                const out = parseQuoteRequest(parseInput, { catalog });
+                setParsed(out);
+
+                if (out.companyName) setCustomerCompany(out.companyName);
+                if (out.email)       setCustomerEmail(out.email);
+                if (out.contact)     setCustomerPhone(out.contact);
+                if (out.address)     setCustomerAddress(out.address);
+                if (out.fullName) {
+                  setCustomerAddress((prev) => {
+                    const attn = `ATTN: ${out.fullName}`;
+                    if (!prev) return `${attn}\n${out.address ?? ''}`.trim();
+                    if (prev.includes(attn)) return prev;
+                    return `${attn}\n${prev}`;
+                  });
+                }
+
+                // Product match → auto-add a line item. If the parser
+                // returned categoryKey === 'custom' (natural-language phrase
+                // like "zoho people for 130 users" that doesn't exist in the
+                // UCAP catalogue), drop a CUSTOM line item with the inferred
+                // name + qty so the user can set the price.
+                if (out.productMatch) {
+                  const isCustom = out.productMatch.categoryKey === 'custom';
+                  const cat = isCustom ? undefined : planData[out.productMatch.categoryKey];
+                  const cycle = isCustom ? 0 : (cat?.cycles?.[0] ?? 0);
+                  const qtyVal = out.qtyHint && out.qtyHint > 0 ? out.qtyHint : 1;
+                  setItems((prev) => {
+                    const firstEmptyIdx = prev.findIndex((it) => !it.planName.trim());
+                    const buildPatched = (base: LineItem): LineItem => ({
+                      ...base,
+                      categoryKey: out.productMatch!.categoryKey,
+                      planName: out.productMatch!.planName,
+                      cycle,
+                      qty: qtyVal,
+                      unitPrice: (() => {
+                        if (isCustom) return 0; // user fills in price
+                        const plan = cat?.options.find((o) => o.name === out.productMatch!.planName);
+                        if (!plan) return 0;
+                        if (plan.pricing && cycle && plan.pricing[cycle] !== undefined) return plan.pricing[cycle];
+                        if (plan.price !== undefined) return plan.price;
+                        return 0;
+                      })(),
+                    });
+                    if (firstEmptyIdx >= 0) {
+                      return prev.map((it, i) => i === firstEmptyIdx ? buildPatched(it) : it);
+                    }
+                    return [...prev, buildPatched(newLineItem())];
+                  });
+                } else if (out.qtyHint && items.length > 0) {
+                  // No product match — still propagate the qty hint to the
+                  // first row so the user just picks a product.
+                  setItems((prev) => prev.map((it, i) => i === 0 ? { ...it, qty: out.qtyHint! } : it));
+                }
+
+                toast({
+                  title: 'Parsed',
+                  description: [
+                    out.companyName && 'company',
+                    out.email && 'email',
+                    out.contact && 'phone',
+                    out.address && 'address',
+                    out.fullName && 'contact person',
+                    out.qtyHint && `qty (${out.qtyHint})`,
+                    out.productMatch && `product: ${out.productMatch.planName}`,
+                  ].filter(Boolean).join(', ') || 'no recognised fields',
+                });
+              }}
+            >
+              <Wand2 className="w-3 h-3" /> Parse &amp; Fill
+            </Button>
+          </div>
+        </div>
+        <Textarea
+          value={parseInput}
+          onChange={(e) => setParseInput(e.target.value)}
+          rows={6}
+          placeholder={
+`Paste the customer's reply here. Recognised labels:
+
+Individual Full Name- John Doe
+Company Name- Acme Pvt Ltd
+Contact number- 9841234567
+Address- Putalisadak, Kathmandu
+Email Address- john@acme.com
+Product Required- Cloud Ramro          (optional — also auto-detects from anywhere in the text)
+
+Also auto-fills the first line-item qty from phrases like:
+"25 users", "25 emails", "25 mailboxes", "100 user accounts",
+"50 staff", "10 seats", "100 subscriptions".`
+          }
+          className={`${inputCls} font-mono text-xs leading-snug`}
+        />
+        {parsed && (
+          <div className={`mt-3 p-3 rounded-lg text-xs ${dm ? 'bg-gray-800/50' : 'bg-white/60 border border-gray-200'}`}>
+            <div className={`text-[10px] uppercase tracking-wider mb-2 ${dm ? 'text-gray-500' : 'text-gray-500'}`}>Extracted</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
+              {parsed.fullName     && <div><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Contact person:</strong> {parsed.fullName}</div>}
+              {parsed.companyName  && <div><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Company:</strong> {parsed.companyName}</div>}
+              {parsed.contact      && <div><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Phone:</strong> {parsed.contact}</div>}
+              {parsed.email        && <div><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Email:</strong> {parsed.email}</div>}
+              {parsed.address      && <div className="md:col-span-2"><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Address:</strong> {parsed.address}</div>}
+              {parsed.qtyHint      && <div><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Qty hint:</strong> {parsed.qtyHint}</div>}
+              {parsed.productMatch && (
+                <div className="md:col-span-2">
+                  <strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Product:</strong>{' '}
+                  {parsed.productMatch.planName}{' '}
+                  <Badge variant="outline" className="text-[9px] h-4 ml-1">
+                    {planData[parsed.productMatch.categoryKey]?.name ?? parsed.productMatch.categoryKey}
+                    {' · '}{parsed.productMatch.confidence}
+                  </Badge>
+                </div>
+              )}
+            </div>
+            {parsed.unmatchedLines.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-gray-300/30">
+                <div className={`text-[10px] uppercase tracking-wider mb-1 ${dm ? 'text-amber-400' : 'text-amber-600'}`}>Unrecognised labels</div>
+                <ul className={`text-[11px] list-disc ml-4 space-y-0.5 ${dm ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {parsed.unmatchedLines.map((l, i) => <li key={i}>{l}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Optional contact info — none required, shown only in preview if filled */}
       <div className={card}>
         <div className="flex items-center justify-between mb-2">
@@ -454,7 +628,7 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
         </div>
         <div className={`grid grid-cols-12 gap-2 px-2 pb-1 text-[10px] uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
           <div className="col-span-4">Product</div>
-          <div className="col-span-2">Cycle</div>
+          <div className="col-span-2">Billing Cycle</div>
           <div className="col-span-1 text-right">Qty</div>
           <div className="col-span-2 text-right">Unit (NRs.)</div>
           <div className="col-span-2 text-right">Total</div>
@@ -504,15 +678,20 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
                 </div>
                 <div className="col-span-2">
                   {isCustom ? (
-                    <Input
-                      type="number"
-                      min={0}
-                      value={it.cycle || 0}
-                      onChange={e => updateItem(it.id, { cycle: Math.max(0, Number(e.target.value) || 0) })}
-                      placeholder="months (0 = one-time)"
-                      className="h-8 text-xs"
-                      title="Billing cycle in months. 0 = one-time, 1 = monthly, 12 = yearly."
-                    />
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={it.cycle || 0}
+                        onChange={e => updateItem(it.id, { cycle: Math.max(0, Number(e.target.value) || 0) })}
+                        placeholder="months"
+                        className="h-8 text-xs flex-1"
+                        title="Billing cycle in months. 0 = one-time, 1 = monthly, 12 = yearly."
+                      />
+                      <span className={`text-[10px] whitespace-nowrap tabular-nums ${dm ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {cycleLabel(it.cycle)}
+                      </span>
+                    </div>
                   ) : (
                     <Select value={String(it.cycle || '')} onValueChange={(v) => updateItem(it.id, { cycle: Number(v) })} disabled={cycles.length === 0}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
@@ -593,8 +772,9 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
         </div>
       </div>
 
-      {/* Preview */}
-      <div className={card}>
+      {/* Preview — break out of the page's max-width so the A4 page has
+          breathing room even when the forms above are kept narrow. */}
+      <div className={`${card} -mx-6 sm:-mx-12 lg:-mx-32 xl:-mx-48`}>
         <Label className={labelCls}>Preview {letterhead && <span className="ml-1 text-[10px] normal-case font-normal text-gray-500">· letterhead: {letterhead.name}</span>}</Label>
         <div className="mt-3 overflow-auto rounded-lg border bg-gray-100" style={{ borderColor: dm ? '#2A2A2A' : '#E5E7EB' }}>
           <div
@@ -656,7 +836,7 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
                   <tr style={{ background: ACCENT_TINT_STRONG }}>
                     <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>#</th>
                     <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Item</th>
-                    <th style={{ textAlign: 'center', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Cycle</th>
+                    <th style={{ textAlign: 'center', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Billing Cycle</th>
                     <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Qty</th>
                     <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Unit (NRs.)</th>
                     <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Total (NRs.)</th>
@@ -669,7 +849,7 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
                       <tr key={it.id}>
                         <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', verticalAlign: 'top' }}>{i + 1}</td>
                         <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', verticalAlign: 'top' }}>
-                          <div style={{ fontWeight: 600 }}>{cat?.name} — {it.planName}</div>
+                          <div style={{ fontWeight: 600 }}>{cat?.name ? `${cat.name} — ${it.planName}` : it.planName}</div>
                         </td>
                         <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', textAlign: 'center', verticalAlign: 'top' }}>{cycleLabel(it.cycle)}</td>
                         <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', textAlign: 'right', verticalAlign: 'top' }}>{it.qty}</td>

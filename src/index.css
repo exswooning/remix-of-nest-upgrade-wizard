@@ -126,3 +126,149 @@
 .rfp-letterhead-body strong { font-weight: 700; }
 .rfp-letterhead-body em { font-style: italic; }
 .rfp-letterhead-body ul, .rfp-letterhead-body ol { margin: 0 0 0.5em 1.5em; }
+
+/* ── Background colour stage ──────────────────────────────────────────── */
+/* Six soft-edged blobs drifting on independent timings. Curated palette
+ * only — coral, sky, mint, lavender, rose, jade. No yellow, no brown,
+ * no dull navy. In light mode the blobs use `multiply` blend so they
+ * tint the slate-50 surface; in dark mode they use `screen` so they
+ * glow against slate-950. Heavy blur keeps them reading as colour
+ * washes rather than hard shapes. */
+.bg-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.bg-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.42;
+  mix-blend-mode: multiply;
+  will-change: transform;
+}
+.dark .bg-blob {
+  opacity: 0.55;
+  filter: blur(110px);
+  mix-blend-mode: screen;
+}
+
+.bg-blob-1 { width: 46vw; height: 46vw; top: -12vw; left: -10vw;
+  background: radial-gradient(circle at 40% 40%, #fb7185, #fda4af 60%, transparent 75%);
+  animation: bg-drift-1 32s ease-in-out infinite alternate; } /* coral */
+.bg-blob-2 { width: 50vw; height: 50vw; top: -8vh; right: -12vw;
+  background: radial-gradient(circle at 40% 40%, #38bdf8, #7dd3fc 60%, transparent 75%);
+  animation: bg-drift-2 38s ease-in-out infinite alternate; } /* sky */
+.bg-blob-3 { width: 52vw; height: 52vw; bottom: -18vw; left: 4vw;
+  background: radial-gradient(circle at 50% 50%, #34d399, #6ee7b7 60%, transparent 75%);
+  animation: bg-drift-3 36s ease-in-out infinite alternate; } /* mint */
+.bg-blob-4 { width: 44vw; height: 44vw; top: 30vh; left: 30vw;
+  background: radial-gradient(circle at 50% 50%, #a78bfa, #c4b5fd 60%, transparent 75%);
+  animation: bg-drift-4 42s ease-in-out infinite alternate; } /* lavender */
+.bg-blob-5 { width: 40vw; height: 40vw; bottom: -8vw; right: -4vw;
+  background: radial-gradient(circle at 50% 50%, #f472b6, #f9a8d4 60%, transparent 75%);
+  animation: bg-drift-5 34s ease-in-out infinite alternate; } /* rose */
+.bg-blob-6 { width: 42vw; height: 42vw; top: 50vh; right: 25vw;
+  background: radial-gradient(circle at 50% 50%, #22d3ee, #67e8f9 60%, transparent 75%);
+  animation: bg-drift-6 30s ease-in-out infinite alternate; } /* aqua */
+
+@keyframes bg-drift-1 {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(18vw, 14vh) scale(1.12); }
+  100% { transform: translate(6vw, 30vh) scale(0.95); }
+}
+@keyframes bg-drift-2 {
+  0%   { transform: translate(0, 0) scale(1.05); }
+  50%  { transform: translate(-22vw, 18vh) scale(0.92); }
+  100% { transform: translate(-8vw, 40vh) scale(1.08); }
+}
+@keyframes bg-drift-3 {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(14vw, -20vh) scale(1.1); }
+  100% { transform: translate(30vw, -8vh) scale(0.95); }
+}
+@keyframes bg-drift-4 {
+  0%   { transform: translate(0, 0) scale(0.95); }
+  50%  { transform: translate(-18vw, -14vh) scale(1.12); }
+  100% { transform: translate(10vw, -26vh) scale(1); }
+}
+@keyframes bg-drift-5 {
+  0%   { transform: translate(0, 0) scale(1.1); }
+  50%  { transform: translate(-14vw, -22vh) scale(0.92); }
+  100% { transform: translate(-26vw, -6vh) scale(1.05); }
+}
+@keyframes bg-drift-6 {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(20vw, 16vh) scale(1.1); }
+  100% { transform: translate(-10vw, 28vh) scale(0.92); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bg-blob { animation: none !important; }
+}
+
+/* Cards/strips sit ABOVE the colour stage. Give the main content wrapper
+ * z-index so it stacks above .bg-stage at z=0. */
+
+/* ── Cards (corporate / functional) ───────────────────────────────────── */
+/* Plain white surface, thin border, subtle shadow. Reads as a sheet of
+ * content, not as a decorative object. Dark variant flips to slate-900
+ * with a hairline border. */
+.glass-card {
+  background-color: #ffffff;
+  border: 1px solid rgb(226, 232, 240);   /* slate-200 */
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.dark .glass-card {
+  background-color: rgb(15, 23, 42);      /* slate-900 */
+  border-color: rgb(30, 41, 59);          /* slate-800 */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Tab strips (corporate) ───────────────────────────────────────────── */
+/* Plain segmented strip: light-gray pill with darker text. Active chip
+ * is a flat white card with a thin border and a small shadow — the
+ * Stripe / Linear / Notion segmented-control pattern. */
+.glass-tabs,
+.glass-tabs-sm {
+  background: rgb(241, 245, 249) !important;  /* slate-100 */
+  border: 1px solid rgb(226, 232, 240);       /* slate-200 */
+  border-radius: 8px !important;
+  height: auto !important;
+  position: relative;
+  box-shadow: none;
+}
+.glass-tabs    { padding: 4px !important; }
+.glass-tabs-sm { padding: 3px !important; }
+.dark .glass-tabs,
+.dark .glass-tabs-sm {
+  background: rgb(30, 41, 59) !important;     /* slate-800 */
+  border-color: rgb(51, 65, 85);              /* slate-700 */
+}
+
+.glass-tab {
+  position: relative;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: rgb(71, 85, 105) !important;         /* slate-600 */
+  border: 0 !important;
+  box-shadow: none !important;
+  transition: background-color 120ms ease-out, color 120ms ease-out, box-shadow 120ms ease-out;
+}
+.dark .glass-tab { color: rgb(148, 163, 184) !important; } /* slate-400 */
+.glass-tab:hover { color: rgb(15, 23, 42) !important; }
+.dark .glass-tab:hover { color: rgb(241, 245, 249) !important; }
+
+.glass-tab[data-state="active"] {
+  background: #ffffff !important;
+  color: rgb(15, 23, 42) !important;          /* slate-900 */
+  border: 1px solid rgb(226, 232, 240) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+}
+.dark .glass-tab[data-state="active"] {
+  background: rgb(15, 23, 42) !important;     /* slate-900 */
+  color: rgb(248, 250, 252) !important;       /* slate-50 */
+  border: 1px solid rgb(51, 65, 85) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4) !important;
+}

@@ -68,7 +68,7 @@ const QuickAmendmentTab: React.FC<QuickAmendmentTabProps> = ({ darkMode = false 
   const [generatedId, setGeneratedId] = useState('');
 
   const dm = darkMode;
-  const card = `rounded-xl p-5 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
+  const card = `glass-card rounded-2xl p-5`;
   const labelCls = `text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`;
   const inputCls = (err: boolean, isAuto?: boolean) =>
     `w-full px-3 py-2.5 rounded-lg text-sm outline-none transition-colors ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border ${err ? '!border-red-500' : ''} ${isAuto ? 'opacity-75 cursor-not-allowed' : ''}`;

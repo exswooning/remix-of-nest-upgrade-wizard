@@ -9,7 +9,7 @@ import {
   Receipt, Download, Loader2, CheckCircle2, AlertCircle, Search, Printer, Archive, RefreshCw, Save, Sparkles,
   RotateCcw, ZoomIn, ZoomOut, Maximize2, Minimize2, X, Move, Lock, Unlock, LayoutGrid, Plus, Minus, Trash2,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, AlignLeft, AlignCenter, AlignRight,
-  Image as ImageIcon,
+  Image as ImageIcon, Building2,
 } from 'lucide-react';
 import { useContractLookup } from '@/hooks/useContractLookup';
 import { getTodayISO, numberToWords } from '@/utils/cgapAutoFill';
@@ -18,17 +18,22 @@ import { useAuth } from '@/contexts/AuthContext';
 import AdminFileUpload from '@/components/AdminFileUpload';
 import { useToast } from '@/hooks/use-toast';
 import {
-  fetchDefaultLetterhead, saveLetterheadMargins, DEFAULT_MARGINS,
+  saveLetterheadMargins, DEFAULT_MARGINS,
   type LetterheadConfig, type LetterheadMargins,
 } from '@/utils/letterheadTemplate';
 import { findOrCreateClient } from '@/utils/clients';
-import { resolveLetterhead } from '@/utils/templateAssignments';
+import { rowToLetterhead, type TemplateRow } from '@/utils/templateAssignments';
+import { renderAnchor, type FieldAnchor } from '@/utils/rfpAnchors';
+import { freshDefaultVrapAnchors } from '@/utils/vrapLayout';
 import { logActivity } from '@/utils/activityLog';
-import { freshDefaultAnchors, renderAnchor, type FieldAnchor } from '@/utils/rfpAnchors';
-import { loadLayout, saveLayout } from '@/utils/rfpLayout';
+import { loadCompanies, updateCompany, downloadCertBuffer, VRAP_SLOTS, type VrapSlot, type VrapCompanyConfig } from '@/utils/vrapCompanies';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PDFDocument } from 'pdf-lib';
 import { cn } from '@/lib/utils';
 
-const ACCENT = '#10B981';
+// VRAP uses violet so it reads distinct from RfP's emerald accent even though
+// the underlying tab is a structural clone.
+const ACCENT = '#A78BFA';
 
 const formatNPR = (n: number) =>
   `NRs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -39,11 +44,11 @@ const formatDateDDMMYYYY = (iso: string) => {
   return `${d}/${m}/${y}`;
 };
 
-interface RequestForPaymentTabProps {
+interface VrapTabProps {
   darkMode?: boolean;
 }
 
-const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = false }) => {
+const VrapTab: React.FC<VrapTabProps> = ({ darkMode = false }) => {
   const dm = darkMode;
   const { isAdmin, currentUsername } = useAuth();
   const { toast } = useToast();
@@ -102,28 +107,64 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     description, notes, contractData,
   ]);
 
+  // ─── Companies + selected slot ────────────────────────────────────────────
+  // VRAP supports up to three issuing-company slots (configured in Settings).
+  // Each slot has its own letterhead and its own registration / tax cert PDFs
+  // that get appended to the generated PDF at handleGenerate time.
+  const [companies, setCompanies] = useState<VrapCompanyConfig[]>(() => loadCompanies());
+  const [selectedSlot, setSelectedSlot] = useState<VrapSlot>('A');
+
+  useEffect(() => {
+    const handler = () => setCompanies(loadCompanies());
+    window.addEventListener('vrap-companies-update', handler);
+    return () => window.removeEventListener('vrap-companies-update', handler);
+  }, []);
+
+  const selectedCompany = useMemo(
+    () => companies.find((c) => c.slot === selectedSlot) ?? companies[0],
+    [companies, selectedSlot],
+  );
+
   // ─── Letterhead ───────────────────────────────────────────────────────────
   const [letterhead, setLetterhead] = useState<LetterheadConfig | null>(null);
   const [letterheadLoading, setLetterheadLoading] = useState(true);
   const [marginSaving, setMarginSaving] = useState(false);
   const marginSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── Anchors + lock (localStorage-backed) ─────────────────────────────────
-  // We lazy-init from localStorage so the layout you spent time designing
-  // survives a reload without any database round-trip.
-  const initialLayout = useMemo(() => loadLayout(), []);
-  const [anchors, setAnchors] = useState<FieldAnchor[]>(initialLayout.anchors);
-  const [locked, setLocked] = useState<boolean>(initialLayout.locked);
+  // ─── Per-slot anchors + lock ──────────────────────────────────────────────
+  // Each company slot owns its own anchor layout so the cover-letter text can
+  // differ slightly between the three companies. We hold a working copy in
+  // local state, seeded from the selected slot, and write it back to the slot
+  // whenever it changes. On slot switch we reload from the new slot.
+  const [anchors, setAnchors] = useState<FieldAnchor[]>(() =>
+    selectedCompany?.anchors && selectedCompany.anchors.length > 0
+      ? selectedCompany.anchors
+      : freshDefaultVrapAnchors(),
+  );
+  const [locked, setLocked] = useState<boolean>(() => Boolean(selectedCompany?.locked));
   const [designerMode, setDesignerMode] = useState(false);
   const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
   const [draggingAnchor, setDraggingAnchor] = useState<{
     id: string; startMouseX: number; startMouseY: number; origX: number; origY: number;
   } | null>(null);
 
+  // Switching slot → reload anchors/lock from that slot's stored layout
+  // (or seed defaults if the slot has never been edited). selectedAnchorId
+  // resets to avoid pointing at an id that lives in the old slot's layout.
+  useEffect(() => {
+    if (!selectedCompany) return;
+    setAnchors(
+      selectedCompany.anchors && selectedCompany.anchors.length > 0
+        ? selectedCompany.anchors
+        : freshDefaultVrapAnchors(),
+    );
+    setLocked(Boolean(selectedCompany.locked));
+    setSelectedAnchorId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSlot]);
+
   // The moment designer mode turns on, auto-select the first anchor so the
-  // inspector bar opens with full controls populated. Without this the user
-  // has to remember to click an anchor on the page to see anything beyond
-  // the toolbar.
+  // inspector bar opens with full controls populated.
   useEffect(() => {
     if (designerMode && !selectedAnchorId && anchors.length > 0) {
       setSelectedAnchorId(anchors[0].id);
@@ -131,11 +172,15 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [designerMode]);
 
-  // Auto-save: whenever the layout changes, persist to localStorage. No
-  // debounce needed — localStorage writes are sync and cheap.
+  // Persist the current slot's anchors + lock as you edit. Skips while we're
+  // hydrating from a slot switch (the dep change triggers immediately after
+  // setAnchors / setLocked above; the values are identical so the write is a
+  // no-op but it's wasted work). The write goes through updateCompany so the
+  // 'vrap-companies-update' event also fires for any other listeners.
   useEffect(() => {
-    saveLayout({ anchors, locked });
-  }, [anchors, locked]);
+    if (!selectedSlot) return;
+    updateCompany(selectedSlot, { anchors, locked });
+  }, [anchors, locked, selectedSlot]);
 
   // ─── Page scaling ─────────────────────────────────────────────────────────
   const pageContainerRef = useRef<HTMLDivElement | null>(null);
@@ -198,23 +243,27 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
     if (isAdmin) fetchSubmissions();
   }, [isAdmin, fetchSubmissions]);
 
-  // ─── Letterhead load (honours the RfP template assignment) ───────────────
+  // ─── Letterhead load — driven by the selected company slot ────────────────
+  // Each VRAP slot points at a row in `document_templates` by id; we resolve
+  // the storage_path to a public URL + margins (decoded from the row's notes
+  // field) and feed it to the same letterhead pipeline RfP uses.
   useEffect(() => {
     let cancelled = false;
-    const reload = () => {
-      setLetterheadLoading(true);
-      resolveLetterhead('rfp')
-        .then((cfg) => { if (!cancelled) setLetterhead(cfg); })
-        .catch(() => {})
-        .finally(() => { if (!cancelled) setLetterheadLoading(false); });
-    };
-    reload();
-    window.addEventListener('cgap-template-assignments-update', reload);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('cgap-template-assignments-update', reload);
-    };
-  }, []);
+    const id = selectedCompany?.letterheadTemplateId;
+    if (!id) { setLetterhead(null); setLetterheadLoading(false); return; }
+    setLetterheadLoading(true);
+    (async () => {
+      const { data } = await supabase
+        .from('document_templates')
+        .select('id, name, template_type, storage_path, notes, is_default')
+        .eq('id', id)
+        .maybeSingle();
+      if (cancelled) return;
+      setLetterhead(rowToLetterhead(data as TemplateRow | null));
+      setLetterheadLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [selectedCompany?.letterheadTemplateId]);
 
   // (Layout auto-saves to localStorage via the effect above. No Supabase
   // round-trip — DDL access isn't available on the shared project.)
@@ -340,7 +389,7 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
 
   const resetAnchorsToDefault = () => {
     if (!window.confirm('Reset every anchor back to its default position and template? This discards your custom layout.')) return;
-    setAnchors(freshDefaultAnchors());
+    setAnchors(freshDefaultVrapAnchors());
     setSelectedAnchorId(null);
   };
 
@@ -376,10 +425,10 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
       toast({ title: 'Margin save failed', description: marginRes.error, variant: 'destructive' });
       return;
     }
-    saveLayout({ anchors, locked });
+    updateCompany(selectedSlot, { anchors, locked });
     toast({
       title: 'Saved',
-      description: 'Layout is stored in this browser; margins synced to Supabase.',
+      description: `Layout saved to slot ${selectedSlot}; margins synced to Supabase.`,
     });
   };
 
@@ -623,10 +672,61 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
         }
       });
 
+      // ── Merge attached certs (company registration + tax / VAT clearance) ──
+      // jsPDF can't import other PDFs; we serialise the cover letter, then use
+      // pdf-lib to append the cert PDFs (or addImage for PNG/JPG certs) and
+      // download the merged result.
+      const slotSuffix = `-${selectedSlot}`;
       const suffix = contractData?.contract_id ? `-${contractData.contract_id}` : '';
-      const filename = `RfP-${invoiceNumber}${suffix}.pdf`;
-      pdf.save(filename);
-      logActivity({ kind: 'pdf', module: 'CGAP/RfP', action: 'RfP PDF generated', meta: { filename, invoiceNumber, contract: contractData?.contract_id, amount } });
+      const baseName = `VendorRegistration${slotSuffix}-${invoiceNumber || 'draft'}${suffix}`;
+
+      const certBuffers = await Promise.all([
+        downloadCertBuffer(selectedCompany?.regCertPath ?? null),
+        downloadCertBuffer(selectedCompany?.taxCertPath ?? null),
+      ]);
+      const hasCerts = certBuffers.some(Boolean);
+
+      if (!hasCerts) {
+        pdf.save(`${baseName}.pdf`);
+      } else {
+        // Cover letter → ArrayBuffer → pdf-lib doc, then append cert pages.
+        const coverBytes = pdf.output('arraybuffer') as ArrayBuffer;
+        const merged = await PDFDocument.load(coverBytes);
+        for (const buf of certBuffers) {
+          if (!buf) continue;
+          // Try to load as PDF; if that fails it's probably an image, embed
+          // as a new page sized to the image.
+          try {
+            const certDoc = await PDFDocument.load(buf);
+            const pages = await merged.copyPages(certDoc, certDoc.getPageIndices());
+            pages.forEach((p) => merged.addPage(p));
+          } catch {
+            try {
+              let embedded;
+              // Sniff first bytes: PNG starts 0x89 0x50, JPEG 0xFF 0xD8
+              const head = new Uint8Array(buf).slice(0, 4);
+              if (head[0] === 0xFF && head[1] === 0xD8) embedded = await merged.embedJpg(buf);
+              else embedded = await merged.embedPng(buf);
+              const page = merged.addPage([embedded.width, embedded.height]);
+              page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height });
+            } catch (err) {
+              console.error('Failed to embed cert', err);
+            }
+          }
+        }
+        const out = await merged.save();
+        const blob = new Blob([out], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${baseName}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      logActivity({ kind: 'pdf', module: 'VRAP', action: 'VRAP PDF generated', meta: { filename: `${baseName}.pdf`, hasCerts } });
       setDone(true);
       setTimeout(() => setDone(false), 3000);
     } catch (e) {
@@ -689,13 +789,61 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
             <Receipt className="w-5 h-5" />
           </div>
           <div>
-            <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-900'}`}>Request for Payment</h2>
+            <h2 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-900'}`}>VRAP — Vendor Registration</h2>
             <p className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-500'}`}>Fill the form — the letterhead fills in automatically.</p>
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={fillTest} className="gap-1.5" style={{ borderColor: `${ACCENT}44`, color: ACCENT }}>
           <Sparkles className="w-3 h-3" /> Test Data
         </Button>
+      </div>
+
+      {/* Issuing company picker — selects which of the three configured slots
+          to use. Drives the letterhead overlay + which cert PDFs get appended
+          to the generated download. Set up the three slots in CGAP Settings. */}
+      <div className={card}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4" style={{ color: ACCENT }} />
+            <Label className={labelCls}>Issuing Company</Label>
+          </div>
+          <a
+            href="#cgap-settings"
+            onClick={(e) => { e.preventDefault(); /* navigation handled by parent tabs */ }}
+            className={`text-[10px] ${dm ? 'text-gray-500' : 'text-gray-400'}`}
+          >
+            Configure slots in Settings →
+          </a>
+        </div>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+          {VRAP_SLOTS.map((s) => {
+            const c = companies.find((x) => x.slot === s);
+            const isActive = selectedSlot === s;
+            const hasLetterhead = Boolean(c?.letterheadTemplateId);
+            const certCount = (c?.regCertPath ? 1 : 0) + (c?.taxCertPath ? 1 : 0);
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSelectedSlot(s)}
+                className={cn(
+                  'text-left rounded-xl p-3 border transition-colors',
+                  isActive
+                    ? (dm ? 'bg-violet-900/30 border-violet-500' : 'bg-violet-50 border-violet-400')
+                    : (dm ? 'bg-gray-800/40 border-gray-700 hover:bg-gray-800' : 'bg-white/60 border-gray-200 hover:bg-gray-50'),
+                )}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="outline" className="font-mono text-[10px]" style={{ borderColor: ACCENT, color: ACCENT }}>{s}</Badge>
+                  <span className={`text-sm font-medium ${dm ? 'text-gray-100' : 'text-gray-800'}`}>{c?.label || `Slot ${s}`}</span>
+                </div>
+                <div className={`text-[10px] ${dm ? 'text-gray-500' : 'text-gray-500'}`}>
+                  {hasLetterhead ? '✓ letterhead' : '— no letterhead'} · {certCount}/2 certs
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Contract lookup */}
@@ -1444,4 +1592,4 @@ const RequestForPaymentTab: React.FC<RequestForPaymentTabProps> = ({ darkMode = 
   );
 };
 
-export default RequestForPaymentTab;
+export default VrapTab;

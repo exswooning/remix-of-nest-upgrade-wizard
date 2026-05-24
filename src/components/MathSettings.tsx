@@ -163,12 +163,12 @@ const MathSettings: React.FC<MathSettingsProps> = ({ darkMode }) => {
         </DialogHeader>
 
         <Tabs defaultValue="basic" className="mt-4">
-          <TabsList className={`grid w-full grid-cols-5 ${darkMode ? 'bg-gray-800' : ''}`}>
-            <TabsTrigger value="basic">Basic Settings</TabsTrigger>
-            <TabsTrigger value="variables">Variables</TabsTrigger>
-            <TabsTrigger value="steps">Calculation Steps</TabsTrigger>
-            <TabsTrigger value="formula">Formula Builder</TabsTrigger>
-            <TabsTrigger value="advanced">Advanced</TabsTrigger>
+          <TabsList className="glass-tabs-sm grid w-full grid-cols-5">
+            <TabsTrigger value="basic" className="glass-tab text-xs py-2">Basic Settings</TabsTrigger>
+            <TabsTrigger value="variables" className="glass-tab text-xs py-2">Variables</TabsTrigger>
+            <TabsTrigger value="steps" className="glass-tab text-xs py-2">Calculation Steps</TabsTrigger>
+            <TabsTrigger value="formula" className="glass-tab text-xs py-2">Formula Builder</TabsTrigger>
+            <TabsTrigger value="advanced" className="glass-tab text-xs py-2">Advanced</TabsTrigger>
           </TabsList>
 
           <TabsContent value="basic" className="space-y-6">

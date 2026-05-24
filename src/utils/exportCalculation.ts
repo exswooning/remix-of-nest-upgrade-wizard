@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { logActivity } from './activityLog';
 
 interface ProRataExportData {
   type: 'prorata';
@@ -290,6 +291,7 @@ export const exportToPDF = async (data: ExportData) => {
     filename = `vps-pricing-${new Date().toISOString().split('T')[0]}.pdf`;
   }
   pdf.save(filename);
+  logActivity({ kind: 'pdf', module: `UCAP/${data.type}`, action: `${data.type} calculation PDF generated`, meta: { filename } });
 };
 
 export const exportToImage = async (elementId: string, filename: string) => {

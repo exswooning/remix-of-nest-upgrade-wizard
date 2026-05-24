@@ -1,34 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { useCGAP } from '@/contexts/CGAPContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Trash2, Save, Info, Database, X, FileText, FileSpreadsheet, Receipt, Copy, Check } from 'lucide-react';
+import { Database, X, FileText, FileSpreadsheet, Save, Download, RotateCcw, Upload, ShieldCheck, Sparkles, Eye, EyeOff } from 'lucide-react';
 import TemplateManager from '@/components/TemplateManager';
+import TemplateAssignmentsPanel from '@/components/TemplateAssignmentsPanel';
+import VrapCompanyManager from '@/components/VrapCompanyManager';
+import UserManagement from '@/components/UserManagement';
+import PriceManagement from '@/components/PriceManagement';
+import MathSettings from '@/components/MathSettings';
 import { loadQgapSettings, saveQgapSettings, DEFAULT_QGAP_SETTINGS, type QgapSettings } from '@/utils/qgapSettings';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { snapshotCurrentDefaults, resetToProjectDefaults, NON_SHIPPABLE_KEYS } from '@/utils/seedDefaults';
+import { getApiKey as getTtapKey, setApiKey as setTtapKey, getModel as getTtapModel, setModel as setTtapModel, AVAILABLE_MODELS } from '@/utils/ttapClient';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
+// Project-level localStorage keys shown in the diagnostics panel.
+// User-specific keys (auth, users, history) are intentionally omitted.
 const STORAGE_KEYS = [
-  { key: 'calculator-plan-data', label: 'Calculator Plan Data' },
-  { key: 'cgap-field-mappings', label: 'CGAP Field Mappings' },
-  { key: 'cgap-addendum-template-id', label: 'Addendum Template ID' },
-  { key: 'cgap-contract-counts', label: 'Contract Counters' },
-  { key: 'cgap-addendum-counts', label: 'Addendum Counters' },
-  { key: 'cgap-contract-logs', label: 'Contract Logs' },
-  { key: 'cgap-addendum-logs', label: 'Addendum Logs' },
-  { key: 'cgap-auth', label: 'CGAP Auth' },
-  { key: 'calculator-auth', label: 'Calculator Auth' },
-  { key: 'qgap-settings', label: 'QGAP Settings' },
+  { key: 'calculator-plan-data',     label: 'Calculator Plan Data' },
+  { key: 'cgap-contract-counts',     label: 'Contract Counters' },
+  { key: 'cgap-addendum-counts',     label: 'Addendum Counters' },
+  { key: 'cgap-contract-logs',       label: 'Contract Logs' },
+  { key: 'cgap-addendum-logs',       label: 'Addendum Logs' },
+  { key: 'qgap-settings',            label: 'QGAP Settings' },
+  { key: 'rfp-layout',               label: 'RfP Anchor Layout' },
+  { key: 'rfp-anchors',              label: 'RfP Anchor Positions' },
+  { key: 'vrap-companies',           label: 'VRAP Companies' },
+  { key: 'vrap-layout',              label: 'VRAP Anchor Layout' },
+  { key: 'template-assignments',     label: 'Template Assignments' },
 ];
 
 interface SettingsTabProps { darkMode?: boolean; }
+
 const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
-  const { fieldMappings, setFieldMappings, addendumTemplateId, setAddendumTemplateId } = useCGAP();
-  const [localMappings, setLocalMappings] = useState(fieldMappings);
-  const [templateId, setTemplateId] = useState(addendumTemplateId);
-  const [saved, setSaved] = useState(false);
+  const dm = darkMode;
+  const card = `glass-card rounded-2xl p-6`;
+  const inputCls = `px-2 py-1.5 rounded text-sm outline-none ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border`;
 
   // QGAP settings
   const [qgapSettings, setQgapSettings] = useState<QgapSettings>(() => loadQgapSettings());
@@ -40,185 +48,51 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
   };
   const handleResetQgap = () => setQgapSettings({ ...DEFAULT_QGAP_SETTINGS });
 
-  const dm = darkMode;
-  const card = `rounded-xl p-6 ${dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200'} border`;
-  const inputCls = `px-2 py-1.5 rounded text-sm outline-none ${dm ? 'bg-gray-800 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-300'} border`;
-
-  const updateMapping = (idx: number, key: 'label' | 'placeholder' | 'required', val: string | boolean) => {
-    setLocalMappings(prev => prev.map((m, i) => i === idx ? { ...m, [key]: val } : m));
-  };
-  const addField = () => setLocalMappings(prev => [...prev, { id: `custom_${Date.now()}`, label: 'New Field', placeholder: '<<NEWFIELD>>', required: false }]);
-  const deleteField = (idx: number) => setLocalMappings(prev => prev.filter((_, i) => i !== idx));
-  const saveMappings = () => { setFieldMappings(localMappings); setSaved(true); setTimeout(() => setSaved(false), 2000); };
-  const saveTemplate = () => { setAddendumTemplateId(templateId); setSaved(true); setTimeout(() => setSaved(false), 2000); };
-
-  const AUTO_PLACEHOLDERS = [
-    { tag: '<<CONTRACTID>>', desc: 'Contract ID (ABV-NNBS-DD-MM-YY-N)' },
-    { tag: '<<ADDENDUMID>>', desc: 'Addendum ID (CONTRACT_ID#AN)' },
-    { tag: '<<DATE>>', desc: 'Ordinal day (e.g. "22nd")' },
-    { tag: '<<DAYDATE>>', desc: 'Day number (e.g. "22")' },
-    { tag: '<<MONTH>>', desc: 'Full month name (e.g. "February")' },
-    { tag: '<<YEAR>>', desc: 'Full year (e.g. "2026")' },
-    { tag: '<<DD>>', desc: 'Day 2-digit (e.g. "08")' },
-    { tag: '<<MM>>', desc: 'Month 2-digit (e.g. "03")' },
-    { tag: '<<YY>>', desc: 'Year 2-digit (e.g. "26")' },
-    { tag: '<<VERSION>>', desc: 'Contract sequence number' },
-  ];
-
-  // RfP placeholders — every token the RFP tab merges into the body at export time.
-  const RFP_PLACEHOLDERS: { token: string; label: string; example: string }[] = [
-    { token: 'ref_no',              label: 'Ref. No',                example: '980' },
-    { token: 'invoice_number',      label: 'Invoice / RfP Number',   example: 'RfP-2605-001' },
-    { token: 'issue_date',          label: 'Letter Date',            example: '19/05/2026' },
-    { token: 'due_date',            label: 'Due Date',               example: '02/06/2026' },
-    { token: 'amount',              label: 'Amount (formatted)',     example: 'NRs. 1,50,000' },
-    { token: 'amount_words',        label: 'Amount in words',        example: 'One Hundred Fifty Thousand…' },
-    { token: 'recipient_name',      label: 'Recipient salutation',   example: 'The SOMTU' },
-    { token: 'recipient_org',       label: 'Recipient organization', example: 'Acme Corporation Pvt. Ltd.' },
-    { token: 'service_for',         label: 'Service / Subject',      example: 'domain and hosting services' },
-    { token: 'service_term',        label: 'Service term',           example: '5 years (Domain and Hosting)' },
-    { token: 'service_reference',   label: 'Reference',              example: 'provided quotes' },
-    { token: 'payee_name',          label: 'Payee name',             example: 'Nest Nepal Business Solutions Pvt. Ltd.' },
-    { token: 'bank_name',           label: 'Bank name',              example: 'Laxmi Sunrise Bank' },
-    { token: 'bank_account',        label: 'Bank account',           example: '03211002193' },
-    { token: 'signatory_name',      label: 'Signatory name',         example: 'Yashoda Ghimire' },
-    { token: 'signatory_position',  label: 'Signatory position',     example: 'Finance' },
-    { token: 'description',         label: 'Additional description', example: '(free-text from form)' },
-    { token: 'notes',               label: 'Notes',                  example: '(free-text from form)' },
-    { token: 'contract_id',         label: 'Linked contract ID',     example: 'WMA-NNBS-03-03-26-1' },
-    { token: 'client_company_name', label: 'Client company (from contract)', example: 'Acme Corporation Pvt. Ltd.' },
-    { token: 'client_location',     label: 'Client location (from contract)', example: 'Kathmandu' },
-  ];
-
-  const [copiedToken, setCopiedToken] = useState<string | null>(null);
-  const copyToken = async (token: string) => {
-    try {
-      await navigator.clipboard.writeText(`<<${token}>>`);
-      setCopiedToken(token);
-      setTimeout(() => setCopiedToken(null), 1200);
-    } catch {/* clipboard blocked */}
-  };
-
   return (
     <div className="space-y-6">
-      {/* Section A */}
-      <div className={card}>
-        <h3 className={`text-lg font-semibold mb-1 ${dm ? 'text-white' : 'text-gray-800'}`}>Contract Field → Placeholder Mapping</h3>
-        <p className={`text-xs mb-5 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Edit field labels and their template placeholder tags.</p>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className={dm ? 'border-gray-800' : 'border-gray-200'} style={{ borderBottomWidth: 1, borderBottomStyle: 'solid' }}>
-                <th className={`text-left py-2 px-2 text-xs uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Field Label</th>
-                <th className={`text-left py-2 px-2 text-xs uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Placeholder</th>
-                <th className={`text-center py-2 px-2 text-xs uppercase tracking-wider ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Req.</th>
-                <th className="py-2 px-2 w-10"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {localMappings.map((m, i) => (
-                <tr key={m.id} className={dm ? 'border-gray-800' : 'border-gray-200'} style={{ borderBottomWidth: 1, borderBottomStyle: 'solid' }}>
-                  <td className="py-2 px-2"><input value={m.label} onChange={e => updateMapping(i, 'label', e.target.value)} className={`w-full ${inputCls}`} /></td>
-                  <td className="py-2 px-2"><input value={m.placeholder} onChange={e => updateMapping(i, 'placeholder', e.target.value)} className={`w-full ${inputCls} font-mono`} style={{ color: '#A78BFA' }} /></td>
-                  <td className="py-2 px-2 text-center">
-                    <Checkbox checked={m.required} onCheckedChange={val => updateMapping(i, 'required', !!val)} />
-                  </td>
-                  <td className="py-2 px-2">
-                    <button onClick={() => deleteField(i)} className="p-1 text-red-500 hover:opacity-70"><Trash2 className="w-4 h-4" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex items-center gap-3 mt-4">
-          <Button variant="outline" size="sm" onClick={addField} className="gap-1.5"><Plus className="w-3 h-3" /> Add Field</Button>
-          <Button size="sm" onClick={saveMappings} className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"><Save className="w-3 h-3" /> Save</Button>
-          {saved && <span className="text-xs text-green-500">✓ Saved</span>}
-        </div>
-      </div>
-
-      {/* Section B */}
-      <div className={card}>
-        <h3 className={`text-lg font-semibold mb-1 ${dm ? 'text-white' : 'text-gray-800'}`}>Addendum Template ID</h3>
-        <p className={`text-xs mb-4 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>Paste the Google Doc ID for the addendum template.</p>
-        <div className="flex gap-3">
-          <Input value={templateId} onChange={e => setTemplateId(e.target.value)} placeholder="e.g. 1BxiMVs0XRA5nF..."
-            className={`flex-1 font-mono ${dm ? 'bg-gray-800 border-gray-700 text-white' : ''}`} />
-          <Button size="sm" onClick={saveTemplate} className="bg-blue-600 hover:bg-blue-700 text-white"><Save className="w-4 h-4" /></Button>
-        </div>
-      </div>
-
-      {/* Auto-generated reference */}
-      <div className={`rounded-xl p-6 ${dm ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-100 border-gray-200'} border`}>
-        <div className="flex items-center gap-2 mb-4">
-          <Info className={`w-4 h-4 ${dm ? 'text-gray-500' : 'text-gray-400'}`} />
-          <h3 className={`text-sm font-medium ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Auto-Generated Placeholders (read-only)</h3>
-        </div>
-        <div className="space-y-1">
-          {AUTO_PLACEHOLDERS.map(p => (
-            <div key={p.tag} className={`flex items-center justify-between py-1.5 ${dm ? 'border-gray-800' : 'border-gray-200'} border-b`}>
-              <Badge variant="secondary" className="font-mono text-xs" style={{ color: '#A78BFA' }}>{p.tag.replace(/<<|>>/g, '')}</Badge>
-              <span className={`text-xs ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{p.desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* RfP Placeholders */}
+      {/* Admin tools — was previously scattered as header trigger buttons.
+          Centralized here so admins have one place for everything. */}
       <div className={card}>
         <div className="flex items-center gap-2 mb-1">
-          <Receipt className={`w-4 h-4 ${dm ? 'text-emerald-400' : 'text-emerald-600'}`} />
-          <h3 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>RfP Placeholders</h3>
+          <ShieldCheck className={`w-4 h-4 ${dm ? 'text-amber-400' : 'text-amber-600'}`} />
+          <h3 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Admin Tools</h3>
         </div>
         <p className={`text-xs mb-4 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
-          Tokens you can use anywhere in the RfP body (editor, .docx template, letterhead overlay). They&apos;re
-          replaced with form values at PDF/DOCX export. Click any token to copy it as
-          {' '}<code className="font-mono" style={{ color: '#10B981' }}>&lt;&lt;name&gt;&gt;</code>.
+          User accounts, plan pricing, and calculation math. Each opens in a side panel or dialog.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
-          {RFP_PLACEHOLDERS.map(p => (
-            <button
-              key={p.token}
-              type="button"
-              onClick={() => copyToken(p.token)}
-              className={`flex items-center justify-between gap-3 py-1.5 px-2 rounded transition-colors text-left ${dm ? 'hover:bg-gray-800/60 border-gray-800' : 'hover:bg-white border-gray-200'} border-b`}
-              title={`Copy <<${p.token}>>`}
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                {copiedToken === p.token
-                  ? <Check className="w-3 h-3 text-emerald-500 shrink-0" />
-                  : <Copy className={`w-3 h-3 shrink-0 ${dm ? 'text-gray-600' : 'text-gray-400'}`} />}
-                <code className="font-mono text-xs truncate" style={{ color: '#10B981' }}>{`<<${p.token}>>`}</code>
-              </div>
-              <div className="text-right min-w-0">
-                <div className={`text-[11px] font-medium truncate ${dm ? 'text-gray-300' : 'text-gray-700'}`}>{p.label}</div>
-                <div className={`text-[10px] truncate ${dm ? 'text-gray-500' : 'text-gray-400'}`}>{p.example}</div>
-              </div>
-            </button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          <UserManagement darkMode={dm} />
+          <PriceManagement darkMode={dm} />
+          <MathSettings darkMode={dm} />
         </div>
-        {copiedToken && (
-          <p className={`text-[11px] mt-2 ${dm ? 'text-emerald-400' : 'text-emerald-600'}`}>
-            Copied <code className="font-mono">{`<<${copiedToken}>>`}</code> to clipboard.
-          </p>
-        )}
       </div>
-      {/* Document Templates */}
+
+      {/* TTAP — chatbot API key + model picker */}
+      <TtapKeyPanel darkMode={dm} inputCls={inputCls} />
+
+      {/* Letterheads — backdrops the RfP-style anchor designer paints on */}
       <div className={card}>
         <div className="flex items-center gap-2 mb-1">
           <FileText className={`w-4 h-4 ${dm ? 'text-emerald-400' : 'text-emerald-600'}`} />
-          <h3 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Document Templates</h3>
+          <h3 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>Letterheads &amp; Templates</h3>
         </div>
         <p className={`text-xs mb-4 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
-          Upload <code>.docx</code> files or paste Google Docs links for Contract, Addendum, and RfP. Use <code className="font-mono" style={{ color: '#A78BFA' }}>&lt;&lt;PLACEHOLDER&gt;&gt;</code> tokens inside your documents.
+          Upload the letterhead images used as the backdrop for each document. The
+          per-document designer overlays draggable text and image anchors on top
+          of these letterheads — same logic as the RfP tab.
         </p>
         <TemplateManager darkMode={dm} />
+
+        <div className={`mt-6 pt-6 border-t ${dm ? 'border-gray-800' : 'border-gray-200'}`}>
+          <TemplateAssignmentsPanel darkMode={dm} />
+        </div>
+
+        <div className={`mt-6 pt-6 border-t ${dm ? 'border-gray-800' : 'border-gray-200'}`}>
+          <VrapCompanyManager darkMode={dm} />
+        </div>
       </div>
 
-      {/* QGAP Defaults */}
+      {/* QGAP defaults — pre-fill values for new quotes */}
       <div className={card}>
         <div className="flex items-center gap-2 mb-1">
           <FileSpreadsheet className={`w-4 h-4 ${dm ? 'text-violet-400' : 'text-violet-600'}`} />
@@ -276,8 +150,160 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
         </div>
       </div>
 
-      {/* Diagnostics Panel */}
+      {/* Project Defaults — snapshot / reset */}
+      <ProjectDefaultsPanel darkMode={dm} />
+
+      {/* Diagnostics — last-resort recovery */}
       <DiagnosticsPanel darkMode={dm} />
+    </div>
+  );
+};
+
+/**
+ * Project Defaults — lets an admin snapshot the current localStorage
+ * into a JSON file that ships with the repo. After committing the file,
+ * any new deployment seeds those values into the visitor's localStorage
+ * on first load (see `src/utils/seedDefaults.ts`).
+ */
+const ProjectDefaultsPanel: React.FC<{ darkMode: boolean }> = ({ darkMode: dm }) => {
+  const [count, setCount] = useState(0);
+  const [bytes, setBytes] = useState(0);
+  const [busy, setBusy] = useState<'idle' | 'export' | 'reset'>('idle');
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const refresh = React.useCallback(() => {
+    const snap = snapshotCurrentDefaults();
+    setCount(Object.keys(snap.values).length);
+    const json = JSON.stringify(snap);
+    setBytes(new Blob([json]).size);
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const handleExport = () => {
+    setBusy('export');
+    try {
+      const snap = snapshotCurrentDefaults();
+      const json = JSON.stringify(snap, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'defaults.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setMsg(`Snapshot downloaded — ${Object.keys(snap.values).length} keys. Save as src/data/defaults.json and commit.`);
+      setTimeout(() => setMsg(null), 6000);
+    } finally {
+      setBusy('idle');
+    }
+  };
+
+  const handleReset = () => {
+    if (!confirm('Reset every project setting to the values currently bundled in src/data/defaults.json? Your local edits to those keys will be lost. User-specific data (login, history) is preserved.')) return;
+    setBusy('reset');
+    try {
+      resetToProjectDefaults();
+      refresh();
+      setMsg('Reset complete. Reload the page to see the bundled defaults applied across the app.');
+      setTimeout(() => setMsg(null), 8000);
+    } finally {
+      setBusy('idle');
+    }
+  };
+
+  return (
+    <div className={`rounded-xl p-6 border ${dm ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-100 border-gray-200'}`}>
+      <div className="flex items-center gap-2 mb-1">
+        <Upload className={`w-4 h-4 ${dm ? 'text-blue-400' : 'text-blue-600'}`} />
+        <h3 className={`text-sm font-medium ${dm ? 'text-gray-200' : 'text-gray-800'}`}>Project Defaults (ship with deploy)</h3>
+      </div>
+      <p className={`text-xs mb-4 ${dm ? 'text-gray-500' : 'text-gray-500'}`}>
+        Customisations you make locally (default letterhead, template assignments, anchor positions, SLA sections, RfP / VRAP layouts, QGAP settings) live in localStorage by default — so they don't follow you to a new browser or to the deployed site. Use <strong>Export</strong> to download a <code>defaults.json</code> snapshot; drop it into <code>src/data/defaults.json</code> and commit. After the next deploy, every visitor's app will seed itself with those values on first load.
+      </p>
+      <div className={`text-xs mb-4 ${dm ? 'text-gray-400' : 'text-gray-600'}`}>
+        Current snapshot: <strong>{count}</strong> keys, {(bytes / 1024).toFixed(1)} KB. Excluded from snapshots: {Array.from(NON_SHIPPABLE_KEYS).join(', ')}.
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button onClick={handleExport} disabled={busy !== 'idle'} className="gap-1.5">
+          <Download className="w-3.5 h-3.5" /> Export project defaults
+        </Button>
+        <Button onClick={handleReset} disabled={busy !== 'idle'} variant="outline" className="gap-1.5">
+          <RotateCcw className="w-3.5 h-3.5" /> Reset to bundled defaults
+        </Button>
+        {msg && <span className={`text-xs ${dm ? 'text-blue-300' : 'text-blue-700'}`}>{msg}</span>}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * TtapKeyPanel — Groq API key + model picker for the TTAP chatbot.
+ * Free tier: console.groq.com/keys. Key is stored in localStorage on
+ * this browser only.
+ */
+const TtapKeyPanel: React.FC<{ darkMode: boolean; inputCls: string }> = ({ darkMode: dm, inputCls }) => {
+  const [key, setKey] = useState(() => getTtapKey() ?? '');
+  const [model, setModelState] = useState(() => getTtapModel());
+  const [show, setShow] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    setTtapKey(key.trim());
+    setTtapModel(model);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className={`glass-card rounded-2xl p-6`}>
+      <div className="flex items-center gap-2 mb-1">
+        <Sparkles className={`w-4 h-4 ${dm ? 'text-violet-400' : 'text-violet-600'}`} />
+        <h3 className={`text-lg font-semibold ${dm ? 'text-white' : 'text-gray-800'}`}>TTAP — Assistant</h3>
+      </div>
+      <p className={`text-xs mb-4 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+        TTAP is a chatbot with full read + write access to the app's data. It uses Groq's free API (Llama 3.3 70B). Get a free key at{' '}
+        <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className={dm ? 'text-blue-300 underline' : 'text-blue-600 underline'}>
+          console.groq.com/keys
+        </a>{' '}
+        and paste it below. The key never leaves your browser.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="md:col-span-2">
+          <Label className={`text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Groq API key</Label>
+          <div className="flex items-center gap-2 mt-2">
+            <Input
+              type={show ? 'text' : 'password'}
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="gsk_…"
+              className={`flex-1 font-mono text-xs ${inputCls}`}
+              autoComplete="off"
+            />
+            <Button variant="outline" size="sm" onClick={() => setShow((s) => !s)} className="px-2">
+              {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </Button>
+          </div>
+        </div>
+        <div>
+          <Label className={`text-xs font-medium uppercase tracking-wider ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Model</Label>
+          <Select value={model} onValueChange={setModelState}>
+            <SelectTrigger className={`mt-2 ${inputCls}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {AVAILABLE_MODELS.map((m) => (
+                <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 mt-4">
+        <Button onClick={handleSave} className="gap-1.5"><Save className="w-3.5 h-3.5" /> Save</Button>
+        {saved && <span className={`text-xs ${dm ? 'text-green-400' : 'text-green-600'}`}>Saved. Open the TTAP tab to chat.</span>}
+      </div>
     </div>
   );
 };

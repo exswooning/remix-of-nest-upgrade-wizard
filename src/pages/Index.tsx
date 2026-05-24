@@ -4,8 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle, FileText, Server, FileCheck, History, FileSpreadsheet } from "lucide-react";
+import { Calculator, Moon, Sun, Calendar, UserPlus, ArrowUpCircle, FileText, Server, FileCheck, History, FileSpreadsheet, Settings, Database, Sparkles } from "lucide-react";
 import QuotationTab from "./CGAP/QuotationTab";
+import VrapTab from "./CGAP/VrapTab";
+import VpsPricingCalculator from "./Index/VpsPricingCalculator";
+import SettingsTab from "./CGAP/SettingsTab";
+import DatabasePage from "./DatabasePage";
+import TTAPTab from "./TTAPTab";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,14 +25,11 @@ import UsageDurationInfo from "./Index/UsageDurationInfo";
 import CalculationHistorySheet from "./Index/CalculationHistorySheet";
 import ProRataUserAddition from "./Index/ProRataUserAddition";
 import BillingLedger from "./Index/BillingLedger";
-import VpsPricingCalculator from "./Index/VpsPricingCalculator";
 import { parseDate, formatDate } from "./Index/dateUtils";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import UserManagement from "@/components/UserManagement";
-import PriceManagement from "@/components/PriceManagement";
-import MathSettings from "@/components/MathSettings";
 import { calculateUpgradeWithSettings } from "@/utils/calculationEngine";
+import { logActivity } from "@/utils/activityLog";
 import CGAPEmbedded from "./Index/CGAPEmbedded";
 
 const cycleLabels: Record<number, string> = {
@@ -77,7 +79,7 @@ const Index = () => {
   const [startDateText, setStartDateText] = useState("");
   const [endDateText, setEndDateText] = useState("");
   const [result, setResult] = useState(null);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
   const [calculationHistory, setCalculationHistory] = useState<CalculationResult[]>([]);
   const [currentPlanPriceOverride, setCurrentPlanPriceOverride] = useState<number | undefined>(undefined);
   const [targetPlanPriceOverride, setTargetPlanPriceOverride] = useState<number | undefined>(undefined);
@@ -302,6 +304,12 @@ const Index = () => {
     };
 
     setResult(finalResult);
+    logActivity({
+      kind: 'calculation',
+      module: 'UCAP/Upgrade',
+      action: 'Upgrade cost calculated',
+      meta: { currentPlan, targetPlan, billingCycle, totalDays, upgradeAmount: finalResult.upgradeAmount },
+    });
 
     // Add to calculation history with user information
     const historyEntry: CalculationResult = {
@@ -416,8 +424,31 @@ const Index = () => {
       description: "Calculation history has been downloaded as CSV."
     });
   };
-  return <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'dark bg-black' : 'bg-gradient-to-br from-blue-50 to-indigo-100'}`}>
-      <div className="container mx-auto px-4 py-8">
+  return <div
+      className={`min-h-screen relative overflow-hidden transition-colors duration-300 antialiased ${darkMode ? 'dark text-slate-100 bg-slate-950' : 'text-slate-900 bg-slate-50'}`}
+    >
+      {/* Animated colour wash — drifting pastel blobs in our curated
+          palette (coral, sky, mint, lavender, rose, jade). No yellow,
+          no brown, no muddy navy. Sits behind all UI at z=0. */}
+      <div aria-hidden className="bg-stage">
+        <div className="bg-blob bg-blob-1" />
+        <div className="bg-blob bg-blob-2" />
+        <div className="bg-blob bg-blob-3" />
+        <div className="bg-blob bg-blob-4" />
+        <div className="bg-blob bg-blob-5" />
+        <div className="bg-blob bg-blob-6" />
+      </div>
+      {/* Faint film grain over the gradient — keeps the wash from looking like
+          a flat banner. Subtle enough that it reads as material, not noise. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-0 opacity-[0.04] mix-blend-overlay"
+        style={{
+          backgroundImage:
+            'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'160\' height=\'160\'><filter id=\'n\'><feTurbulence type=\'fractalNoise\' baseFrequency=\'0.8\' numOctaves=\'2\' stitchTiles=\'stitch\'/></filter><rect width=\'100%\' height=\'100%\' filter=\'url(%23n)\'/></svg>")',
+        }}
+      />
+      <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
         <div className="flex justify-between items-center mb-6">
           <CalculatorHeader darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
           <div className="flex items-center gap-4">
@@ -425,61 +456,66 @@ const Index = () => {
               Welcome, {currentUser}
             </span>
             
-            {isAdmin && <>
-                <UserManagement darkMode={darkMode} />
-                <PriceManagement darkMode={darkMode} />
-                <MathSettings darkMode={darkMode} />
-              </>}
             <Button variant="outline" size="sm" onClick={logout} className={darkMode ? 'bg-gray-900 border-gray-800 text-gray-300 hover:bg-gray-800 hover:text-white hover:border-gray-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}>
               Logout
             </Button>
           </div>
         </div>
         
-        <Card className={`max-w-2xl mx-auto ${darkMode ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-200'} shadow-xl`}>
+        <Card className="glass-card w-full rounded-[28px]">
           <CardContent className="pt-6 space-y-6">
-            {/* Top-level toggle: UCAP vs CGAP */}
+            {/* Top-level toggle: UCAP vs CGAP — glass-tabs strip with
+                glass-tab pills so the lava-lamp shows through. */}
             <Tabs defaultValue="ucap" className="w-full">
-              <TabsList className={`grid w-full grid-cols-3 h-12 mb-4 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                <TabsTrigger
-                  value="ucap"
-                  className={`flex items-center gap-2 text-base font-semibold py-3 ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}
-                >
+              <TabsList className={`glass-tabs grid w-full ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'} mb-4`}>
+                <TabsTrigger value="ucap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
                   <Calculator className="w-5 h-5" />
                   UCAP
                 </TabsTrigger>
-                <TabsTrigger
-                  value="cgap"
-                  className={`flex items-center gap-2 text-base font-semibold py-3 ${darkMode ? 'data-[state=active]:bg-blue-900 data-[state=active]:text-blue-300' : 'data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700'}`}
-                >
+                <TabsTrigger value="cgap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
                   <FileCheck className="w-5 h-5" />
                   CGAP
                 </TabsTrigger>
-                <TabsTrigger
-                  value="qgap"
-                  className={`flex items-center gap-2 text-base font-semibold py-3 ${darkMode ? 'data-[state=active]:bg-violet-900 data-[state=active]:text-violet-300' : 'data-[state=active]:bg-violet-100 data-[state=active]:text-violet-700'}`}
-                >
+                <TabsTrigger value="qgap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
                   <FileSpreadsheet className="w-5 h-5" />
                   QGAP
                 </TabsTrigger>
+                <TabsTrigger value="vrap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
+                  <FileSpreadsheet className="w-5 h-5" />
+                  VRAP
+                </TabsTrigger>
+                <TabsTrigger value="ttap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
+                  <Sparkles className="w-5 h-5" />
+                  TTAP
+                </TabsTrigger>
+                <TabsTrigger value="database" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
+                  <Database className="w-5 h-5" />
+                  Database
+                </TabsTrigger>
+                {isAdmin && (
+                  <TabsTrigger value="settings" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
+                    <Settings className="w-5 h-5" />
+                    Settings
+                  </TabsTrigger>
+                )}
               </TabsList>
 
               <TabsContent value="ucap">
                 <Tabs defaultValue="upgrade" className="w-full">
-                  <TabsList className={`grid w-full grid-cols-5 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                    <TabsTrigger value="upgrade" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
+                  <TabsList className="glass-tabs-sm grid w-full grid-cols-5">
+                    <TabsTrigger value="upgrade" className="glass-tab flex items-center gap-1 text-xs py-2">
                       <ArrowUpCircle className="w-3.5 h-3.5" /> Upgrade
                     </TabsTrigger>
-                    <TabsTrigger value="prorata" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
+                    <TabsTrigger value="prorata" className="glass-tab flex items-center gap-1 text-xs py-2">
                       <UserPlus className="w-3.5 h-3.5" /> Pro Rata
                     </TabsTrigger>
-                    <TabsTrigger value="ledger" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
+                    <TabsTrigger value="ledger" className="glass-tab flex items-center gap-1 text-xs py-2">
                       <FileText className="w-3.5 h-3.5" /> Ledger
                     </TabsTrigger>
-                    <TabsTrigger value="vps" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
+                    <TabsTrigger value="vps" className="glass-tab flex items-center gap-1 text-xs py-2">
                       <Server className="w-3.5 h-3.5" /> VPS
                     </TabsTrigger>
-                    <TabsTrigger value="history" className={`flex items-center gap-1 text-xs ${darkMode ? 'data-[state=active]:bg-gray-700 data-[state=active]:text-white' : ''}`}>
+                    <TabsTrigger value="history" className="glass-tab flex items-center gap-1 text-xs py-2">
                       <History className="w-3.5 h-3.5" /> History
                     </TabsTrigger>
                   </TabsList>
@@ -542,6 +578,24 @@ const Index = () => {
               <TabsContent value="qgap">
                 <QuotationTab darkMode={darkMode} />
               </TabsContent>
+
+              <TabsContent value="vrap">
+                <VrapTab darkMode={darkMode} />
+              </TabsContent>
+
+              <TabsContent value="ttap">
+                <TTAPTab darkMode={darkMode} />
+              </TabsContent>
+
+              <TabsContent value="database">
+                <DatabasePage darkMode={darkMode} />
+              </TabsContent>
+
+              {isAdmin && (
+                <TabsContent value="settings">
+                  <SettingsTab darkMode={darkMode} />
+                </TabsContent>
+              )}
             </Tabs>
           </CardContent>
         </Card>
