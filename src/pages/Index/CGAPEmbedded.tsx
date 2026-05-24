@@ -5,10 +5,11 @@ import QuickAmendmentTab from '@/pages/CGAP/QuickAmendmentTab';
 import SLATab from '@/pages/CGAP/SLATab';
 import ServiceOrderTab from '@/pages/CGAP/ServiceOrderTab';
 import RequestForPaymentTab from '@/pages/CGAP/RequestForPaymentTab';
+import MOUTab from '@/pages/CGAP/MOUTab';
 import RichDocumentEditor from '@/components/RichDocumentEditor';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { FileText, FilePlus, Zap, Receipt, ChevronDown, PenLine, ShieldCheck, ClipboardList } from 'lucide-react';
+import { FileText, FilePlus, Zap, Receipt, ChevronDown, PenLine, ShieldCheck, ClipboardList, Handshake } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CGAPEmbeddedProps {
@@ -42,7 +43,7 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
   return (
     <div className="space-y-4">
       <Tabs defaultValue="contract" className="w-full">
-        <TabsList className="glass-tabs-sm grid w-full grid-cols-6 mb-3">
+        <TabsList className="glass-tabs-sm grid w-full grid-cols-7 mb-3">
           <TabsTrigger value="contract" className="glass-tab flex items-center gap-1 text-xs py-2">
             <FileText className="w-3 h-3" /> Contract
           </TabsTrigger>
@@ -51,6 +52,9 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
           </TabsTrigger>
           <TabsTrigger value="amendment" className="glass-tab flex items-center gap-1 text-xs py-2">
             <Zap className="w-3 h-3" /> Amendment
+          </TabsTrigger>
+          <TabsTrigger value="mou" className="glass-tab flex items-center gap-1 text-xs py-2">
+            <Handshake className="w-3 h-3" /> MOU
           </TabsTrigger>
           <TabsTrigger value="sla" className="glass-tab flex items-center gap-1 text-xs py-2">
             <ShieldCheck className="w-3 h-3" /> SLA
@@ -73,6 +77,10 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
         <TabsContent value="amendment">
           <QuickAmendmentTab darkMode={darkMode} />
           <EditorSection storageKey="cgap-editor-amendment" title="Amendment" darkMode={darkMode} />
+        </TabsContent>
+        <TabsContent value="mou">
+          <MOUTab darkMode={darkMode} />
+          <EditorSection storageKey="cgap-editor-mou" title="MOU" darkMode={darkMode} />
         </TabsContent>
         <TabsContent value="sla">
           <SLATab darkMode={darkMode} />

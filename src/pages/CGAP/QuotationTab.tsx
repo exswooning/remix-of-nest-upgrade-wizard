@@ -4,8 +4,9 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileSpreadsheet, Download, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, Printer, Sparkles, Save, Search, History, AlertTriangle, Wand2, Eraser } from 'lucide-react';
-import { parseQuoteRequest, type ParsedQuoteRequest } from '@/utils/quoteParser';
+import { Switch } from '@/components/ui/switch';
+import { FileSpreadsheet, Download, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, Printer, Sparkles, Save, Search, History, AlertTriangle } from 'lucide-react';
+import QuickFillFromReply from '@/components/QuickFillFromReply';
 import { useAuth } from '@/contexts/AuthContext';
 import { getTodayISO, numberToWords } from '@/utils/cgapAutoFill';
 import { type LetterheadConfig } from '@/utils/letterheadTemplate';
@@ -88,9 +89,6 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
   // Paste-and-parse panel state — lets the user dump the customer's email
   // reply into a textarea and have the customer fields auto-fill instead
   // of typing them in.
-  const [parseInput, setParseInput] = useState('');
-  const [parsed, setParsed] = useState<ParsedQuoteRequest | null>(null);
-
   const [customerCompany, setCustomerCompany] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -102,6 +100,13 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
   // Pricing
   const [discountPct, setDiscountPct] = useState(0);
   const [vatPct, setVatPct] = useState(settings.defaultVatPct);
+  // When false, the printed quote omits the subtotal/discount/VAT/grand-total block —
+  // useful for "indicative pricing only" estimates where line items speak for themselves.
+  const [showTotals, setShowTotals] = useState(true);
+  // When true, a small italic disclaimer is rendered below the items table on the
+  // printed quote: "* Prices are inclusive of VAT." Common convention in NP B2B quotes
+  // where listed unit prices already bake in VAT and there's no separate VAT line.
+  const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
 
   // Live-subscribe to settings updates from the SettingsTab
   useEffect(() => {
@@ -221,17 +226,17 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
   };
 
   const handleSaveQuote = () => {
-    if (!quoteNumber.trim()) {
-      toast({ title: 'Quote number required', variant: 'destructive' });
-      return;
-    }
     if (items.every(it => !it.planName || it.unitPrice <= 0)) {
       toast({ title: 'Add at least one line item', variant: 'destructive' });
       return;
     }
+    const id = Math.random().toString(36).slice(2, 10);
+    // Fallback so saved quotes always have a stable display label: short id
+    // prefixed with the date, used only when the user left Quote Number blank.
+    const fallbackNumber = `Q-${quoteDate.replace(/-/g, '')}-${id.slice(0, 4).toUpperCase()}`;
     const q: QgapStoredQuote = {
-      id: Math.random().toString(36).slice(2, 10),
-      quote_number: quoteNumber.trim(),
+      id,
+      quote_number: quoteNumber.trim() || fallbackNumber,
       quote_date: quoteDate,
       valid_until: validUntil,
       customer_company: customerCompany || undefined,
@@ -298,8 +303,12 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
 
   const handleGeneratePdf = async () => {
     setError('');
-    if (!quoteNumber.trim()) { setError('Quote number required'); return; }
     if (items.every(it => !it.planName || it.unitPrice <= 0)) { setError('Add at least one line item'); return; }
+    // Filename slug: prefer the user-supplied number, otherwise build one from the
+    // date + customer + a short random suffix so two blank-numbered PDFs don't collide.
+    const slugSafe = (s: string) => s.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 30) || 'untitled';
+    const stamp = `${quoteDate.replace(/-/g, '')}-${Math.random().toString(36).slice(2, 6)}`;
+    const filenameSlug = quoteNumber.trim() || `${slugSafe(customerCompany)}-${stamp}`;
 
     setGenerating(true);
     try {
@@ -318,8 +327,9 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
       const offsetX = (pageW - finalW) / 2;
       const offsetY = (pageH - finalH) / 2;
       pdf.addImage(img, 'PNG', offsetX, offsetY, finalW, finalH);
-      pdf.save(`Quote-${quoteNumber}.pdf`);
-      logActivity({ kind: 'pdf', module: 'QGAP', action: 'Quote PDF generated', meta: { filename: `Quote-${quoteNumber}.pdf`, quoteNumber, customer: customerCompany } });
+      const filename = `Quote-${filenameSlug}.pdf`;
+      pdf.save(filename);
+      logActivity({ kind: 'pdf', module: 'QGAP', action: 'Quote PDF generated', meta: { filename, quoteNumber: quoteNumber.trim() || '(blank)', customer: customerCompany } });
       setDone(true);
       setTimeout(() => setDone(false), 3000);
       toast({ title: 'Quote PDF downloaded' });
@@ -353,9 +363,11 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
       <div className={card}>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <Label className={labelCls}>Quote Number</Label>
+            <Label className={labelCls}>
+              Quote Number <span className="ml-1 text-[10px] normal-case font-normal text-gray-500">· optional</span>
+            </Label>
             <div className="flex gap-2 mt-2">
-              <Input value={quoteNumber} onChange={e => setQuoteNumber(e.target.value)} placeholder="Q-2605-001" className={inputCls} />
+              <Input value={quoteNumber} onChange={e => setQuoteNumber(e.target.value)} placeholder="Q-2605-001 (auto if blank)" className={inputCls} />
               <Button type="button" variant="outline" size="sm" onClick={autoGenerateQuoteNo} className="shrink-0">Auto</Button>
             </div>
           </div>
@@ -437,110 +449,17 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
         )}
       </div>
 
-      {/* Paste & parse — dump the customer's email reply, click parse,
-          form fields auto-populate. Regex-driven; works offline. */}
-      <div className={card}>
-        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-          <Label className={labelCls}><Wand2 className="w-3 h-3 inline mr-1" /> Quick fill from customer's reply</Label>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button" variant="outline" size="sm" className="gap-1.5 h-7"
-              onClick={() => { setParseInput(''); setParsed(null); }}
-              disabled={!parseInput && !parsed}
-            >
-              <Eraser className="w-3 h-3" /> Clear
-            </Button>
-            <Button
-              type="button" size="sm" className="gap-1.5 h-7"
-              style={{ background: ACCENT, color: '#fff' }}
-              onClick={() => {
-                if (!parseInput.trim()) return;
-                // Flatten the UCAP catalogue to the shape the parser needs:
-                // category-key + category-name + every plan name underneath.
-                const catalog = Object.entries(planData).flatMap(([key, cat]) =>
-                  cat.options.map((opt) => ({
-                    categoryKey: key,
-                    categoryName: cat.name,
-                    planName: opt.name,
-                  })));
-                const out = parseQuoteRequest(parseInput, { catalog });
-                setParsed(out);
-
-                if (out.companyName) setCustomerCompany(out.companyName);
-                if (out.email)       setCustomerEmail(out.email);
-                if (out.contact)     setCustomerPhone(out.contact);
-                if (out.address)     setCustomerAddress(out.address);
-                if (out.fullName) {
-                  setCustomerAddress((prev) => {
-                    const attn = `ATTN: ${out.fullName}`;
-                    if (!prev) return `${attn}\n${out.address ?? ''}`.trim();
-                    if (prev.includes(attn)) return prev;
-                    return `${attn}\n${prev}`;
-                  });
-                }
-
-                // Product match → auto-add a line item. If the parser
-                // returned categoryKey === 'custom' (natural-language phrase
-                // like "zoho people for 130 users" that doesn't exist in the
-                // UCAP catalogue), drop a CUSTOM line item with the inferred
-                // name + qty so the user can set the price.
-                if (out.productMatch) {
-                  const isCustom = out.productMatch.categoryKey === 'custom';
-                  const cat = isCustom ? undefined : planData[out.productMatch.categoryKey];
-                  const cycle = isCustom ? 0 : (cat?.cycles?.[0] ?? 0);
-                  const qtyVal = out.qtyHint && out.qtyHint > 0 ? out.qtyHint : 1;
-                  setItems((prev) => {
-                    const firstEmptyIdx = prev.findIndex((it) => !it.planName.trim());
-                    const buildPatched = (base: LineItem): LineItem => ({
-                      ...base,
-                      categoryKey: out.productMatch!.categoryKey,
-                      planName: out.productMatch!.planName,
-                      cycle,
-                      qty: qtyVal,
-                      unitPrice: (() => {
-                        if (isCustom) return 0; // user fills in price
-                        const plan = cat?.options.find((o) => o.name === out.productMatch!.planName);
-                        if (!plan) return 0;
-                        if (plan.pricing && cycle && plan.pricing[cycle] !== undefined) return plan.pricing[cycle];
-                        if (plan.price !== undefined) return plan.price;
-                        return 0;
-                      })(),
-                    });
-                    if (firstEmptyIdx >= 0) {
-                      return prev.map((it, i) => i === firstEmptyIdx ? buildPatched(it) : it);
-                    }
-                    return [...prev, buildPatched(newLineItem())];
-                  });
-                } else if (out.qtyHint && items.length > 0) {
-                  // No product match — still propagate the qty hint to the
-                  // first row so the user just picks a product.
-                  setItems((prev) => prev.map((it, i) => i === 0 ? { ...it, qty: out.qtyHint! } : it));
-                }
-
-                toast({
-                  title: 'Parsed',
-                  description: [
-                    out.companyName && 'company',
-                    out.email && 'email',
-                    out.contact && 'phone',
-                    out.address && 'address',
-                    out.fullName && 'contact person',
-                    out.qtyHint && `qty (${out.qtyHint})`,
-                    out.productMatch && `product: ${out.productMatch.planName}`,
-                  ].filter(Boolean).join(', ') || 'no recognised fields',
-                });
-              }}
-            >
-              <Wand2 className="w-3 h-3" /> Parse &amp; Fill
-            </Button>
-          </div>
-        </div>
-        <Textarea
-          value={parseInput}
-          onChange={(e) => setParseInput(e.target.value)}
-          rows={6}
-          placeholder={
-`Paste the customer's reply here. Recognised labels:
+      <QuickFillFromReply
+        darkMode={dm}
+        accentColor={ACCENT}
+        catalog={Object.entries(planData).flatMap(([key, cat]) =>
+          cat.options.map((opt) => ({
+            categoryKey: key,
+            categoryName: cat.name,
+            planName: opt.name,
+          })))}
+        categoryLabel={(k) => planData[k]?.name ?? k}
+        placeholder={`Paste the customer's reply here. Recognised labels:
 
 Individual Full Name- John Doe
 Company Name- Acme Pvt Ltd
@@ -551,42 +470,56 @@ Product Required- Cloud Ramro          (optional — also auto-detects from anyw
 
 Also auto-fills the first line-item qty from phrases like:
 "25 users", "25 emails", "25 mailboxes", "100 user accounts",
-"50 staff", "10 seats", "100 subscriptions".`
+"50 staff", "10 seats", "100 subscriptions".`}
+        onApply={(out) => {
+          if (out.companyName) setCustomerCompany(out.companyName);
+          if (out.email)       setCustomerEmail(out.email);
+          if (out.contact)     setCustomerPhone(out.contact);
+          if (out.address)     setCustomerAddress(out.address);
+          if (out.fullName) {
+            setCustomerAddress((prev) => {
+              const attn = `ATTN: ${out.fullName}`;
+              if (!prev) return `${attn}\n${out.address ?? ''}`.trim();
+              if (prev.includes(attn)) return prev;
+              return `${attn}\n${prev}`;
+            });
           }
-          className={`${inputCls} font-mono text-xs leading-snug`}
-        />
-        {parsed && (
-          <div className={`mt-3 p-3 rounded-lg text-xs ${dm ? 'bg-gray-800/50' : 'bg-white/60 border border-gray-200'}`}>
-            <div className={`text-[10px] uppercase tracking-wider mb-2 ${dm ? 'text-gray-500' : 'text-gray-500'}`}>Extracted</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
-              {parsed.fullName     && <div><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Contact person:</strong> {parsed.fullName}</div>}
-              {parsed.companyName  && <div><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Company:</strong> {parsed.companyName}</div>}
-              {parsed.contact      && <div><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Phone:</strong> {parsed.contact}</div>}
-              {parsed.email        && <div><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Email:</strong> {parsed.email}</div>}
-              {parsed.address      && <div className="md:col-span-2"><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Address:</strong> {parsed.address}</div>}
-              {parsed.qtyHint      && <div><strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Qty hint:</strong> {parsed.qtyHint}</div>}
-              {parsed.productMatch && (
-                <div className="md:col-span-2">
-                  <strong className={dm ? 'text-gray-300' : 'text-gray-700'}>Product:</strong>{' '}
-                  {parsed.productMatch.planName}{' '}
-                  <Badge variant="outline" className="text-[9px] h-4 ml-1">
-                    {planData[parsed.productMatch.categoryKey]?.name ?? parsed.productMatch.categoryKey}
-                    {' · '}{parsed.productMatch.confidence}
-                  </Badge>
-                </div>
-              )}
-            </div>
-            {parsed.unmatchedLines.length > 0 && (
-              <div className="mt-2 pt-2 border-t border-gray-300/30">
-                <div className={`text-[10px] uppercase tracking-wider mb-1 ${dm ? 'text-amber-400' : 'text-amber-600'}`}>Unrecognised labels</div>
-                <ul className={`text-[11px] list-disc ml-4 space-y-0.5 ${dm ? 'text-gray-400' : 'text-gray-600'}`}>
-                  {parsed.unmatchedLines.map((l, i) => <li key={i}>{l}</li>)}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+
+          // Product match → auto-add a line item. categoryKey === 'custom'
+          // means natural-language phrase like "zoho people for 130 users"
+          // that doesn't exist in the UCAP catalogue — drop a custom row.
+          if (out.productMatch) {
+            const isCustom = out.productMatch.categoryKey === 'custom';
+            const cat = isCustom ? undefined : planData[out.productMatch.categoryKey];
+            const cycle = isCustom ? 0 : (cat?.cycles?.[0] ?? 0);
+            const qtyVal = out.qtyHint && out.qtyHint > 0 ? out.qtyHint : 1;
+            setItems((prev) => {
+              const firstEmptyIdx = prev.findIndex((it) => !it.planName.trim());
+              const buildPatched = (base: LineItem): LineItem => ({
+                ...base,
+                categoryKey: out.productMatch!.categoryKey,
+                planName: out.productMatch!.planName,
+                cycle,
+                qty: qtyVal,
+                unitPrice: (() => {
+                  if (isCustom) return 0;
+                  const plan = cat?.options.find((o) => o.name === out.productMatch!.planName);
+                  if (!plan) return 0;
+                  if (plan.pricing && cycle && plan.pricing[cycle] !== undefined) return plan.pricing[cycle];
+                  if (plan.price !== undefined) return plan.price;
+                  return 0;
+                })(),
+              });
+              if (firstEmptyIdx >= 0) {
+                return prev.map((it, i) => i === firstEmptyIdx ? buildPatched(it) : it);
+              }
+              return [...prev, buildPatched(newLineItem())];
+            });
+          } else if (out.qtyHint && items.length > 0) {
+            setItems((prev) => prev.map((it, i) => i === 0 ? { ...it, qty: out.qtyHint! } : it));
+          }
+        }}
+      />
 
       {/* Optional contact info — none required, shown only in preview if filled */}
       <div className={card}>
@@ -723,16 +656,45 @@ Also auto-fills the first line-item qty from phrases like:
 
       {/* Totals */}
       <div className={card}>
+        <div className="flex items-start justify-between mb-3 flex-wrap gap-3">
+          <Label className={labelCls}>Totals</Label>
+          <div className="flex flex-col items-end gap-1.5">
+            <label
+              htmlFor="qgap-show-totals"
+              className={`flex items-center gap-2 text-xs cursor-pointer ${dm ? 'text-gray-300' : 'text-gray-600'}`}
+              title="When off, the printed quote shows line items only — no subtotal, VAT, or grand total."
+            >
+              <Switch
+                id="qgap-show-totals"
+                checked={showTotals}
+                onCheckedChange={setShowTotals}
+              />
+              <span>Show totals on quote{!showTotals && <span className={`ml-2 italic ${dm ? 'text-amber-400' : 'text-amber-600'}`}>· hidden</span>}</span>
+            </label>
+            <label
+              htmlFor="qgap-prices-incl-vat"
+              className={`flex items-center gap-2 text-xs cursor-pointer ${dm ? 'text-gray-300' : 'text-gray-600'}`}
+              title="Adds a small italic note below the items table: 'Prices are inclusive of VAT.'"
+            >
+              <Switch
+                id="qgap-prices-incl-vat"
+                checked={pricesIncludeVat}
+                onCheckedChange={setPricesIncludeVat}
+              />
+              <span>Prices are inclusive of VAT</span>
+            </label>
+          </div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <Label className={labelCls}>Discount %</Label>
-            <Input type="number" min={0} max={100} value={discountPct} onChange={e => setDiscountPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} className={`${inputCls} mt-2`} />
+            <Input type="number" min={0} max={100} value={discountPct} onChange={e => setDiscountPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} className={`${inputCls} mt-2`} disabled={!showTotals} />
           </div>
           <div>
             <Label className={labelCls}>VAT %</Label>
-            <Input type="number" min={0} max={100} value={vatPct} onChange={e => setVatPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} className={`${inputCls} mt-2`} />
+            <Input type="number" min={0} max={100} value={vatPct} onChange={e => setVatPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} className={`${inputCls} mt-2`} disabled={!showTotals} />
           </div>
-          <div className="text-right">
+          <div className={`text-right ${!showTotals ? 'opacity-50' : ''}`}>
             <div className="text-xs space-y-1">
               <div className="flex justify-between"><span className={dm ? 'text-gray-400' : 'text-gray-500'}>Subtotal</span><span className="tabular-nums">{formatNPR(subtotal)}</span></div>
               {discountPct > 0 && <div className="flex justify-between"><span className={dm ? 'text-gray-400' : 'text-gray-500'}>Discount ({discountPct}%)</span><span className="tabular-nums text-red-500">−{formatNPR(discountAmount)}</span></div>}
@@ -861,22 +823,32 @@ Also auto-fills the first line-item qty from phrases like:
                 </tbody>
               </table>
 
-              {/* Totals */}
-              <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-                <table style={{ fontSize: '10pt', borderCollapse: 'collapse' }}>
-                  <tbody>
-                    <tr><td style={{ padding: '4px 12px', color: '#555' }}>Subtotal</td><td style={{ padding: '4px 8px', textAlign: 'right', minWidth: 120 }}>{formatNPR(subtotal)}</td></tr>
-                    {discountPct > 0 && <tr><td style={{ padding: '4px 12px', color: '#555' }}>Discount ({discountPct}%)</td><td style={{ padding: '4px 8px', textAlign: 'right', color: '#b91c1c' }}>−{formatNPR(discountAmount)}</td></tr>}
-                    {vatPct > 0 && <tr><td style={{ padding: '4px 12px', color: '#555' }}>VAT ({vatPct}%)</td><td style={{ padding: '4px 8px', textAlign: 'right' }}>{formatNPR(vatAmount)}</td></tr>}
-                    <tr style={{ borderTop: '2px solid #999' }}>
-                      <td style={{ padding: '6px 12px', fontWeight: 700 }}>Grand Total</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: ACCENT, fontSize: '11pt' }}>{formatNPR(grandTotal)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              {totalWords && (
-                <p style={{ marginTop: 8, fontSize: '9pt', fontStyle: 'italic', color: '#666', textAlign: 'right' }}>{totalWords}</p>
+              {pricesIncludeVat && (
+                <p style={{ marginTop: 6, fontSize: '8.5pt', fontStyle: 'italic', color: '#666' }}>
+                  * Prices are inclusive of VAT.
+                </p>
+              )}
+
+              {/* Totals — gated by the "Show totals on quote" toggle. */}
+              {showTotals && (
+                <>
+                  <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                    <table style={{ fontSize: '10pt', borderCollapse: 'collapse' }}>
+                      <tbody>
+                        <tr><td style={{ padding: '4px 12px', color: '#555' }}>Subtotal</td><td style={{ padding: '4px 8px', textAlign: 'right', minWidth: 120 }}>{formatNPR(subtotal)}</td></tr>
+                        {discountPct > 0 && <tr><td style={{ padding: '4px 12px', color: '#555' }}>Discount ({discountPct}%)</td><td style={{ padding: '4px 8px', textAlign: 'right', color: '#b91c1c' }}>−{formatNPR(discountAmount)}</td></tr>}
+                        {vatPct > 0 && <tr><td style={{ padding: '4px 12px', color: '#555' }}>VAT ({vatPct}%)</td><td style={{ padding: '4px 8px', textAlign: 'right' }}>{formatNPR(vatAmount)}</td></tr>}
+                        <tr style={{ borderTop: '2px solid #999' }}>
+                          <td style={{ padding: '6px 12px', fontWeight: 700 }}>Grand Total</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: ACCENT, fontSize: '11pt' }}>{formatNPR(grandTotal)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  {totalWords && (
+                    <p style={{ marginTop: 8, fontSize: '9pt', fontStyle: 'italic', color: '#666', textAlign: 'right' }}>{totalWords}</p>
+                  )}
+                </>
               )}
 
               {/* Notes */}

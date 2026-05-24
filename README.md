@@ -1,73 +1,25 @@
-# Welcome to your Lovable project
+# UCAP & CGAP
 
-## Project info
+Internal hosting-business tooling: pro-rata upgrade calculator (UCAP), contract / quotation / SLA / service-order generator (CGAP, QGAP), vendor quotes (VRAP), AI assistant (TTAP), and a database/admin surface.
 
-**URL**: https://lovable.dev/projects/4ed4ac1b-fd1b-4921-8483-d5511b1ac1eb
+## Start here
 
-## How can I edit this code?
+Read [AGENTS.md](AGENTS.md) before changing anything. It is the single source of truth for architecture, conventions, gotchas, deployment, and the changelog. Every AI agent (Claude Code, Cursor, Aider, Codex) is expected to read it first; `CLAUDE.md` is a symlink to it.
 
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/4ed4ac1b-fd1b-4921-8483-d5511b1ac1eb) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Quick start
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+cp .env.example .env.local         # fill in VITE_SUPABASE_URL + VITE_SUPABASE_PUBLISHABLE_KEY
+npm install
+npm run dev                        # http://localhost:8080
 ```
 
-**Edit a file directly in GitHub**
+Without the env vars set, the app throws at boot — see [src/integrations/supabase/client.ts](src/integrations/supabase/client.ts).
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Stack
 
-**Use GitHub Codespaces**
+Vite 5 + React 18 + TypeScript + TailwindCSS + shadcn/ui. Supabase (self-owned project) for auth and persistence. TipTap for rich text. `docxtemplater` + `pdf-lib` for document generation.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Deployment
 
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/4ed4ac1b-fd1b-4921-8483-d5511b1ac1eb) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+See [AGENTS.md §5](AGENTS.md). The frontend deploys as a static SPA to Vercel/Netlify/Cloudflare Pages; schema migrations in `supabase/migrations/*.sql` run during the build via `scripts/migrate.mjs`.
