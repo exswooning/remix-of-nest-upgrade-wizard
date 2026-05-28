@@ -12,8 +12,14 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Search, Loader2, AlertCircle, CheckCircle2, ClipboardPaste, FileCode2, RefreshCw, WifiOff, ExternalLink, Bookmark } from 'lucide-react';
+import { Search, Loader2, AlertCircle, CheckCircle2, ClipboardPaste, FileCode2, RefreshCw, WifiOff, ExternalLink, Bookmark, Download, Puzzle } from 'lucide-react';
 import { lookupPanVat, parseIrdHtml, parseIrdContent, parseRenderServiceResponse, type PanVatResult } from '@/utils/panVatLookup';
+
+/** GitHub folder download URL (via download-directory.github.io, free
+ *  service that zips any GitHub subdirectory). Used by the "no extension
+ *  installed" install prompt. Update if the repo moves. */
+const EXTENSION_DOWNLOAD_URL = 'https://download-directory.github.io/?url=https://github.com/exswooning/remix-of-nest-upgrade-wizard/tree/main/scripts/pan-lookup-extension';
+const EXTENSION_SOURCE_URL = 'https://github.com/exswooning/remix-of-nest-upgrade-wizard/tree/main/scripts/pan-lookup-extension';
 
 /** Bookmarklet source — user drags this into their bookmarks bar once.
  *  When clicked on an IRD PAN-search page, it scrapes the rendered tables
@@ -60,6 +66,85 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
   const [health, setHealth] = useState<HealthState>({ status: 'checking' });
   const [popupWaiting, setPopupWaiting] = useState(false);
   const popupRef = useRef<Window | null>(null);
+
+  // Extension detection — the CGAP PAN Lookup Bridge content script
+  // injects `<meta name="cgap-pan-extension">` into the page and also
+  // posts a ready event. We check both because content scripts run at
+  // document_start (might be before this component mounts) AND because
+  // SPA route swaps can lose+re-add the meta tag.
+  // `null` = still detecting; `false` = not installed; `true` = installed.
+  const [extensionInstalled, setExtensionInstalled] = useState<boolean | null>(null);
+  const [extensionVersion, setExtensionVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    const detect = () => {
+      const meta = document.querySelector('meta[name="cgap-pan-extension"]');
+      if (meta) {
+        setExtensionInstalled(true);
+        setExtensionVersion(meta.getAttribute('content') || null);
+        return true;
+      }
+      return false;
+    };
+
+    // Listen for the bridge's ready broadcast — covers the case where the
+    // content script loads after this React component first renders.
+    const onReady = (e: MessageEvent) => {
+      if (e.source !== window) return;
+      if (!e.data || e.data.type !== 'cgap-pan-extension-ready') return;
+      setExtensionInstalled(true);
+      setExtensionVersion(e.data.version || null);
+    };
+    window.addEventListener('message', onReady);
+
+    // Initial check + a delayed re-check to be safe against content-script
+    // injection timing. After 1 s, if we still haven't seen the meta tag
+    // or ready event, treat the extension as not installed.
+    if (!detect()) {
+      const fast = setTimeout(() => { if (!detect()) { /* still waiting */ } }, 200);
+      const slow = setTimeout(() => { if (!detect()) setExtensionInstalled(false); }, 1000);
+      return () => {
+        window.removeEventListener('message', onReady);
+        clearTimeout(fast);
+        clearTimeout(slow);
+      };
+    }
+    return () => window.removeEventListener('message', onReady);
+  }, []);
+
+  /** Route a PAN lookup through the installed extension. The extension's
+   *  bridge content script listens for `cgap-pan-request` events on the
+   *  page, forwards to its background worker which opens IRD in a hidden
+   *  window, scrapes the rendered table, and posts the result back as
+   *  `cgap-pan-response`. We map the response into our PanVatResult shape
+   *  via the same `parseRenderServiceResponse` helper the Render service
+   *  uses (both return `{label: value}` maps). */
+  const lookupViaExtension = (panRaw: string): Promise<PanVatResult> => {
+    return new Promise((resolve, reject) => {
+      const requestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const timeout = setTimeout(() => {
+        window.removeEventListener('message', onResponse);
+        reject(new Error('Extension did not respond within 35 s'));
+      }, 35000);
+
+      const onResponse = (e: MessageEvent) => {
+        if (e.source !== window) return;
+        const d = e.data;
+        if (!d || d.type !== 'cgap-pan-response' || d.requestId !== requestId) return;
+        clearTimeout(timeout);
+        window.removeEventListener('message', onResponse);
+        if (!d.ok) {
+          reject(new Error(d.error || 'Extension lookup failed'));
+        } else if (!d.data || Object.keys(d.data).length === 0) {
+          reject(new Error('Extension returned no fields — IRD page may not have rendered data'));
+        } else {
+          resolve(parseRenderServiceResponse({ pan: panRaw, data: d.data }, panRaw));
+        }
+      };
+      window.addEventListener('message', onResponse);
+      window.postMessage({ type: 'cgap-pan-request', requestId, pan: panRaw }, '*');
+    });
+  };
 
   // Listen for the bookmarklet's postMessage from IRD's tab. The
   // bookmarklet runs in IRD's origin, can read the rendered DOM, and
@@ -150,7 +235,13 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
     setResult(null);
     setBusy(true);
     try {
-      const r = await lookupPanVat(pan);
+      // Prefer the extension path when installed — it's the only fully
+      // automated free option (uses the user's real browser, so IRD's
+      // reCAPTCHA passes naturally). Fall through to the legacy proxy
+      // paths if the extension errors for some reason.
+      const r = extensionInstalled
+        ? await lookupViaExtension(pan.trim())
+        : await lookupPanVat(pan);
       setResult(r);
       if (r.notFound) setError(`No record found for PAN ${r.pan}.`);
     } catch (err) {
@@ -206,6 +297,86 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
     }
   };
 
+  // While we're still detecting (first 1 s after mount) show a tiny
+  // probing state. After that, either render the install prompt OR the
+  // full lookup UI based on whether the extension was found.
+  if (extensionInstalled === null) {
+    return (
+      <div className={card}>
+        <div className="flex items-center gap-2 text-xs">
+          <Loader2 className="w-3.5 h-3.5 animate-spin opacity-60" />
+          <span className={dm ? 'text-gray-400' : 'text-gray-500'}>
+            Checking for PAN Lookup extension…
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!extensionInstalled) {
+    return (
+      <div className={card}>
+        <div className="flex items-start gap-3">
+          <div className={`shrink-0 rounded-full p-2 ${dm ? 'bg-amber-900/40' : 'bg-amber-100'}`}>
+            <Puzzle className={`w-5 h-5 ${dm ? 'text-amber-300' : 'text-amber-700'}`} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className={`text-sm font-semibold ${dm ? 'text-white' : 'text-gray-900'}`}>
+              Install the PAN Lookup extension
+            </h3>
+            <p className={`text-xs mt-1 leading-relaxed ${dm ? 'text-gray-400' : 'text-gray-600'}`}>
+              Fully automated PAN/VAT lookup needs a small Chrome extension that opens IRD's page in a hidden window and reads the data back into the form. One-time install, then PAN lookups are fully automatic.
+            </p>
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <a
+                href={EXTENSION_DOWNLOAD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded text-xs font-medium text-white"
+                style={{ background: accentColor }}
+              >
+                <Download className="w-3.5 h-3.5" /> Download extension (.zip)
+              </a>
+              <a
+                href={EXTENSION_SOURCE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center gap-1.5 h-8 px-3 rounded text-xs border ${dm ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-300 hover:bg-gray-50 text-gray-700'}`}
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> View source on GitHub
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  const meta = document.querySelector('meta[name="cgap-pan-extension"]');
+                  if (meta) setExtensionInstalled(true);
+                  else window.location.reload();
+                }}
+                className={`inline-flex items-center gap-1.5 h-8 px-3 rounded text-xs border ${dm ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-300 hover:bg-gray-50 text-gray-700'}`}
+                title="Click after installing the extension to re-detect"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> I've installed it
+              </button>
+            </div>
+            <details className={`mt-3 text-[11px] ${dm ? 'text-gray-500' : 'text-gray-500'}`}>
+              <summary className="cursor-pointer">How to install (~30 seconds)</summary>
+              <ol className="mt-2 ml-4 list-decimal space-y-1">
+                <li>Click <strong>Download extension (.zip)</strong> above. Unzip somewhere permanent (e.g. <code>~/Documents/cgap-pan-extension/</code>).</li>
+                <li>In Chrome, open <code>chrome://extensions</code>.</li>
+                <li>Toggle <strong>Developer Mode</strong> ON (top-right).</li>
+                <li>Click <strong>Load unpacked</strong> (top-left) and select the unzipped folder.</li>
+                <li>Come back here and click <strong>I've installed it</strong>.</li>
+              </ol>
+              <p className="mt-2">
+                The extension only requests access to <code>ird.gov.np</code> and the CGAP app's origin — no broad permissions.
+              </p>
+            </details>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={card}>
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
@@ -213,6 +384,11 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
           <Label className={labelCls}>
             <Search className="w-3 h-3 inline mr-1" /> PAN / VAT lookup
           </Label>
+          {extensionVersion && (
+            <Badge variant="outline" className="gap-1 text-[10px] h-5" style={{ borderColor: '#10b98166', color: '#047857' }} title={`CGAP PAN Lookup Bridge v${extensionVersion} is installed and active.`}>
+              <Puzzle className="w-2.5 h-2.5" /> Extension v{extensionVersion}
+            </Badge>
+          )}
           {health.status === 'checking' && (
             <Badge variant="outline" className="gap-1 text-[10px] h-5" title="Checking IRD with a known PAN (Nest Nepal: 609828128) to see if the lookup pipeline is healthy">
               <Loader2 className="w-2.5 h-2.5 animate-spin" /> Checking IRD…

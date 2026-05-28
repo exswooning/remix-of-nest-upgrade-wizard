@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "CGAP PAN Lookup Bridge",
+  "version": "1.0.0",
+  "description": "Bridges Nepal IRD PAN/VAT search to the CGAP contract generator. Opens a hidden IRD window, scrapes the rendered result, and fills the form automatically.",
+  "permissions": ["tabs", "scripting"],
+  "host_permissions": [
+    "https://ird.gov.np/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:*/*",
+        "http://127.0.0.1:*/*",
+        "https://localhost:*/*",
+        "https://*.vercel.app/*",
+        "https://*.netlify.app/*",
+        "https://*.onrender.com/*",
+        "https://*.pages.dev/*"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://ird.gov.np/pan-search/*",
+        "https://ird.gov.np/api/getPanSearch/*"
+      ],
+      "js": ["scraper.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
