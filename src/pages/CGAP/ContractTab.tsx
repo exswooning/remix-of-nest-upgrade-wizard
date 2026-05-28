@@ -21,6 +21,7 @@ import { Switch } from '@/components/ui/switch';
 import ContractPreview from './ContractPreview';
 import ContractCustomTemplate from './ContractCustomTemplate';
 import PanVatLookup from '@/components/PanVatLookup';
+import QuickFillFromReply from '@/components/QuickFillFromReply';
 import { EDITED_HTML_KEY, FIELDS_SNAPSHOT_KEY } from '@/pages/ContractEditorPage';
 import { PenLine, ExternalLink } from 'lucide-react';
 
@@ -496,6 +497,25 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
             title: 'PAN/VAT applied',
             description: `Filled client company${r.address ? ' + address' : ''}${npHit ? ' (incl. Nepali)' : ''} from PAN ${r.pan}.`,
           });
+        }}
+      />
+
+      {/* Quick fill from customer's reply — paste a WhatsApp / email
+          message, parser extracts company / contact person / address /
+          email / phone and writes them into the Client Details form
+          below. Complements the PAN/VAT lookup: PAN gives you the legal
+          name + registered address, this gives you the human contact
+          (coordinator name, phone, email). */}
+      <QuickFillFromReply
+        darkMode={dm}
+        accentColor={ACCENT}
+        onApply={(out) => {
+          if (out.companyName) set('clientCompanyName', out.companyName);
+          if (out.fullName) set('clientCoordinator', out.fullName);
+          if (out.address) set('clientLocation', out.address);
+          // Email / phone don't map to existing ContractTab fields, but
+          // the parser still shows them in the "Extracted" preview so the
+          // user can copy them somewhere manually if needed.
         }}
       />
 
