@@ -6,14 +6,24 @@
  * available when no proxy works.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Search, Loader2, AlertCircle, CheckCircle2, ClipboardPaste, FileCode2, RefreshCw, WifiOff, ExternalLink } from 'lucide-react';
-import { lookupPanVat, parseIrdHtml, parseIrdContent, type PanVatResult } from '@/utils/panVatLookup';
+import { Search, Loader2, AlertCircle, CheckCircle2, ClipboardPaste, FileCode2, RefreshCw, WifiOff, ExternalLink, Bookmark } from 'lucide-react';
+import { lookupPanVat, parseIrdHtml, parseIrdContent, parseRenderServiceResponse, type PanVatResult } from '@/utils/panVatLookup';
+
+/** Bookmarklet source — user drags this into their bookmarks bar once.
+ *  When clicked on an IRD PAN-search page, it scrapes the rendered tables
+ *  and posts the data back to `window.opener` (this app), then closes
+ *  itself. Targets `*` for the postMessage origin because the app's prod
+ *  origin can change (dev / vercel preview / custom domain); we validate
+ *  on the receiving side by checking `event.origin === 'https://ird.gov.np'`.
+ *  Falls back to clipboard if the popup wasn't opened from our app. */
+const BOOKMARKLET_SOURCE = `(function(){var o={};document.querySelectorAll('table.table-bordered').forEach(function(t){t.querySelectorAll('tbody tr').forEach(function(r){var c=r.querySelectorAll('th,td');if(c.length===2)o[c[0].textContent.trim()]=c[1].textContent.trim();});});if(window.opener&&!window.opener.closed){window.opener.postMessage({type:'cgap-pan-data',fields:o},'*');setTimeout(function(){window.close();},300);}else{navigator.clipboard.writeText(JSON.stringify(o));alert('Copied '+Object.keys(o).length+' PAN fields to clipboard.');}})();`;
+const BOOKMARKLET_HREF = 'javascript:' + encodeURIComponent(BOOKMARKLET_SOURCE);
 
 /** Health-check PAN — Nest Nepal's own VAT. Used as the canary on
  *  mount: if this returns parseable data, the proxy + IRD path is
@@ -48,6 +58,52 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
   const [showPaste, setShowPaste] = useState(false);
   const [pasteHtml, setPasteHtml] = useState('');
   const [health, setHealth] = useState<HealthState>({ status: 'checking' });
+  const [popupWaiting, setPopupWaiting] = useState(false);
+  const popupRef = useRef<Window | null>(null);
+
+  // Listen for the bookmarklet's postMessage from IRD's tab. The
+  // bookmarklet runs in IRD's origin, can read the rendered DOM, and
+  // posts a `{type: 'cgap-pan-data', fields: {…}}` payload back to us
+  // via `window.opener.postMessage`. We validate the origin is IRD
+  // before accepting.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== 'https://ird.gov.np') return;
+      if (!e.data || e.data.type !== 'cgap-pan-data' || !e.data.fields) return;
+      // Reuse the Render-service JSON parser — same `{label: value}` shape.
+      const r = parseRenderServiceResponse(
+        { pan: pan || '—', data: e.data.fields as Record<string, string> },
+        pan || '—',
+      );
+      setResult(r);
+      setPopupWaiting(false);
+      setError(null);
+      if (popupRef.current && !popupRef.current.closed) {
+        try { popupRef.current.close(); } catch { /* cross-origin close may be denied */ }
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [pan]);
+
+  /** Open IRD's PAN search in a popup window and wait for the user's
+   *  bookmarklet to post the scraped data back. The popup must keep its
+   *  `window.opener` reference for the postMessage to reach us — that's
+   *  the default behaviour of `window.open` without `noopener`. */
+  const openPopupAndCapture = () => {
+    if (!pan.trim()) { setError('Enter a PAN first.'); return; }
+    setError(null);
+    setResult(null);
+    const url = `https://ird.gov.np/pan-search/?pan=${encodeURIComponent(pan.trim())}`;
+    popupRef.current = window.open(url, 'ird-lookup', 'width=1100,height=850,noopener=no');
+    if (!popupRef.current) {
+      setError('Popup blocked. Allow popups for this site, or use "Open IRD in new tab" + clipboard.');
+      return;
+    }
+    setPopupWaiting(true);
+    // Timeout after 5 min in case the user forgets / closes the popup.
+    setTimeout(() => setPopupWaiting(false), 300_000);
+  };
 
   // Canary check on mount + on manual retry. We use `Promise.race` against
   // a timer so a wedged IRD doesn't leave the badge stuck on "Checking…"
@@ -224,9 +280,41 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
         </Button>
       </div>
 
-      {/* Two-click clipboard bridge — works around IRD's reCAPTCHA gate by
-          letting the user's own browser do the rendering (which solves the
-          captcha invisibly) and then bringing the data back via clipboard. */}
+      {/* Popup + bookmarklet bridge — the fastest free path. Opens IRD in
+          a popup (real browser → reCAPTCHA passes), user clicks the
+          installed bookmarklet, popup posts the data back here via
+          window.opener.postMessage and closes itself. One-time
+          bookmarklet install required. */}
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        <Button
+          type="button"
+          size="sm"
+          onClick={openPopupAndCapture}
+          disabled={!pan.trim() || popupWaiting}
+          className="gap-1.5 h-7 text-[11px]"
+          style={{ background: accentColor, color: '#fff' }}
+          title="Opens IRD in a popup. When the data renders, click your 'Grab PAN' bookmark — the popup will close and fill this form."
+        >
+          {popupWaiting
+            ? <><Loader2 className="w-3 h-3 animate-spin" /> Waiting for bookmarklet…</>
+            : <><ExternalLink className="w-3 h-3" /> Look up via popup</>}
+        </Button>
+        <a
+          href={BOOKMARKLET_HREF}
+          onClick={(e) => e.preventDefault()}
+          draggable
+          className={`inline-flex items-center gap-1.5 h-7 px-2 rounded text-[11px] border cursor-grab active:cursor-grabbing ${dm ? 'border-gray-700 bg-gray-800/40 text-gray-300 hover:bg-gray-800' : 'border-gray-300 bg-gray-50 text-gray-700 hover:bg-white'}`}
+          title="One-time setup: drag this link to your bookmarks bar. Then on any IRD PAN-search page, click the bookmark — it grabs the data and pipes it back to this app."
+        >
+          <Bookmark className="w-3 h-3" /> Drag to bookmarks bar: Grab PAN
+        </a>
+        <span className={`text-[10px] flex-1 ${dm ? 'text-gray-500' : 'text-gray-500'}`}>
+          One-time: drag the bookmark above to your bookmarks bar. Then click <strong>Look up via popup</strong> → click the bookmark in the IRD tab.
+        </span>
+      </div>
+
+      {/* Manual clipboard fallback — kept for when the popup gets blocked
+          or the bookmarklet isn't installed yet. */}
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         <Button
           type="button"
@@ -234,23 +322,23 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
           size="sm"
           onClick={openIrdTab}
           disabled={!pan.trim()}
-          className="gap-1.5 h-7 text-[11px]"
+          className="gap-1.5 h-7 text-[10px]"
           title="Opens https://ird.gov.np/pan-search/?pan=… in a new tab. After data loads there, select all (⌘A), copy (⌘C), come back and click Paste from clipboard."
         >
-          <ExternalLink className="w-3 h-3" /> Open IRD in new tab
+          <ExternalLink className="w-3 h-3" /> Open IRD tab
         </Button>
         <Button
           type="button"
           variant="outline"
           size="sm"
           onClick={pasteFromClipboard}
-          className="gap-1.5 h-7 text-[11px]"
+          className="gap-1.5 h-7 text-[10px]"
           title="Reads your clipboard. After copying from the IRD tab, click this to fill the form."
         >
           <ClipboardPaste className="w-3 h-3" /> Paste from clipboard
         </Button>
-        <span className={`text-[10px] flex-1 ${dm ? 'text-gray-500' : 'text-gray-500'}`}>
-          Works around IRD's reCAPTCHA: <strong>Open IRD</strong> → wait for data → ⌘A ⌘C → <strong>Paste from clipboard</strong>.
+        <span className={`text-[9px] flex-1 ${dm ? 'text-gray-600' : 'text-gray-500'}`}>
+          Fallback if popups blocked or bookmark not installed.
         </span>
       </div>
 
