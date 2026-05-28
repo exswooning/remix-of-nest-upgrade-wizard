@@ -85,6 +85,13 @@ Restart `npm run dev`. The Contract tab's PAN/VAT lookup now calls this service 
 - **IRD rate-limiting**: IRD may throttle if you hammer it. Don't loop the service over thousands of PANs without backoff. For bulk work, do it overnight with delays.
 - **Render free tier policy changes**: Render has shifted free-tier behaviour before. Worst case, switch to Koyeb's free tier (similar shape) or a $5/month upgrade.
 
+## Runtime
+
+The service uses `puppeteer-core` + `@sparticuz/chromium` (instead of the full `puppeteer` package). The standard `puppeteer` auto-downloads a Chrome binary at `npm install` time, which fails on Render's build environment due to cache quirks. `@sparticuz/chromium` ships a pre-built Linux Chromium optimised for serverless platforms (AWS Lambda, Render, Fly.io, etc.) — it fits comfortably in 512 MB RAM.
+
+If you ever see "Chrome download failed" or "executable is missing" errors in a build log, the fix is usually:
+- Render dashboard → service → top-right ⋯ menu → **"Clear build cache & deploy"** (or just trigger a Manual Deploy after the latest code is pushed).
+
 ## How it works
 
 1. Receives `GET /lookup?pan=301802398&key=…`.

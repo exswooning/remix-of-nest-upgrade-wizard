@@ -20,7 +20,12 @@
 
 import express from 'express';
 import cors from 'cors';
-import puppeteer from 'puppeteer';
+// `puppeteer-core` is the lib without the auto-bundled Chromium (which fails
+// to install in Render's restricted build env). We pair it with
+// `@sparticuz/chromium`, a Linux Chromium build pre-packaged for serverless
+// platforms (AWS Lambda, Render, Fly.io, etc.).
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 
 const app = express();
 app.use(cors()); // allow any origin — this is a public-data scraper
@@ -38,16 +43,14 @@ async function getBrowser() {
     try { const b = await browserPromise; if (b.isConnected()) return b; } catch {}
     browserPromise = null;
   }
+  // `chromium.args` already includes --no-sandbox, --disable-dev-shm-usage,
+  // and other tuning for low-RAM serverless. We append a couple extras for
+  // fitting in Render's 512 MB free tier.
   browserPromise = puppeteer.launch({
-    headless: 'new',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-blink-features=AutomationControlled',
-      '--single-process',           // fits in Render's 512 MB
-      '--no-zygote',
-    ],
+    args: [...chromium.args, '--single-process', '--no-zygote'],
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless,
   });
   return browserPromise;
 }
