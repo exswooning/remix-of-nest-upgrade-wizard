@@ -32,7 +32,8 @@ app.use(cors()); // allow any origin — this is a public-data scraper
 app.set('trust proxy', 1); // Render's free tier sits behind a proxy
 
 const PORT = process.env.PORT || 3000;
-const REQUEST_TIMEOUT_MS = 30_000;
+const NAV_TIMEOUT_MS = 45_000;
+const SELECTOR_TIMEOUT_MS = 30_000;
 // Optional shared-secret guard so the service isn't openly hammered.
 // If set, callers must pass `?key=<value>` matching. Recommended.
 const ACCESS_KEY = process.env.ACCESS_KEY || '';
@@ -101,14 +102,20 @@ app.get('/lookup', async (req, res) => {
       r.continue();
     });
 
+    // `domcontentloaded` is enough — IRD's page keeps making background
+    // requests (analytics, reCAPTCHA refresh) so `networkidle2` never
+    // settles. We split the wait: nav phase waits for HTML+JS to load,
+    // then waitForSelector waits for the table to render via the API
+    // call (which is what we actually care about).
     await page.goto(`https://ird.gov.np/pan-search/?pan=${pan}`, {
-      waitUntil: 'networkidle2',
-      timeout: REQUEST_TIMEOUT_MS,
+      waitUntil: 'domcontentloaded',
+      timeout: NAV_TIMEOUT_MS,
     });
 
-    // Wait for IRD's result table to render (after JS runs + reCAPTCHA).
+    // Wait for IRD's result table to render (after JS runs + reCAPTCHA
+    // + API call). This is the real signal that data is available.
     await page.waitForSelector('table.table-bordered tbody tr', {
-      timeout: REQUEST_TIMEOUT_MS,
+      timeout: SELECTOR_TIMEOUT_MS,
     });
 
     // Extract every table row across every result table on the page.
