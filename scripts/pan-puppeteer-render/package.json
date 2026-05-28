@@ -1,0 +1,18 @@
+{
+  "name": "pan-puppeteer-render",
+  "version": "1.0.0",
+  "description": "Puppeteer microservice that scrapes Nepal IRD PAN/VAT search through a real browser (handles their reCAPTCHA). Deploy to Render free tier.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.1",
+    "cors": "^2.8.5",
+    "puppeteer": "^23.10.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

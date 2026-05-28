@@ -10,18 +10,53 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ChevronsUpDown, Check, Package } from 'lucide-react';
+import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ChevronsUpDown, Check, Package, Plus, Trash2 } from 'lucide-react';
 import { numberToWords, periodToText, formatNepaliNumber, generateAbbreviation, getTodayISO } from '@/utils/cgapAutoFill';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { generateContractPdf, renderContractAsHtml, type CostLineItem, type ContractFields } from '@/utils/contractTemplate';
+import { logActivity } from '@/utils/activityLog';
+import { resolveLetterhead } from '@/utils/templateAssignments';
+import { Switch } from '@/components/ui/switch';
+import ContractPreview from './ContractPreview';
+import ContractCustomTemplate from './ContractCustomTemplate';
+import PanVatLookup from '@/components/PanVatLookup';
+import { EDITED_HTML_KEY, FIELDS_SNAPSHOT_KEY } from '@/pages/ContractEditorPage';
+import { PenLine, ExternalLink } from 'lucide-react';
 
-const ACCENT = '#4F7FFF';
+/** Fetch a letterhead image and return it as a Base64 PNG data URL so
+ *  jsPDF can embed it. Returns null on any failure — the caller falls
+ *  back to a blank page. Goes through a canvas to handle JPEG sources
+ *  and to enforce a known format on the PDF side. */
+async function letterheadToDataUrl(imageUrl: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || 794;
+        canvas.height = img.naturalHeight || 1123;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(null);
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = imageUrl;
+  });
+}
+
+const ACCENT = '#0F766E';  // brand teal
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
 
 const TEST_DATA: Record<string, string> = {
   companyAbv: 'WMA',
   clientCompanyName: 'Acme Corporation Pvt. Ltd.',
-  clientLocation: 'Kathmandu, Nepal',
+  clientLocation: 'Putalisadak, Kathmandu',
   clientCoordinator: 'Ram Sharma',
   contractPeriodNum: '12',
   numUsers: '25',
@@ -35,6 +70,19 @@ const TEST_DATA: Record<string, string> = {
   spSignatoryTitle: 'Director',
   spWitnessName: 'Suman KC',
   spWitnessDesignation: 'Technical Lead',
+  effectiveDate: getTodayISO(),
+  bankName: 'Laxmi Sunrise Bank',
+  payeeName: 'Nest Nepal Business Solution Pvt. Ltd.',
+  bankAccount: '03211002193',
+  uptimePct: '99.9%',
+};
+
+const DEFAULT_NEW_FIELDS: Partial<Record<string, string>> = {
+  effectiveDate: getTodayISO(),
+  bankName: 'Laxmi Sunrise Bank',
+  payeeName: 'Nest Nepal Business Solution Pvt. Ltd.',
+  bankAccount: '03211002193',
+  uptimePct: '99.9%',
 };
 
 const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriod', 'companyAbv']);
@@ -45,8 +93,18 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const { fieldMappings, generateContractId, addContractLog } = useCGAP();
   const { isAdmin, currentUsername, getPlanData } = useAuth();
   const { toast } = useToast();
-  const [fields, setFields] = useState<Record<string, string>>({});
+  const [fields, setFields] = useState<Record<string, string>>(() => ({ ...DEFAULT_NEW_FIELDS } as Record<string, string>));
+  const [costItems, setCostItems] = useState<CostLineItem[]>([{ description: '', qty: '1', unitPrice: '' }]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
+  // Letterhead toggle — applies to both the live preview and the PDF
+  // export. Defaults to ON so the document always looks branded; flip OFF
+  // for plain-A4 contracts that will be printed on pre-printed letterhead
+  // paper, or when you just want a clean copy.
+  const [useLetterhead, setUseLetterhead] = useState(true);
+  // Edited-mode: when the user has opened the standalone editor and made
+  // changes, the editor writes HTML into localStorage. We mirror it here
+  // so the preview can render it instead of the template.
+  const [editedHtml, setEditedHtml] = useState<string | null>(() => localStorage.getItem(EDITED_HTML_KEY));
   const [showMapping, setShowMapping] = useState(false);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [invoicePage, setInvoicePage] = useState('');
@@ -193,12 +251,138 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     setDone(true);
   };
 
-  const downloadPdf = () => {
-    const content = `Contract ID: ${generatedId}\n\n${fieldMappings.map(f => `${f.label}: ${fields[f.id] || '—'}`).join('\n')}`;
-    const blob = new Blob([content], { type: 'application/pdf' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `${generatedId || 'contract'}.pdf`; a.click();
+  // Single source of truth for the field bag — used by both the live preview
+  // and the PDF download so the two never drift.
+  const contractFieldBag: ContractFields = useMemo(() => ({
+    contract_id: generatedId || '',
+    effective_date: fields.effectiveDate || getTodayISO(),
+    customer_name: fields.clientCompanyName || '',
+    customer_name_nepali: fields.clientCompanyNameNepali || '',
+    customer_address: fields.clientLocation || '',
+    customer_address_nepali: fields.clientLocationNepali || '',
+    customer_attn: fields.clientCoordinator || '',
+    product: selectedProduct || 'Google Workspace — Business Starter',
+    service_term: fields.contractPeriod || `${fields.contractPeriodNum || ''} months`,
+    num_users: fields.numUsers || '',
+    amount: fields.paymentAmount || '',
+    amount_words: fields.paymentWords || '',
+    advance_percent: fields.advancePercent || '100',
+    uptime_pct: fields.uptimePct || '99.9%',
+    bank_name: fields.bankName || '',
+    payee_name: fields.payeeName || '',
+    bank_account: fields.bankAccount || '',
+    signatory_name: fields.signatoryName || '',
+    signatory_title: fields.signatoryTitle || '',
+    witness_name: fields.witnessName || '',
+    witness_designation: fields.witnessDesignation || '',
+    sp_signatory_name: fields.spSignatoryName || '',
+    sp_signatory_title: fields.spSignatoryTitle || '',
+    sp_witness_name: fields.spWitnessName || '',
+    sp_witness_designation: fields.spWitnessDesignation || '',
+    cost_items: costItems,
+  }), [fields, selectedProduct, generatedId, costItems]);
+
+  /** Programmatic .docx download — uses our built-in Nest Nepal contract
+   *  layout via the `docx` library. No template upload required; the
+   *  formatting is encoded in `contractDocxBuilder`. Lazy-imports the
+   *  builder so the ~200 KB `docx` dependency only loads on click. */
+  const downloadDocx = async () => {
+    const id = generatedId || generateContractId(fields.companyAbv || 'XXX');
+    if (!generatedId) setGeneratedId(id);
+    try {
+      const [{ buildContractDocx }, { saveAs }] = await Promise.all([
+        import('@/utils/contractDocxBuilder'),
+        import('file-saver'),
+      ]);
+      const blob = await buildContractDocx({ ...contractFieldBag, contract_id: id }, 'filled');
+      const filename = `${id || 'contract'}.docx`;
+      saveAs(blob, filename);
+      logActivity({
+        kind: 'pdf', // closest existing ActivityKind
+        module: 'CGAP/Contract',
+        action: 'Contract .docx generated',
+        meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct },
+      });
+      toast({ title: '.docx downloaded', description: filename });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to build .docx';
+      toast({ title: 'Failed', description: msg, variant: 'destructive' });
+    }
   };
+
+  const downloadPdf = async () => {
+    const id = generatedId || generateContractId(fields.companyAbv || 'XXX');
+    if (!generatedId) setGeneratedId(id);
+
+    // Resolve letterhead asynchronously when the toggle is on. The image
+    // load is best-effort: if it fails (network, CORS), we silently fall
+    // back to a blank page rather than block the download.
+    let letterheadDataUrl: string | undefined;
+    if (useLetterhead) {
+      try {
+        const lh = await resolveLetterhead('contract');
+        if (lh?.imageUrl) {
+          const url = await letterheadToDataUrl(lh.imageUrl);
+          if (url) letterheadDataUrl = url;
+        }
+      } catch { /* no-op */ }
+    }
+
+    const pdf = generateContractPdf(
+      { ...contractFieldBag, contract_id: id },
+      { letterheadDataUrl },
+    );
+    const filename = `${id || 'contract'}.pdf`;
+    pdf.save(filename);
+    logActivity({
+      kind: 'pdf',
+      module: 'CGAP/Contract',
+      action: 'Contract PDF generated',
+      meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, letterhead: !!letterheadDataUrl },
+    });
+    toast({ title: 'Contract PDF downloaded', description: filename });
+  };
+
+  // Mirror the field bag to localStorage so the standalone editor tab can
+  // re-render a fresh template baseline on demand (e.g. after "Reset to
+  // template"). Cheap — the snapshot is small and the editor reads it
+  // lazily.
+  useEffect(() => {
+    try { localStorage.setItem(FIELDS_SNAPSHOT_KEY, JSON.stringify(contractFieldBag)); }
+    catch { /* localStorage full / blocked — ignore */ }
+  }, [contractFieldBag]);
+
+  // Listen for edits coming from the standalone editor in another tab.
+  // The `storage` event only fires in *other* tabs (the writer doesn't
+  // hear its own write), which is exactly what we want here.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== EDITED_HTML_KEY) return;
+      setEditedHtml(e.newValue);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  const openEditor = () => {
+    // Pre-seed the snapshot so the editor renders correctly even if this
+    // is the first session (the effect above writes asynchronously).
+    try { localStorage.setItem(FIELDS_SNAPSHOT_KEY, JSON.stringify(contractFieldBag)); }
+    catch { /* ignore */ }
+    window.open('/cgap/contract-editor', '_blank', 'noopener,noreferrer');
+  };
+
+  const clearEdits = () => {
+    if (!editedHtml) return;
+    if (!confirm('Discard editor changes? The preview will snap back to the structured template.')) return;
+    localStorage.removeItem(EDITED_HTML_KEY);
+    setEditedHtml(null);
+  };
+
+  const addCostRow = () => setCostItems((prev) => [...prev, { description: '', qty: '1', unitPrice: '' }]);
+  const removeCostRow = (i: number) => setCostItems((prev) => prev.filter((_, idx) => idx !== i));
+  const updateCostRow = (i: number, patch: Partial<CostLineItem>) =>
+    setCostItems((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   const fillTest = () => {
     setFields(TEST_DATA);
@@ -291,11 +475,67 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         </Button>
       </div>
 
+      {/* PAN/VAT auto-lookup — fills the client fields below from the
+          Nepal IRD public search. CORS-blocked from the browser; needs
+          a proxy (see VITE_PAN_PROXY_URL) or the manual-paste fallback. */}
+      <PanVatLookup
+        darkMode={dm}
+        accentColor={ACCENT}
+        onApply={(r) => {
+          // Trade name typically reads cleaner than the legal name; fall back
+          // to legal if no trade name was registered. User can edit either
+          // value afterward — this just pre-fills.
+          const name = r.tradeName || r.legalName;
+          const nameNp = r.tradeNameNepali || r.legalNameNepali;
+          if (name) set('clientCompanyName', name);
+          if (nameNp) set('clientCompanyNameNepali', nameNp);
+          if (r.address) set('clientLocation', r.address);
+          if (r.addressNepali) set('clientLocationNepali', r.addressNepali);
+          const npHit = nameNp || r.addressNepali;
+          toast({
+            title: 'PAN/VAT applied',
+            description: `Filled client company${r.address ? ' + address' : ''}${npHit ? ' (incl. Nepali)' : ''} from PAN ${r.pan}.`,
+          });
+        }}
+      />
+
       {/* Company & Client Section */}
       {sectionHeader('Client Details', 'Client company and coordinator from Section 4A of the contract')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {companyFields.map(renderField)}
       </div>
+
+      {/* Nepali (Devanagari) variants — populated by the PAN/VAT lookup
+          when IRD has them. Editable so users can fix anything the parser
+          mis-split. Tucked behind a disclosure so it doesn't crowd the
+          main form when not needed. */}
+      <details className={`rounded-lg border ${dm ? 'border-gray-800 bg-gray-900/40' : 'border-gray-200 bg-gray-50'}`}>
+        <summary className={`cursor-pointer px-3 py-2 text-xs ${dm ? 'text-gray-400' : 'text-gray-600'}`}>
+          Nepali (Devanagari) translations <span className={`ml-2 normal-case ${dm ? 'text-gray-600' : 'text-gray-500'}`}>· auto-filled by PAN/VAT lookup when available</span>
+        </summary>
+        <div className="px-3 pb-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label className={labelCls}>Company name (नेपाली)</Label>
+            <Input
+              lang="ne"
+              value={fields.clientCompanyNameNepali || ''}
+              onChange={(e) => set('clientCompanyNameNepali', e.target.value)}
+              placeholder="यति डिस्टिलरी प्रा. लि."
+              className={inputCls(false)}
+            />
+          </div>
+          <div>
+            <Label className={labelCls}>Address (नेपाली)</Label>
+            <Input
+              lang="ne"
+              value={fields.clientLocationNepali || ''}
+              onChange={(e) => set('clientLocationNepali', e.target.value)}
+              placeholder="भरतपुर, महानगरपालिका"
+              className={inputCls(false)}
+            />
+          </div>
+        </div>
+      </details>
 
       {/* Product & Contract Terms Section */}
       {sectionHeader('Product & Contract Terms', 'Select a product from UCAP plans; Section 2A — Period text auto-fills from months')}
@@ -356,12 +596,46 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {contractFields.map(renderField)}
+        <div>
+          <Label className={labelCls}>Effective Date</Label>
+          <Input
+            type="date"
+            value={fields.effectiveDate || ''}
+            onChange={(e) => set('effectiveDate', e.target.value)}
+            className={inputCls(false)}
+          />
+        </div>
+        <div>
+          <Label className={labelCls}>Service Uptime</Label>
+          <Input
+            value={fields.uptimePct || ''}
+            onChange={(e) => set('uptimePct', e.target.value)}
+            placeholder="99.9%"
+            className={inputCls(false)}
+          />
+        </div>
       </div>
 
       {/* Payment Section */}
       {sectionHeader('Payment', 'Section 3A — Ceiling amount; words auto-fill from numerals')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {paymentFields.map(renderField)}
+      </div>
+
+      {sectionHeader('Bank Details', 'Section 3C — where the Client pays')}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <Label className={labelCls}>Bank Name</Label>
+          <Input value={fields.bankName || ''} onChange={(e) => set('bankName', e.target.value)} className={inputCls(false)} />
+        </div>
+        <div>
+          <Label className={labelCls}>Account Name (Payee)</Label>
+          <Input value={fields.payeeName || ''} onChange={(e) => set('payeeName', e.target.value)} className={inputCls(false)} />
+        </div>
+        <div>
+          <Label className={labelCls}>Account Number</Label>
+          <Input value={fields.bankAccount || ''} onChange={(e) => set('bankAccount', e.target.value)} className={inputCls(false)} />
+        </div>
       </div>
 
       {/* Client Signatory Section */}
@@ -375,6 +649,83 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {spSignatoryFields.map(renderField)}
       </div>
+
+      {/* Annex B — cost line items */}
+      {sectionHeader('Annex B: Cost of Services', 'Line items that print in the contract\'s cost table')}
+      <div className={card}>
+        <div className="space-y-2">
+          {costItems.map((row, i) => (
+            <div key={i} className="grid grid-cols-12 gap-2 items-end">
+              <div className="col-span-6">
+                <Label className={`${labelCls} ${i > 0 ? 'sr-only' : ''}`}>Description</Label>
+                <Input
+                  value={row.description}
+                  onChange={(e) => updateCostRow(i, { description: e.target.value })}
+                  placeholder={`e.g. Google Workspace Business Starter — Annual (${fields.numUsers || '25'} users)`}
+                  className={inputCls(false)}
+                />
+              </div>
+              <div className="col-span-2">
+                <Label className={`${labelCls} ${i > 0 ? 'sr-only' : ''}`}>Qty</Label>
+                <Input type="number" min={0} value={row.qty} onChange={(e) => updateCostRow(i, { qty: e.target.value })} className={inputCls(false)} />
+              </div>
+              <div className="col-span-3">
+                <Label className={`${labelCls} ${i > 0 ? 'sr-only' : ''}`}>Unit Price (NRs.)</Label>
+                <Input type="number" min={0} value={row.unitPrice} onChange={(e) => updateCostRow(i, { unitPrice: e.target.value })} className={inputCls(false)} />
+              </div>
+              <div className="col-span-1 flex justify-end">
+                <Button type="button" variant="ghost" size="sm" onClick={() => removeCostRow(i)} disabled={costItems.length === 1} className="h-9 w-9 p-0">
+                  <Trash2 className="w-4 h-4 text-red-500" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={addCostRow} className="mt-3 gap-1.5">
+          <Plus className="w-3 h-3" /> Add Line Item
+        </Button>
+        <p className={`text-[11px] mt-2 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+          Empty rows are skipped in the PDF. Grand total is calculated automatically.
+        </p>
+      </div>
+
+      {/* Live preview — mirrors RfP's preview chrome (letterhead bg, zoom,
+          fullscreen) but renders the flowing contract template. */}
+      {sectionHeader('Preview', 'Live render of the contract on the configured letterhead')}
+      <div className={`${card} py-3 flex items-center gap-4 flex-wrap`}>
+        <label htmlFor="contract-use-letterhead" className={`flex items-center gap-2 text-xs cursor-pointer ${dm ? 'text-gray-300' : 'text-gray-700'}`} title="Off = plain white A4 (for printing on pre-printed letterhead paper or clean exports). On = stamps the configured letterhead image on every page.">
+          <Switch
+            id="contract-use-letterhead"
+            checked={useLetterhead}
+            onCheckedChange={setUseLetterhead}
+          />
+          <span>Use letterhead{!useLetterhead && <span className={`ml-2 italic ${dm ? 'text-amber-400' : 'text-amber-600'}`}>· blank page</span>}</span>
+        </label>
+        <span className="flex-1" />
+        {editedHtml ? (
+          <>
+            <Badge variant="outline" className="gap-1.5 text-[10px]" style={{ borderColor: '#0F766E', color: '#0F766E' }}>
+              <PenLine className="w-3 h-3" /> Editor changes applied
+            </Badge>
+            <Button variant="outline" size="sm" onClick={clearEdits} className="gap-1.5 h-8">
+              Reset to template
+            </Button>
+            <Button variant="outline" size="sm" onClick={openEditor} className="gap-1.5 h-8">
+              <ExternalLink className="w-3.5 h-3.5" /> Reopen editor
+            </Button>
+          </>
+        ) : (
+          <Button variant="outline" size="sm" onClick={openEditor} className="gap-1.5 h-8" title="Open the contract in a Word-style editor in a new tab. Edits sync back here automatically.">
+            <PenLine className="w-3.5 h-3.5" /> Open in editor
+            <ExternalLink className="w-3 h-3 opacity-60" />
+          </Button>
+        )}
+      </div>
+      <ContractPreview fields={contractFieldBag} darkMode={dm} useLetterhead={useLetterhead} editedHtml={editedHtml} />
+
+      {/* Custom .docx template — upload once, fill from the form, download. */}
+      {sectionHeader('Your own .docx template', 'Upload a Word file with {placeholder} markers — the form above fills them, your formatting is preserved')}
+      <ContractCustomTemplate fields={contractFieldBag} darkMode={dm} contractId={generatedId || fields.companyAbv ? generatedId : undefined} />
 
       {/* Invoice Upload — Annex C */}
       <div className={card}>
@@ -482,9 +833,17 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
               <span className={`ml-auto text-xs ${dm ? 'text-gray-600' : 'text-gray-400'}`}>Unsigned</span>
             )}
           </div>
-          <Button onClick={runGeneration} disabled={step >= 0 && !done} className="w-full text-white" style={{ background: ACCENT }}>
-            {isSigned ? 'Generate Signed Contract' : 'Generate Unsigned Contract'}
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button onClick={runGeneration} disabled={step >= 0 && !done} className="flex-1 text-white" style={{ background: ACCENT }}>
+              {isSigned ? 'Generate Signed Contract' : 'Generate Unsigned Contract'}
+            </Button>
+            <Button onClick={downloadDocx} variant="outline" className="gap-1.5 sm:w-auto" title="Download as Word (.docx) — uses the built-in formatted template, no upload needed">
+              <Download className="w-4 h-4" /> Download .docx
+            </Button>
+            <Button onClick={downloadPdf} variant="outline" className="gap-1.5 sm:w-auto">
+              <Download className="w-4 h-4" /> Download PDF
+            </Button>
+          </div>
         </div>
       )}
     </div>

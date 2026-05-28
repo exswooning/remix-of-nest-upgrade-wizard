@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import AdminFileUpload from '@/components/AdminFileUpload';
 import { listClientsWithCounts, type ClientWithCounts } from '@/utils/clients';
 
-const ACCENT = '#4F7FFF';
+const ACCENT = '#0F766E';  // brand teal
 
 interface Contract {
   id: string;

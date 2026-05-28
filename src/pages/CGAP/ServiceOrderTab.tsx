@@ -22,7 +22,7 @@ import {
   type SoFormValues, type SoSection,
 } from '@/utils/serviceOrderTemplate';
 
-const ACCENT = '#E11D48';
+const ACCENT = '#0F766E';  // brand teal
 const formatNPR = (n: number) => `NRs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 interface Deliverable {

@@ -7,7 +7,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 210 40% 98%;
     --foreground: 222.2 84% 4.9%;
 
     --card: 0 0% 100%;
@@ -16,8 +16,11 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Brand teal-700 (#0F766E) replaces the near-black shadcn default so
+     * `bg-primary` / `text-primary` produce the actual brand colour
+     * throughout shadcn primitives. */
+    --primary: 174 78% 26%;
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -25,65 +28,81 @@
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Accent kept as a near-neutral so `bg-accent` (used by hover states in
+     * shadcn) stays subtle. The brand teal is `--primary`, the amber spot
+     * colour is `--brand-amber` below. */
+    --accent: 174 50% 94%;
+    --accent-foreground: 174 84% 18%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --ring: 174 78% 32%;
 
     --radius: 0.5rem;
 
+    /* Brand tokens — referenced by the per-tab ACCENT constants via the
+     * `--brand` CSS var so any future palette swap only needs one edit. */
+    --brand: 174 78% 26%;          /* teal-700  #0F766E */
+    --brand-strong: 174 84% 18%;   /* teal-900  #134E4A */
+    --brand-soft: 174 50% 94%;     /* teal-50   #ECFEFA */
+    --brand-amber: 38 92% 50%;     /* amber-500 #F59E0B */
+
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-primary: 174 78% 26%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 174 50% 94%;
+    --sidebar-accent-foreground: 174 84% 18%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-ring: 174 78% 32%;
   }
 
   .dark {
-    --background: 0 0% 0%;
+    --background: 222 47% 6%;
     --foreground: 0 0% 98%;
 
-    --card: 0 0% 3%;
+    --card: 222 47% 9%;
     --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 3%;
+    --popover: 222 47% 9%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
+    /* Lighter teal in dark mode for better contrast on the dark surface. */
+    --primary: 172 66% 50%;        /* teal-400  ~#2DD4BF */
+    --primary-foreground: 174 84% 12%;
 
-    --secondary: 0 0% 9%;
+    --secondary: 222 47% 12%;
     --secondary-foreground: 0 0% 98%;
 
-    --muted: 0 0% 9%;
-    --muted-foreground: 0 0% 63.9%;
+    --muted: 222 47% 12%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 0 0% 9%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 172 50% 18%;
+    --accent-foreground: 172 80% 88%;
 
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    
-    --sidebar-background: 0 0% 2%;
+    --border: 222 47% 14%;
+    --input: 222 47% 14%;
+    --ring: 172 66% 50%;
+
+    --brand: 172 66% 50%;
+    --brand-strong: 174 84% 18%;
+    --brand-soft: 174 40% 14%;
+    --brand-amber: 38 92% 55%;
+
+    --sidebar-background: 222 47% 5%;
     --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 0 0% 98%;
-    --sidebar-primary-foreground: 0 0% 9%;
-    --sidebar-accent: 0 0% 9%;
+    --sidebar-primary: 172 66% 50%;
+    --sidebar-primary-foreground: 174 84% 12%;
+    --sidebar-accent: 222 47% 12%;
     --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 14.9%;
-    --sidebar-ring: 0 0% 83.1%;
+    --sidebar-border: 222 47% 14%;
+    --sidebar-ring: 172 66% 50%;
   }
 }
 
@@ -94,6 +113,18 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'ss02';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Display type — Manrope for headings and brand labels. The body still
+   * uses Inter; this rule only applies where the `font-display` utility (or
+   * a direct class) opts in, or to the explicit heading elements below. */
+  h1, h2, h3, .font-display {
+    font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+    letter-spacing: -0.015em;
   }
 }
 
@@ -128,12 +159,12 @@
 .rfp-letterhead-body ul, .rfp-letterhead-body ol { margin: 0 0 0.5em 1.5em; }
 
 /* ── Background colour stage ──────────────────────────────────────────── */
-/* Six soft-edged blobs drifting on independent timings. Curated palette
- * only — coral, sky, mint, lavender, rose, jade. No yellow, no brown,
- * no dull navy. In light mode the blobs use `multiply` blend so they
- * tint the slate-50 surface; in dark mode they use `screen` so they
- * glow against slate-950. Heavy blur keeps them reading as colour
- * washes rather than hard shapes. */
+/* Six soft-edged blobs drifting on independent timings. Palette narrowed
+ * around the brand teal so the wash feels intentional, not festival:
+ * teal, mint, sky, lavender (+ two cooler teal/aqua restatements). In
+ * light mode the blobs use `multiply` blend so they tint the slate-50
+ * surface; in dark mode they use `screen` so they glow against the
+ * navy. Heavy blur keeps them reading as colour washes, not shapes. */
 .bg-stage {
   position: fixed;
   inset: 0;
@@ -144,20 +175,20 @@
 .bg-blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(90px);
-  opacity: 0.42;
+  filter: blur(100px);
+  opacity: 0.32;            /* dialled down from 0.42 — calmer */
   mix-blend-mode: multiply;
   will-change: transform;
 }
 .dark .bg-blob {
-  opacity: 0.55;
-  filter: blur(110px);
+  opacity: 0.42;            /* dialled down from 0.55 */
+  filter: blur(120px);
   mix-blend-mode: screen;
 }
 
 .bg-blob-1 { width: 46vw; height: 46vw; top: -12vw; left: -10vw;
-  background: radial-gradient(circle at 40% 40%, #fb7185, #fda4af 60%, transparent 75%);
-  animation: bg-drift-1 32s ease-in-out infinite alternate; } /* coral */
+  background: radial-gradient(circle at 40% 40%, #0F766E, #5EEAD4 60%, transparent 75%);
+  animation: bg-drift-1 32s ease-in-out infinite alternate; } /* brand teal */
 .bg-blob-2 { width: 50vw; height: 50vw; top: -8vh; right: -12vw;
   background: radial-gradient(circle at 40% 40%, #38bdf8, #7dd3fc 60%, transparent 75%);
   animation: bg-drift-2 38s ease-in-out infinite alternate; } /* sky */
@@ -166,10 +197,10 @@
   animation: bg-drift-3 36s ease-in-out infinite alternate; } /* mint */
 .bg-blob-4 { width: 44vw; height: 44vw; top: 30vh; left: 30vw;
   background: radial-gradient(circle at 50% 50%, #a78bfa, #c4b5fd 60%, transparent 75%);
-  animation: bg-drift-4 42s ease-in-out infinite alternate; } /* lavender */
+  animation: bg-drift-4 42s ease-in-out infinite alternate; } /* lavender — the one warmer wildcard */
 .bg-blob-5 { width: 40vw; height: 40vw; bottom: -8vw; right: -4vw;
-  background: radial-gradient(circle at 50% 50%, #f472b6, #f9a8d4 60%, transparent 75%);
-  animation: bg-drift-5 34s ease-in-out infinite alternate; } /* rose */
+  background: radial-gradient(circle at 50% 50%, #14B8A6, #99F6E4 60%, transparent 75%);
+  animation: bg-drift-5 34s ease-in-out infinite alternate; } /* teal restatement */
 .bg-blob-6 { width: 42vw; height: 42vw; top: 50vh; right: 25vw;
   background: radial-gradient(circle at 50% 50%, #22d3ee, #67e8f9 60%, transparent 75%);
   animation: bg-drift-6 30s ease-in-out infinite alternate; } /* aqua */
@@ -262,13 +293,13 @@
 
 .glass-tab[data-state="active"] {
   background: #ffffff !important;
-  color: rgb(15, 23, 42) !important;          /* slate-900 */
-  border: 1px solid rgb(226, 232, 240) !important;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+  color: rgb(19, 78, 74) !important;          /* teal-900 — brand-tinted active label */
+  border: 1px solid rgb(94, 234, 212) !important; /* teal-300 — subtle brand outline */
+  box-shadow: 0 1px 2px rgba(15, 118, 110, 0.10), 0 0 0 3px rgba(15, 118, 110, 0.04) !important;
 }
 .dark .glass-tab[data-state="active"] {
-  background: rgb(15, 23, 42) !important;     /* slate-900 */
-  color: rgb(248, 250, 252) !important;       /* slate-50 */
-  border: 1px solid rgb(51, 65, 85) !important;
+  background: rgb(19, 78, 74) !important;     /* teal-900 */
+  color: rgb(204, 251, 241) !important;       /* teal-100 */
+  border: 1px solid rgb(15, 118, 110) !important; /* teal-700 */
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4) !important;
 }

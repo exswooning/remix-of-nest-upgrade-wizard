@@ -23,7 +23,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { logActivity } from '@/utils/activityLog';
 
-const ACCENT = '#0EA5E9';
+const ACCENT = '#0F766E';  // brand teal
 
 interface SLATabProps { darkMode?: boolean }
 

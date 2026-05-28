@@ -5,12 +5,15 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { FileSpreadsheet, Download, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, Printer, Sparkles, Save, Search, History, AlertTriangle } from 'lucide-react';
+import { FileSpreadsheet, Download, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, Printer, Sparkles, Save, Search, History, AlertTriangle, ZoomIn, ZoomOut, Maximize2, Minimize2, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Minus, LayoutGrid, Lock, Unlock, RotateCcw, Type } from 'lucide-react';
+import { freshDefaultQgapAnchors, renderAnchor, STRUCTURED_ANCHOR_IDS, type FieldAnchor } from '@/utils/qgapAnchors';
+import { loadLayout, saveLayout } from '@/utils/qgapLayout';
 import QuickFillFromReply from '@/components/QuickFillFromReply';
 import { useAuth } from '@/contexts/AuthContext';
 import { getTodayISO, numberToWords } from '@/utils/cgapAutoFill';
-import { type LetterheadConfig } from '@/utils/letterheadTemplate';
+import { type LetterheadConfig, saveLetterheadMargins } from '@/utils/letterheadTemplate';
 import { resolveLetterhead } from '@/utils/templateAssignments';
+import { cn } from '@/lib/utils';
 import { loadQgapSettings, type QgapSettings } from '@/utils/qgapSettings';
 import { saveQuote, searchQuotesByProduct, isQuoteOld, quoteTotal, type QgapStoredQuote } from '@/utils/qgapQuotes';
 import { logActivity } from '@/utils/activityLog';
@@ -21,9 +24,9 @@ import html2canvas from 'html2canvas';
 
 // Nest Nepal brand colours — deep brand blue from the letterhead, with two
 // matching tints used for the table header row and the notes call-out.
-const ACCENT = '#1E40AF';            // primary brand blue (Tailwind blue-800)
-const ACCENT_TINT_STRONG = '#E0E7FF'; // table header background
-const ACCENT_TINT_SOFT = '#EFF6FF';   // notes call-out background
+const ACCENT = '#0F766E';            // brand teal-700
+const ACCENT_TINT_STRONG = '#CCFBF1'; // teal-100 — table header background
+const ACCENT_TINT_SOFT = '#ECFDF5';   // teal-50 — notes call-out background
 
 const formatNPR = (n: number) => `NRs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -70,7 +73,7 @@ interface QuotationTabProps {
 
 const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
   const dm = darkMode;
-  const { getPlanData } = useAuth();
+  const { getPlanData, isAdmin } = useAuth();
   const { toast } = useToast();
 
   const planData = useMemo(() => getPlanData() ?? {}, [getPlanData]);
@@ -140,6 +143,112 @@ const QuotationTab: React.FC<QuotationTabProps> = ({ darkMode = false }) => {
   // fallback to the RfP default when no QGAP-specific assignment is set.
   // Also re-resolves whenever the user changes assignments from Settings.
   const [letterhead, setLetterhead] = useState<LetterheadConfig | null>(null);
+  // Preview chrome state — mirrors RfP's preview UX. Zoom + fullscreen
+  // toggle live in component state; margins are persisted via the same
+  // `saveLetterheadMargins` helper RfP uses (different doc-type key).
+  const [pageScale, setPageScale] = useState(0.85);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [marginSaving, setMarginSaving] = useState(false);
+
+  // ── Anchor designer state ──────────────────────────────────────────
+  const initialLayout = useMemo(() => loadLayout(), []);
+  const [anchors, setAnchors] = useState<FieldAnchor[]>(initialLayout.anchors);
+  const [locked, setLocked] = useState(initialLayout.locked);
+  const [designerMode, setDesignerMode] = useState(false);
+  const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
+  const [draggingAnchor, setDraggingAnchor] = useState<{
+    id: string; startMouseX: number; startMouseY: number; origX: number; origY: number;
+  } | null>(null);
+
+  // Persist on every anchor / lock change.
+  useEffect(() => {
+    saveLayout({ anchors, locked });
+  }, [anchors, locked]);
+
+  const canEdit = isAdmin || !locked;
+
+  const startAnchorDrag = (e: React.MouseEvent, anchor: FieldAnchor) => {
+    if (!designerMode || !canEdit) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedAnchorId(anchor.id);
+    setDraggingAnchor({
+      id: anchor.id,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      origX: anchor.x,
+      origY: anchor.y,
+    });
+  };
+
+  useEffect(() => {
+    if (!draggingAnchor) return;
+    const onMove = (e: MouseEvent) => {
+      const dx = (e.clientX - draggingAnchor.startMouseX) / pageScale;
+      const dy = (e.clientY - draggingAnchor.startMouseY) / pageScale;
+      setAnchors((prev) => prev.map((a) => (a.id === draggingAnchor.id
+        ? {
+            ...a,
+            x: Math.max(0, Math.min(794 - 40, draggingAnchor.origX + dx)),
+            y: Math.max(0, Math.min(1123 - 16, draggingAnchor.origY + dy)),
+          }
+        : a)));
+    };
+    const onUp = () => setDraggingAnchor(null);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [draggingAnchor, pageScale]);
+
+  const updateAnchor = (id: string, patch: Partial<FieldAnchor>) => {
+    setAnchors((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+  };
+  const deleteAnchor = (id: string) => {
+    setAnchors((prev) => prev.filter((a) => a.id !== id));
+    if (selectedAnchorId === id) setSelectedAnchorId(null);
+  };
+  const addTextAnchor = () => {
+    const id = `custom_${Math.random().toString(36).slice(2, 7)}`;
+    setAnchors((prev) => [...prev, {
+      id, kind: 'text', x: 200, y: 300, width: 300,
+      fontSize: 11, template: 'New text',
+    }]);
+    setSelectedAnchorId(id);
+  };
+  const resetAnchorsToDefault = () => {
+    if (!confirm('Reset all QGAP anchors to defaults? Your customised positions will be lost.')) return;
+    setAnchors(freshDefaultQgapAnchors());
+    setSelectedAnchorId(null);
+  };
+
+  const zoomIn = () => setPageScale((s) => Math.min(2, +(s + 0.1).toFixed(2)));
+  const zoomOut = () => setPageScale((s) => Math.max(0.4, +(s - 0.1).toFixed(2)));
+  const zoomFit = () => setPageScale(0.85);
+
+  const selectedAnchor = useMemo(
+    () => anchors.find((a) => a.id === selectedAnchorId) ?? null,
+    [anchors, selectedAnchorId],
+  );
+
+  const nudgeMargin = (side: 'top' | 'right' | 'bottom' | 'left', delta: number) => {
+    setLetterhead((prev) => prev ? { ...prev, margins: { ...prev.margins, [side]: Math.max(0, (prev.margins[side] ?? 0) + delta) } } : prev);
+  };
+
+  const handleSaveAsDefault = async () => {
+    if (!letterhead) return;
+    setMarginSaving(true);
+    try {
+      await saveLetterheadMargins('qgap', letterhead.margins);
+      toast({ title: 'Saved', description: 'Margins saved as the QGAP default.' });
+    } catch (err) {
+      toast({ title: 'Save failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setMarginSaving(false);
+    }
+  };
   useEffect(() => {
     let cancelled = false;
     const reload = () => {
@@ -734,18 +843,294 @@ Also auto-fills the first line-item qty from phrases like:
         </div>
       </div>
 
-      {/* Preview — break out of the page's max-width so the A4 page has
-          breathing room even when the forms above are kept narrow. */}
-      <div className={`${card} -mx-6 sm:-mx-12 lg:-mx-32 xl:-mx-48`}>
-        <Label className={labelCls}>Preview {letterhead && <span className="ml-1 text-[10px] normal-case font-normal text-gray-500">· letterhead: {letterhead.name}</span>}</Label>
-        <div className="mt-3 overflow-auto rounded-lg border bg-gray-100" style={{ borderColor: dm ? '#2A2A2A' : '#E5E7EB' }}>
+      {/* Preview — same chrome as RfP: letterhead badge, zoom controls,
+          fullscreen toggle, admin-only margins editor + save-as-default.
+          Breaks out of the page's max-width so the A4 sheet has breathing
+          room when the forms above are kept narrow. */}
+      <div
+        className={cn(
+          'rounded-xl border overflow-hidden relative',
+          dm ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-200',
+          !fullscreen && '-mx-6 sm:-mx-12 lg:-mx-32 xl:-mx-48',
+          fullscreen && 'fixed inset-0 z-50 rounded-none flex flex-col',
+        )}
+      >
+        {/* Toolbar */}
+        <div className={cn(
+          'sticky top-0 z-20 flex flex-wrap items-center gap-2 px-3 py-1.5 border-b text-xs',
+          dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200',
+        )}>
+          {letterhead
+            ? <Badge variant="outline" className="text-[10px] h-5">{letterhead.name}</Badge>
+            : <span className={cn('text-[10px]', dm ? 'text-amber-400' : 'text-amber-600')}>No letterhead configured</span>}
+          <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px]', dm ? 'text-gray-500' : 'text-gray-400')}>
+            <CheckCircle2 className="w-3 h-3" /> Layout auto-saved (this browser)
+          </span>
+          {isAdmin && (
+            <>
+              <span className="w-px h-4 bg-gray-400/30 mx-1" />
+              <button
+                type="button"
+                onClick={() => setDesignerMode((v) => !v)}
+                disabled={locked && !isAdmin}
+                title="Designer mode — drag anchors to reposition each text/table block on the letterhead"
+                className={cn(
+                  'inline-flex items-center gap-1 h-7 px-2 rounded transition-colors text-[11px]',
+                  designerMode
+                    ? 'bg-teal-600 text-white'
+                    : (dm ? 'text-gray-300 hover:bg-gray-700 border border-gray-700' : 'text-gray-700 hover:bg-gray-100 border border-gray-300'),
+                )}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                {designerMode ? 'Designer ON' : 'Edit layout'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocked((v) => !v)}
+                title={locked ? 'Layout locked — non-admins cannot move anchors. Click to unlock.' : 'Lock layout so non-admins cannot move anchors.'}
+                className={cn(
+                  'inline-flex items-center gap-1 h-7 px-2 rounded transition-colors text-[11px]',
+                  locked
+                    ? (dm ? 'bg-amber-900/40 text-amber-300' : 'bg-amber-100 text-amber-700')
+                    : (dm ? 'text-gray-300 hover:bg-gray-700 border border-gray-700' : 'text-gray-700 hover:bg-gray-100 border border-gray-300'),
+                )}
+              >
+                {locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                {locked ? 'Locked' : 'Lock'}
+              </button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleSaveAsDefault}
+                disabled={marginSaving || !letterhead}
+                className={cn(
+                  'h-7 px-2 gap-1.5 text-[11px]',
+                  dm ? 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-900/60 border-emerald-800' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200',
+                )}
+                title="Save current margins as the QGAP default everyone gets on load"
+              >
+                {marginSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Save as default
+              </Button>
+              {designerMode && (
+                <>
+                  <button
+                    type="button"
+                    onClick={addTextAnchor}
+                    className={cn(
+                      'inline-flex items-center gap-1 h-7 px-2 rounded transition-colors text-[11px]',
+                      dm ? 'text-gray-300 hover:bg-gray-700 border border-gray-700' : 'text-gray-700 hover:bg-gray-100 border border-gray-300',
+                    )}
+                  >
+                    <Type className="w-3.5 h-3.5" /> Add text
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetAnchorsToDefault}
+                    className={cn(
+                      'inline-flex items-center gap-1 h-7 px-2 rounded transition-colors text-[11px]',
+                      dm ? 'text-gray-300 hover:bg-gray-700 border border-gray-700' : 'text-gray-700 hover:bg-gray-100 border border-gray-300',
+                    )}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> Reset
+                  </button>
+                </>
+              )}
+            </>
+          )}
+          {locked && !isAdmin && (
+            <span className={cn(
+              'inline-flex items-center gap-1 h-7 px-2 rounded text-[10px]',
+              dm ? 'bg-amber-900/40 text-amber-300' : 'bg-amber-100 text-amber-700',
+            )}>
+              <Lock className="w-3.5 h-3.5" /> Layout locked
+            </span>
+          )}
+          <span className="flex-1" />
+          <div className={cn('flex items-center gap-0.5 px-1 rounded', dm ? 'bg-gray-800' : 'bg-white border border-gray-200')}>
+            <button onClick={zoomOut} className={cn('h-7 w-7 inline-flex items-center justify-center rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}>
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={zoomFit} className={cn('h-7 px-2 text-xs tabular-nums rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}>
+              {Math.round(pageScale * 100)}%
+            </button>
+            <button onClick={zoomIn} className={cn('h-7 w-7 inline-flex items-center justify-center rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}>
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <button onClick={() => setFullscreen(!fullscreen)} className={cn('h-7 w-7 inline-flex items-center justify-center rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}>
+            {fullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </button>
+          {fullscreen && (
+            <button onClick={() => setFullscreen(false)} className={cn('h-7 w-7 inline-flex items-center justify-center rounded', dm ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100')}>
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Margins adjuster (admin only) — pixel nudge buttons for the
+            letterhead's content box. Cross-tab persistence happens on
+            "Save as default" above. */}
+        {letterhead && isAdmin && (
+          <div className={cn(
+            'flex flex-wrap items-center gap-2 px-3 py-1.5 border-b text-[11px]',
+            dm ? 'bg-gray-900/60 border-gray-800 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-600',
+          )}>
+            <span className="font-medium opacity-70">Margins (px):</span>
+            {(['top', 'right', 'bottom', 'left'] as const).map((side) => {
+              const Icon = side === 'top' ? ChevronUp : side === 'bottom' ? ChevronDown : side === 'left' ? ChevronLeft : ChevronRight;
+              return (
+                <div key={side} className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded', dm ? 'bg-gray-800' : 'bg-white border border-gray-200')}>
+                  <Icon className="w-3 h-3 opacity-60" />
+                  <button type="button" onClick={() => nudgeMargin(side, -8)} className={cn('w-5 h-5 rounded inline-flex items-center justify-center', dm ? 'hover:bg-gray-700' : 'hover:bg-gray-100')}><Minus className="w-3 h-3" /></button>
+                  <span className="tabular-nums w-8 text-center font-medium">{letterhead.margins[side]}</span>
+                  <button type="button" onClick={() => nudgeMargin(side, 8)} className={cn('w-5 h-5 rounded inline-flex items-center justify-center', dm ? 'hover:bg-gray-700' : 'hover:bg-gray-100')}><Plus className="w-3 h-3" /></button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Inspector — appears when an anchor is selected in designer mode.
+            Lets the user tweak position, size, type properties, and (for
+            plain-text anchors) the template string. Structured anchors
+            (items_table, totals, etc.) get a smaller inspector since their
+            content isn't template-driven. */}
+        {designerMode && selectedAnchor && (
+          <div className={cn(
+            'flex flex-wrap items-center gap-2 px-3 py-1.5 border-b text-[11px]',
+            dm ? 'bg-teal-900/30 border-gray-800 text-gray-300' : 'bg-teal-50 border-gray-200 text-gray-700',
+          )}>
+            <span className="font-medium inline-flex items-center gap-1">
+              <LayoutGrid className="w-3 h-3" /> {selectedAnchor.id}
+              {STRUCTURED_ANCHOR_IDS.has(selectedAnchor.id) && (
+                <Badge variant="outline" className="text-[9px] h-4 ml-1">structured</Badge>
+              )}
+            </span>
+            <label className="inline-flex items-center gap-1">
+              <span className="opacity-70">x</span>
+              <Input
+                type="number"
+                value={Math.round(selectedAnchor.x)}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { x: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="h-6 w-14 px-1 py-0 text-[11px] tabular-nums"
+              />
+            </label>
+            <label className="inline-flex items-center gap-1">
+              <span className="opacity-70">y</span>
+              <Input
+                type="number"
+                value={Math.round(selectedAnchor.y)}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { y: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="h-6 w-14 px-1 py-0 text-[11px] tabular-nums"
+              />
+            </label>
+            <label className="inline-flex items-center gap-1">
+              <span className="opacity-70">w</span>
+              <Input
+                type="number"
+                value={Math.round(selectedAnchor.width)}
+                onChange={(e) => updateAnchor(selectedAnchor.id, { width: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="h-6 w-16 px-1 py-0 text-[11px] tabular-nums"
+              />
+            </label>
+            {!STRUCTURED_ANCHOR_IDS.has(selectedAnchor.id) && (
+              <>
+                <label className="inline-flex items-center gap-1">
+                  <span className="opacity-70">size</span>
+                  <Input
+                    type="number"
+                    min={6} max={48}
+                    value={selectedAnchor.fontSize ?? 11}
+                    onChange={(e) => updateAnchor(selectedAnchor.id, { fontSize: Math.max(6, Math.min(48, parseInt(e.target.value) || 11)) })}
+                    className="h-6 w-14 px-1 py-0 text-[11px] tabular-nums"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => updateAnchor(selectedAnchor.id, { fontWeight: selectedAnchor.fontWeight === 'bold' ? 'normal' : 'bold' })}
+                  className={cn(
+                    'h-6 px-2 rounded font-bold',
+                    selectedAnchor.fontWeight === 'bold' ? 'bg-teal-600 text-white' : (dm ? 'bg-gray-800' : 'bg-white border border-gray-300'),
+                  )}
+                  title="Toggle bold"
+                >B</button>
+                {(['left', 'center', 'right'] as const).map((al) => (
+                  <button
+                    key={al}
+                    type="button"
+                    onClick={() => updateAnchor(selectedAnchor.id, { align: al })}
+                    className={cn(
+                      'h-6 px-2 rounded text-[10px]',
+                      selectedAnchor.align === al ? 'bg-teal-600 text-white' : (dm ? 'bg-gray-800' : 'bg-white border border-gray-300'),
+                    )}
+                    title={`Align ${al}`}
+                  >{al[0].toUpperCase()}</button>
+                ))}
+                <label className="inline-flex items-center gap-1">
+                  <span className="opacity-70">color</span>
+                  <input
+                    type="color"
+                    value={selectedAnchor.color ?? '#111111'}
+                    onChange={(e) => updateAnchor(selectedAnchor.id, { color: e.target.value })}
+                    className="h-6 w-7 p-0 cursor-pointer rounded border border-gray-300"
+                  />
+                </label>
+                <label className="inline-flex items-center gap-1 flex-1 min-w-[200px]">
+                  <span className="opacity-70">template</span>
+                  <Input
+                    value={selectedAnchor.template ?? ''}
+                    onChange={(e) => updateAnchor(selectedAnchor.id, { template: e.target.value })}
+                    placeholder="Hi {customer_company}…"
+                    className="h-6 px-2 py-0 text-[11px] font-mono"
+                  />
+                </label>
+              </>
+            )}
+            <span className="flex-1" />
+            {selectedAnchor.id.startsWith('custom_') && (
+              <button
+                type="button"
+                onClick={() => deleteAnchor(selectedAnchor.id)}
+                className="h-6 px-2 rounded text-[10px] text-red-500 hover:bg-red-50"
+                title="Delete this anchor"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelectedAnchorId(null)}
+              className={cn('h-6 px-2 rounded text-[10px]', dm ? 'hover:bg-gray-700' : 'hover:bg-gray-100')}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {/* Page — scaled via CSS transform so html2canvas/PDF still
+            captures it at native 794x1123. */}
+        <div
+          className={cn(
+            'overflow-auto p-4 flex justify-center',
+            dm ? 'bg-gray-900' : 'bg-gray-100',
+            fullscreen && 'flex-1',
+          )}
+          style={fullscreen ? undefined : { maxHeight: '80vh', minHeight: 320 }}
+        >
+          <div style={{ width: 794 * pageScale, height: 1123 * pageScale, position: 'relative', flex: '0 0 auto' }}>
           <div
             ref={previewRef}
             id="qgap-printable"
             className="mx-auto relative"
             style={{
+              position: 'absolute',
+              top: 0, left: 0,
               width: '794px',
               height: '1123px',
+              transform: `scale(${pageScale})`,
+              transformOrigin: 'top left',
               background: '#ffffff',
               backgroundImage: letterhead ? `url("${letterhead.imageUrl}")` : undefined,
               backgroundSize: letterhead ? '794px 1123px' : undefined,
@@ -753,111 +1138,155 @@ Also auto-fills the first line-item qty from phrases like:
               backgroundPosition: 'center top',
               fontFamily: 'Calibri, Inter, sans-serif',
               color: '#111',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.10)',
             }}
           >
-            <div
-              style={{
-                position: 'absolute',
-                top: `${letterhead?.margins.top ?? 60}px`,
-                right: `${letterhead?.margins.right ?? 60}px`,
-                bottom: `${letterhead?.margins.bottom ?? 80}px`,
-                left: `${letterhead?.margins.left ?? 60}px`,
-                overflow: 'hidden',
-                fontSize: '10.5pt',
-                lineHeight: 1.4,
-              }}
-            >
-              {/* Title */}
-              <h1 style={{ fontSize: '20pt', fontWeight: 700, textAlign: 'center', letterSpacing: '2px', margin: '0 0 4px', color: ACCENT, textTransform: 'uppercase' }}>Quotation</h1>
-              <p style={{ textAlign: 'center', fontSize: '9pt', color: '#555', margin: '0 0 16px' }}>{preparedBy}</p>
+            {/* Anchor-positioned content — every visible element is an
+                anchor placed in the 794×1123 page coordinate space.
+                Structured anchors (items_table, totals, etc.) render
+                custom JSX based on their `id`; plain text anchors render
+                their template with form values substituted. */}
+            {anchors.map((a) => {
+              const isSelected = selectedAnchorId === a.id;
+              const isStructured = STRUCTURED_ANCHOR_IDS.has(a.id);
+              const interactive = designerMode && canEdit;
+              const outline = isSelected
+                ? '2px solid #0F766E'
+                : (designerMode ? '1px dashed rgba(15, 118, 110, 0.4)' : 'none');
 
-              {/* Meta */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, fontSize: '10pt' }}>
-                <div>
-                  <div><strong>Quote No:</strong> {quoteNumber || '—'}</div>
-                  <div><strong>Date:</strong> {formatDateDDMMYYYY(quoteDate) || '—'}</div>
-                  <div><strong>Valid Until:</strong> {formatDateDDMMYYYY(validUntil) || '—'}</div>
-                </div>
-                {(customerCompany || customerEmail || customerPhone || customerAddress) && (
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '9pt', color: '#777' }}>Bill To</div>
-                    {customerCompany && <div style={{ fontWeight: 600 }}>{customerCompany}</div>}
-                    {(customerEmail || customerPhone) && (
-                      <div style={{ fontSize: '9pt', color: '#555' }}>
-                        {customerEmail}{customerEmail && customerPhone && ' · '}{customerPhone}
-                      </div>
-                    )}
-                    {customerAddress && <div style={{ fontSize: '9pt', color: '#555' }}>{customerAddress}</div>}
-                  </div>
-                )}
-              </div>
-
-              {/* Items table */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9.5pt', marginTop: 8 }}>
-                <thead>
-                  <tr style={{ background: ACCENT_TINT_STRONG }}>
-                    <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>#</th>
-                    <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Item</th>
-                    <th style={{ textAlign: 'center', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Billing Cycle</th>
-                    <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Qty</th>
-                    <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Unit (NRs.)</th>
-                    <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Total (NRs.)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.filter(it => it.planName && it.unitPrice > 0).map((it, i) => {
-                    const cat = planData[it.categoryKey];
-                    return (
-                      <tr key={it.id}>
-                        <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', verticalAlign: 'top' }}>{i + 1}</td>
-                        <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', verticalAlign: 'top' }}>
-                          <div style={{ fontWeight: 600 }}>{cat?.name ? `${cat.name} — ${it.planName}` : it.planName}</div>
-                        </td>
-                        <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', textAlign: 'center', verticalAlign: 'top' }}>{cycleLabel(it.cycle)}</td>
-                        <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', textAlign: 'right', verticalAlign: 'top' }}>{it.qty}</td>
-                        <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', textAlign: 'right', verticalAlign: 'top' }}>{it.unitPrice.toLocaleString('en-IN')}</td>
-                        <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', textAlign: 'right', verticalAlign: 'top', fontWeight: 600 }}>{(it.unitPrice * it.qty).toLocaleString('en-IN')}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-
-              {pricesIncludeVat && (
-                <p style={{ marginTop: 6, fontSize: '8.5pt', fontStyle: 'italic', color: '#666' }}>
-                  * Prices are inclusive of VAT.
-                </p>
-              )}
-
-              {/* Totals — gated by the "Show totals on quote" toggle. */}
-              {showTotals && (
-                <>
-                  <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
-                    <table style={{ fontSize: '10pt', borderCollapse: 'collapse' }}>
-                      <tbody>
-                        <tr><td style={{ padding: '4px 12px', color: '#555' }}>Subtotal</td><td style={{ padding: '4px 8px', textAlign: 'right', minWidth: 120 }}>{formatNPR(subtotal)}</td></tr>
-                        {discountPct > 0 && <tr><td style={{ padding: '4px 12px', color: '#555' }}>Discount ({discountPct}%)</td><td style={{ padding: '4px 8px', textAlign: 'right', color: '#b91c1c' }}>−{formatNPR(discountAmount)}</td></tr>}
-                        {vatPct > 0 && <tr><td style={{ padding: '4px 12px', color: '#555' }}>VAT ({vatPct}%)</td><td style={{ padding: '4px 8px', textAlign: 'right' }}>{formatNPR(vatAmount)}</td></tr>}
-                        <tr style={{ borderTop: '2px solid #999' }}>
-                          <td style={{ padding: '6px 12px', fontWeight: 700 }}>Grand Total</td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: ACCENT, fontSize: '11pt' }}>{formatNPR(grandTotal)}</td>
+              const content = (() => {
+                if (a.id === 'meta') {
+                  return (
+                    <div style={{ fontSize: `${a.fontSize ?? 10}pt`, lineHeight: a.lineHeight ?? 1.4 }}>
+                      <div><strong>Quote No:</strong> {quoteNumber || '—'}</div>
+                      <div><strong>Date:</strong> {formatDateDDMMYYYY(quoteDate) || '—'}</div>
+                      <div><strong>Valid Until:</strong> {formatDateDDMMYYYY(validUntil) || '—'}</div>
+                    </div>
+                  );
+                }
+                if (a.id === 'bill_to') {
+                  if (!(customerCompany || customerEmail || customerPhone || customerAddress)) return null;
+                  return (
+                    <div style={{ textAlign: 'right', fontSize: `${a.fontSize ?? 10}pt`, lineHeight: a.lineHeight ?? 1.4 }}>
+                      <div style={{ fontSize: '9pt', color: '#777' }}>Bill To</div>
+                      {customerCompany && <div style={{ fontWeight: 600 }}>{customerCompany}</div>}
+                      {(customerEmail || customerPhone) && (
+                        <div style={{ fontSize: '9pt', color: '#555' }}>
+                          {customerEmail}{customerEmail && customerPhone && ' · '}{customerPhone}
+                        </div>
+                      )}
+                      {customerAddress && <div style={{ fontSize: '9pt', color: '#555' }}>{customerAddress}</div>}
+                    </div>
+                  );
+                }
+                if (a.id === 'items_table') {
+                  return (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: `${a.fontSize ?? 9.5}pt` }}>
+                      <thead>
+                        <tr style={{ background: ACCENT_TINT_STRONG }}>
+                          <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>#</th>
+                          <th style={{ textAlign: 'left', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Item</th>
+                          <th style={{ textAlign: 'center', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Billing Cycle</th>
+                          <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Qty</th>
+                          <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Unit (NRs.)</th>
+                          <th style={{ textAlign: 'right', padding: '6px 8px', borderBottom: `2px solid ${ACCENT}` }}>Total (NRs.)</th>
                         </tr>
+                      </thead>
+                      <tbody>
+                        {items.filter(it => it.planName && it.unitPrice > 0).map((it, i) => {
+                          const cat = planData[it.categoryKey];
+                          return (
+                            <tr key={it.id}>
+                              <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', verticalAlign: 'top' }}>{i + 1}</td>
+                              <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', verticalAlign: 'top' }}>
+                                <div style={{ fontWeight: 600 }}>{cat?.name ? `${cat.name} — ${it.planName}` : it.planName}</div>
+                              </td>
+                              <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', textAlign: 'center', verticalAlign: 'top' }}>{cycleLabel(it.cycle)}</td>
+                              <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', textAlign: 'right', verticalAlign: 'top' }}>{it.qty}</td>
+                              <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', textAlign: 'right', verticalAlign: 'top' }}>{it.unitPrice.toLocaleString('en-IN')}</td>
+                              <td style={{ padding: '6px 8px', borderBottom: '1px solid #eee', textAlign: 'right', verticalAlign: 'top', fontWeight: 600 }}>{(it.unitPrice * it.qty).toLocaleString('en-IN')}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
-                  </div>
-                  {totalWords && (
-                    <p style={{ marginTop: 8, fontSize: '9pt', fontStyle: 'italic', color: '#666', textAlign: 'right' }}>{totalWords}</p>
-                  )}
-                </>
-              )}
+                  );
+                }
+                if (a.id === 'prices_incl_vat') {
+                  if (!pricesIncludeVat) return null;
+                  return <span>* Prices are inclusive of VAT.</span>;
+                }
+                if (a.id === 'totals') {
+                  if (!showTotals) return null;
+                  return (
+                    <div style={{ fontSize: `${a.fontSize ?? 10}pt` }}>
+                      <table style={{ marginLeft: 'auto', borderCollapse: 'collapse' }}>
+                        <tbody>
+                          <tr><td style={{ padding: '4px 12px', color: '#555' }}>Subtotal</td><td style={{ padding: '4px 8px', textAlign: 'right', minWidth: 120 }}>{formatNPR(subtotal)}</td></tr>
+                          {discountPct > 0 && <tr><td style={{ padding: '4px 12px', color: '#555' }}>Discount ({discountPct}%)</td><td style={{ padding: '4px 8px', textAlign: 'right', color: '#b91c1c' }}>−{formatNPR(discountAmount)}</td></tr>}
+                          {vatPct > 0 && <tr><td style={{ padding: '4px 12px', color: '#555' }}>VAT ({vatPct}%)</td><td style={{ padding: '4px 8px', textAlign: 'right' }}>{formatNPR(vatAmount)}</td></tr>}
+                          <tr style={{ borderTop: '2px solid #999' }}>
+                            <td style={{ padding: '6px 12px', fontWeight: 700 }}>Grand Total</td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: ACCENT, fontSize: '11pt' }}>{formatNPR(grandTotal)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      {totalWords && <p style={{ marginTop: 8, fontSize: '9pt', fontStyle: 'italic', color: '#666', textAlign: 'right' }}>{totalWords}</p>}
+                    </div>
+                  );
+                }
+                if (a.id === 'notes') {
+                  if (!notes) return null;
+                  return (
+                    <div style={{ padding: '10px 12px', background: ACCENT_TINT_SOFT, borderLeft: `3px solid ${ACCENT}`, fontSize: `${a.fontSize ?? 9}pt`, color: a.color ?? '#444' }}>
+                      <strong>Notes:</strong> {notes}
+                    </div>
+                  );
+                }
+                // Plain text anchor — render template with field substitution.
+                return renderAnchor(a.template ?? '', {
+                  prepared_by: preparedBy,
+                  quote_number: quoteNumber,
+                  quote_date: formatDateDDMMYYYY(quoteDate),
+                  valid_until: formatDateDDMMYYYY(validUntil),
+                  customer_company: customerCompany,
+                });
+              })();
 
-              {/* Notes */}
-              {notes && (
-                <div style={{ marginTop: 24, padding: '10px 12px', background: ACCENT_TINT_SOFT, borderLeft: `3px solid ${ACCENT}`, fontSize: '9pt', color: '#444' }}>
-                  <strong>Notes:</strong> {notes}
+              if (content === null) return null; // hide empty conditional anchors
+
+              return (
+                <div
+                  key={a.id}
+                  onClick={(e) => { e.stopPropagation(); if (designerMode) setSelectedAnchorId(a.id); }}
+                  onMouseDown={(e) => { if (interactive) startAnchorDrag(e, a); }}
+                  style={{
+                    position: 'absolute',
+                    left: a.x,
+                    top: a.y,
+                    width: a.width > 0 ? a.width : undefined,
+                    minHeight: 16,
+                    fontSize: isStructured ? undefined : `${a.fontSize ?? 11}pt`,
+                    fontWeight: a.fontWeight,
+                    fontStyle: a.fontStyle,
+                    textDecoration: a.textDecoration,
+                    textTransform: a.textTransform,
+                    textAlign: a.align,
+                    lineHeight: a.lineHeight ?? 1.4,
+                    color: isStructured ? undefined : (a.color ?? '#111'),
+                    letterSpacing: a.letterSpacing ? `${a.letterSpacing}px` : undefined,
+                    opacity: a.opacity ?? 1,
+                    cursor: interactive ? 'move' : 'default',
+                    outline,
+                    outlineOffset: 1,
+                    userSelect: designerMode ? 'none' : undefined,
+                  }}
+                >
+                  {content}
                 </div>
-              )}
-            </div>
+              );
+            })}
+          </div>
           </div>
         </div>
       </div>

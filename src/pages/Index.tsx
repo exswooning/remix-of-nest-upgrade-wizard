@@ -466,8 +466,12 @@ const Index = () => {
           <CardContent className="pt-6 space-y-6">
             {/* Top-level toggle: UCAP vs CGAP — glass-tabs strip with
                 glass-tab pills so the lava-lamp shows through. */}
-            <Tabs defaultValue="ucap" className="w-full">
+            <Tabs defaultValue="ttap" className="w-full">
               <TabsList className={`glass-tabs grid w-full ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'} mb-4`}>
+                <TabsTrigger value="ttap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
+                  <Sparkles className="w-5 h-5" />
+                  TTAP
+                </TabsTrigger>
                 <TabsTrigger value="ucap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
                   <Calculator className="w-5 h-5" />
                   UCAP
@@ -483,10 +487,6 @@ const Index = () => {
                 <TabsTrigger value="vrap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
                   <FileSpreadsheet className="w-5 h-5" />
                   VRAP
-                </TabsTrigger>
-                <TabsTrigger value="ttap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
-                  <Sparkles className="w-5 h-5" />
-                  TTAP
                 </TabsTrigger>
                 <TabsTrigger value="database" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
                   <Database className="w-5 h-5" />

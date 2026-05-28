@@ -31,9 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PDFDocument } from 'pdf-lib';
 import { cn } from '@/lib/utils';
 
-// VRAP uses violet so it reads distinct from RfP's emerald accent even though
-// the underlying tab is a structural clone.
-const ACCENT = '#A78BFA';
+const ACCENT = '#0F766E';  // brand teal
 
 const formatNPR = (n: number) =>
   `NRs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;

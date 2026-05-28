@@ -9,7 +9,7 @@ import { getTodayISO } from '@/utils/cgapAutoFill';
 import { searchSections, type ContractSection } from '@/utils/contractSections';
 import { useContractLookup } from '@/hooks/useContractLookup';
 
-const ACCENT = '#A78BFA';
+const ACCENT = '#0F766E';  // brand teal
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
 
 interface ChangeRow { clause: string; original: string; replacement: string; }

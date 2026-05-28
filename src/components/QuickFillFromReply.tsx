@@ -31,7 +31,7 @@ interface Props {
   title?: string;
 }
 
-const DEFAULT_ACCENT = "#1E40AF";
+const DEFAULT_ACCENT = "#0F766E";  // brand teal-700
 
 const DEFAULT_PLACEHOLDER = `Paste the customer's reply here. Recognised labels:
 

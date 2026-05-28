@@ -1,0 +1,24 @@
+# Render.com "Infrastructure as Code" descriptor — drop this in the
+# repo root (or change `rootDir` below) and use Render's "New from
+# render.yaml" deploy flow to get the service up without click-ops.
+#
+# Free tier sleeps after 15 min of inactivity. Pair this with a
+# cron-job.org keepalive ping every 14 min against /healthz to avoid
+# cold-start latency on the first real lookup of the day.
+services:
+  - type: web
+    name: pan-puppeteer
+    runtime: node
+    plan: free
+    rootDir: scripts/pan-puppeteer-render
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      # Recommended: set ACCESS_KEY to a random string in Render's
+      # dashboard. Callers must then pass `?key=<value>` matching.
+      # - key: ACCESS_KEY
+      #   sync: false

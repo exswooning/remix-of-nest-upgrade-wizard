@@ -11,6 +11,7 @@ import { lazy, Suspense, useEffect } from "react";
 
 const Index = lazy(() => import("./pages/Index"));
 const CGAPApp = lazy(() => import("./pages/CGAP/CGAPApp"));
+const ContractEditorPage = lazy(() => import("./pages/ContractEditorPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const AppContent = () => {
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/cgap" element={<CGAPApp />} />
+          <Route path="/cgap/contract-editor" element={<ContractEditorPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -10,8 +10,8 @@ import { logActivity } from '@/utils/activityLog';
 import QuickFillFromReply from '@/components/QuickFillFromReply';
 import jsPDF from 'jspdf';
 
-// Brand blue — matches QGAP/CGAP recolour from 1210f4c.
-const ACCENT = '#1E40AF';
+// Brand teal — unified across all CGAP tabs (palette refresh).
+const ACCENT = '#0F766E';
 
 interface MouFormValues {
   mou_id: string;

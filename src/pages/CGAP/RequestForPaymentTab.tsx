@@ -28,7 +28,7 @@ import { freshDefaultAnchors, renderAnchor, type FieldAnchor } from '@/utils/rfp
 import { loadLayout, saveLayout } from '@/utils/rfpLayout';
 import { cn } from '@/lib/utils';
 
-const ACCENT = '#10B981';
+const ACCENT = '#0F766E';  // brand teal
 
 const formatNPR = (n: number) =>
   `NRs. ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
