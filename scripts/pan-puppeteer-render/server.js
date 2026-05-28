@@ -93,8 +93,41 @@ app.get('/lookup', async (req, res) => {
     page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36');
     await page.setViewport({ width: 1280, height: 800 });
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+    });
+
+    // Stealth — hide the standard puppeteer fingerprint so IRD's reCAPTCHA
+    // v3 doesn't score us as 0.0 (bot) and refuse to return data.
+    //
+    // `navigator.webdriver = true` is the biggest tell; reCAPTCHA reads it
+    // directly. Also patch plugins / languages / chrome.runtime which the
+    // reCAPTCHA fingerprinter checks. Applied via `evaluateOnNewDocument`
+    // so it runs before any page script.
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [{ name: 'Chrome PDF Plugin' }, { name: 'Chrome PDF Viewer' }, { name: 'Native Client' }],
+      });
+      // window.chrome must look populated (real Chrome has a runtime API).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window).chrome = { runtime: {}, loadTimes: () => ({}), csi: () => ({}) };
+      // Patch permissions.query so Notification permission lookups don't
+      // return the headless-typical "denied".
+      const origQuery = window.navigator.permissions?.query?.bind(window.navigator.permissions);
+      if (origQuery) {
+        window.navigator.permissions.query = (params) =>
+          params.name === 'notifications'
+            ? Promise.resolve({ state: Notification.permission })
+            : origQuery(params);
+      }
+    });
 
     // Block heavy resources we don't need — speeds lookups significantly.
+    // Don't block scripts — IRD's reCAPTCHA + their app JS both come from
+    // various CDNs. Don't block xhr/fetch either, that's where the actual
+    // PAN data comes from.
     await page.setRequestInterception(true);
     page.on('request', (r) => {
       const t = r.resourceType();
@@ -114,9 +147,30 @@ app.get('/lookup', async (req, res) => {
 
     // Wait for IRD's result table to render (after JS runs + reCAPTCHA
     // + API call). This is the real signal that data is available.
-    await page.waitForSelector('table.table-bordered tbody tr', {
-      timeout: SELECTOR_TIMEOUT_MS,
-    });
+    // If the table never appears we capture the page text so the caller
+    // can see what IRD actually rendered (captcha error, empty form,
+    // alert toast, etc.) instead of just "timeout".
+    try {
+      await page.waitForSelector('table.table-bordered tbody tr', {
+        timeout: SELECTOR_TIMEOUT_MS,
+      });
+    } catch (waitErr) {
+      const pageInfo = await page.evaluate(() => ({
+        title: document.title,
+        bodyText: document.body?.innerText?.slice(0, 1000) ?? '',
+        hasTable: !!document.querySelector('table.table-bordered'),
+        alertText: Array.from(document.querySelectorAll('.alert, .error, .invalid-feedback, [role="alert"]'))
+          .map((el) => el.textContent?.trim())
+          .filter(Boolean)
+          .slice(0, 5),
+      })).catch(() => null);
+      return res.status(504).json({
+        error: 'Result table never rendered — likely reCAPTCHA blocked the API call',
+        diagnostic: pageInfo,
+        ms: Date.now() - t0,
+        underlying: waitErr.message,
+      });
+    }
 
     // Extract every table row across every result table on the page.
     // Each row is a <th>label</th><td>value</td> pair.
