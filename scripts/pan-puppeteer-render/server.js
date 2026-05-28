@@ -43,16 +43,35 @@ async function getBrowser() {
     try { const b = await browserPromise; if (b.isConnected()) return b; } catch {}
     browserPromise = null;
   }
-  // `chromium.args` already includes --no-sandbox, --disable-dev-shm-usage,
-  // and other tuning for low-RAM serverless. We append a couple extras for
-  // fitting in Render's 512 MB free tier.
-  browserPromise = puppeteer.launch({
-    args: [...chromium.args, '--single-process', '--no-zygote'],
+  // Use the args / headless config exactly as @sparticuz/chromium ships them.
+  // Their README warns NOT to add --single-process or --no-zygote — those
+  // conflict with how the package wires up Chrome's spawn pathway and cause
+  // `spawn ETXTBSY` on launch. The default args already include all the
+  // sandbox / dev-shm / GPU tuning we need for low-RAM Linux containers.
+  //
+  // Retry once on ETXTBSY: the package decompresses the binary lazily on
+  // first call to `executablePath()`, and on rare cold-starts the file can
+  // still be opened-for-write when we try to spawn. A 500 ms backoff is
+  // enough for the FS to settle.
+  const launch = async () => puppeteer.launch({
+    args: chromium.args,
     defaultViewport: chromium.defaultViewport,
     executablePath: await chromium.executablePath(),
     headless: chromium.headless,
   });
-  return browserPromise;
+
+  try {
+    browserPromise = launch();
+    return await browserPromise;
+  } catch (err) {
+    if (err && err.code === 'ETXTBSY') {
+      await new Promise((r) => setTimeout(r, 500));
+      browserPromise = launch();
+      return browserPromise;
+    }
+    browserPromise = null;
+    throw err;
+  }
 }
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, ts: Date.now() }));
