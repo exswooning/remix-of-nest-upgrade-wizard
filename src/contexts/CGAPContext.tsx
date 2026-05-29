@@ -32,6 +32,11 @@ interface CGAPContextType {
   setAddendumTemplateId: (id: string) => void;
   contractCounts: Record<string, number>;
   generateContractId: (abv: string) => string;
+  /** Read-only helper that returns the same ID `generateContractId(abv)`
+   *  would produce *next*, without incrementing the per-client counter.
+   *  Used to display a live Contract ID in the form before the user
+   *  actually commits to generating one. */
+  peekContractId: (abv: string) => string;
   generateAddendumId: (contractId: string) => string;
   addendumCounts: Record<string, number>;
   contractLogs: ContractLog[];
@@ -197,19 +202,30 @@ export const CGAPProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('cgap-addendum-template-id', id);
   };
 
-  const generateContractId = useCallback((abv: string) => {
+  /** Build the contract ID string from inputs only — no side effects.
+   *  Format: `{ABV}-NNBS-{YY}-{MM}-{DD}-{V}` (e.g. `YD-NNBS-26-05-27-1`).
+   *  The DD anchors the ID to its issue date so two contracts for the
+   *  same client in the same month don't collide on different days.
+   *  Reads `contractCounts` directly so the caller sees the next ID
+   *  that would be issued. */
+  const buildContractIdString = useCallback((abv: string, version?: number) => {
     const now = new Date();
     const dd = String(now.getDate()).padStart(2, '0');
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const yy = String(now.getFullYear()).slice(-2);
-    const key = abv.toUpperCase();
-    const count = (contractCounts[key] || 0) + 1;
-    setContractCounts(prev => {
-      const updated = { ...prev, [key]: count };
-      return updated;
-    });
-    return `${key}-NNBS-${dd}-${mm}-${yy}-${count}`;
+    const key = (abv || 'XXX').toUpperCase();
+    const v = version ?? (contractCounts[key] || 0) + 1;
+    return `${key}-NNBS-${yy}-${mm}-${dd}-${v}`;
   }, [contractCounts]);
+
+  const peekContractId = useCallback((abv: string) => buildContractIdString(abv), [buildContractIdString]);
+
+  const generateContractId = useCallback((abv: string) => {
+    const key = (abv || 'XXX').toUpperCase();
+    const count = (contractCounts[key] || 0) + 1;
+    setContractCounts(prev => ({ ...prev, [key]: count }));
+    return buildContractIdString(key, count);
+  }, [contractCounts, buildContractIdString]);
 
   const generateAddendumId = useCallback((contractId: string) => {
     const key = contractId;
@@ -231,7 +247,7 @@ export const CGAPProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isLoggedIn, login, logout,
       fieldMappings, setFieldMappings,
       addendumTemplateId, setAddendumTemplateId,
-      contractCounts, generateContractId,
+      contractCounts, generateContractId, peekContractId,
       addendumCounts, generateAddendumId,
       contractLogs, addContractLog,
       addendumLogs, addAddendumLog,

@@ -145,9 +145,11 @@ const SLATab: React.FC<SLATabProps> = ({ darkMode = false }) => {
   const [error, setError] = useState('');
 
   // Inline preview state — the same PDF the user would download, rendered
-  // in an iframe at the bottom of the tab. Built on demand to keep typing
-  // snappy; click "Refresh preview" any time after editing.
+  // in an iframe at the bottom of the tab. Auto-refreshes ~1.2 s after
+  // the last edit so users see a true print preview without clicking a
+  // button. Manual refresh remains available.
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewBuilding, setPreviewBuilding] = useState(false);
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   const card = `glass-card rounded-2xl p-5`;
@@ -193,8 +195,12 @@ const SLATab: React.FC<SLATabProps> = ({ darkMode = false }) => {
    *  mode='preview'  → produce a blob URL and stash it in `previewUrl`
    *  so the iframe at the bottom of the tab can show the PDF inline. */
   const handleGeneratePdf = async (mode: 'download' | 'preview' = 'download') => {
-    setError('');
-    if (!values.customer_name.trim()) { setError('Customer name required'); return; }
+    // For previews we let the build go through even with empty fields —
+    // tokens just render as blanks. Validation only applies to downloads.
+    if (mode === 'download') {
+      setError('');
+      if (!values.customer_name.trim()) { setError('Customer name required'); return; }
+    }
 
     // Unified deliver helper — same blob whether we're previewing or saving.
     const deliver = (bytes: ArrayBuffer | Uint8Array, name: string) => {
@@ -213,7 +219,8 @@ const SLATab: React.FC<SLATabProps> = ({ darkMode = false }) => {
       }
     };
 
-    setGenerating(true);
+    if (mode === 'preview') setPreviewBuilding(true);
+    else setGenerating(true);
     try {
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageW = pdf.internal.pageSize.getWidth();
@@ -701,11 +708,26 @@ const SLATab: React.FC<SLATabProps> = ({ darkMode = false }) => {
       if (mode === 'download') setDone(true);
       setTimeout(() => setDone(false), 3000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to generate PDF');
+      // Swallow preview errors silently — only surface manual download failures.
+      if (mode === 'download') setError(e instanceof Error ? e.message : 'Failed to generate PDF');
+      else console.warn('SLA preview build failed:', e);
     } finally {
-      setGenerating(false);
+      if (mode === 'preview') setPreviewBuilding(false);
+      else setGenerating(false);
     }
   };
+
+  // Auto-build the preview on mount + whenever the user edits anything
+  // that affects the document. Hard debounce (1.2 s) — TipTap fires
+  // onChange on every keystroke and the jsPDF generator is heavy.
+  useEffect(() => {
+    const t = setTimeout(() => { handleGeneratePdf('preview').catch(() => { /* already logged */ }); }, 1200);
+    return () => clearTimeout(t);
+    // We watch the inputs that materially change the rendered PDF.
+    // handleGeneratePdf is defined inside the component so it's deliberately
+    // omitted — the timeout always reads the latest reference at fire time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, sections, proformaNumber, proformaDate, proformaDueDate, lineDescription, lineQty, lineUnitPrice, periodStart, periodEnd, vatPct, proformaStatus, proformaBuffer]);
 
   return (
     <div className="space-y-5">
@@ -1105,18 +1127,32 @@ const SLATab: React.FC<SLATabProps> = ({ darkMode = false }) => {
         </div>
       </div>
 
-      {/* Inline preview — same multi-page PDF the download button produces */}
-      {previewUrl && (
-        <div className={card}>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold flex items-center gap-2"><Eye className="w-4 h-4" /> Live preview</h3>
-            <Button variant="ghost" size="sm" onClick={() => setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; })}>
-              <X className="w-3.5 h-3.5 mr-1" /> Close
-            </Button>
-          </div>
-          <iframe src={previewUrl} title="SLA preview" className="w-full rounded-lg border border-border bg-white" style={{ height: '900px' }} />
+      {/* Print preview — auto-refreshes ~1.2 s after each edit. The
+          downloaded PDF is identical to what's shown here. */}
+      <div className={card}>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <Eye className="w-4 h-4" /> Print preview
+            {previewBuilding && (
+              <Badge variant="outline" className="text-[10px] h-5 gap-1.5 ml-2">
+                <Loader2 className="w-3 h-3 animate-spin" /> Rebuilding…
+              </Badge>
+            )}
+          </h3>
+          <Button variant="outline" size="sm" onClick={() => handleGeneratePdf('preview')} disabled={previewBuilding} className="gap-1.5">
+            <Eye className="w-3.5 h-3.5" /> Refresh now
+          </Button>
         </div>
-      )}
+        {previewUrl ? (
+          <iframe src={previewUrl} title="SLA preview" className="w-full rounded-lg border border-border bg-white" style={{ height: '900px' }} />
+        ) : (
+          <div className="w-full rounded-lg border border-dashed border-border bg-white/50 flex items-center justify-center" style={{ height: '900px' }}>
+            <span className={`text-xs flex items-center gap-2 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+              <Loader2 className="w-4 h-4 animate-spin" /> Building first preview…
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

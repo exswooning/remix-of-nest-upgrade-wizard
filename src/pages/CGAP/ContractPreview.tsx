@@ -17,9 +17,9 @@
  * source of truth; this is the WYSIWYG confirmation.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ZoomIn, ZoomOut, Maximize2, Minimize2, X } from 'lucide-react';
+import { Loader2, ZoomIn, ZoomOut, Maximize2, Minimize2, X, Move, Lock, Unlock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveLetterhead } from '@/utils/templateAssignments';
 import { type LetterheadConfig } from '@/utils/letterheadTemplate';
@@ -28,6 +28,12 @@ import {
   fillContractTokens,
   type ContractStructureSection,
 } from '@/utils/contractStructure';
+import {
+  loadContractAnchors,
+  saveContractAnchors,
+  updateAnchorById,
+  type ContractAnchor,
+} from '@/utils/contractAnchors';
 
 interface Props {
   fields: ContractFields;
@@ -43,6 +49,12 @@ interface Props {
    *  template. The page chrome (letterhead, running header, footer)
    *  stays the same — only the body content swaps. */
   editedHtml?: string | null;
+  /** QR code data URL to display in top right corner. */
+  qrCodeDataUrl?: string;
+  /** Designer mode toggle - allows dragging QR code */
+  designerMode?: boolean;
+  /** Callback when anchors change */
+  onAnchorsChange?: (anchors: ContractAnchor[]) => void;
 }
 
 const PAGE_PX = { w: 794, h: 1123 };
@@ -65,13 +77,96 @@ const estimateSectionHeightMm = (s: ContractStructureSection): number => {
 };
 
 const ContractPreview: React.FC<Props> = ({
-  fields, sections, darkMode = false, useLetterhead = true, editedHtml = null,
+  fields, sections, darkMode = false, useLetterhead = true, editedHtml = null, qrCodeDataUrl = null,
+  designerMode = false, onAnchorsChange,
 }) => {
   const dm = darkMode;
   const [letterhead, setLetterhead] = useState<LetterheadConfig | null>(null);
   const [letterheadLoading, setLetterheadLoading] = useState(true);
+  const [anchors, setAnchors] = useState<ContractAnchor[]>(() => loadContractAnchors());
+  const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
+  const [draggingAnchor, setDraggingAnchor] = useState<{
+    id: string; startMouseX: number; startMouseY: number; origX: number; origY: number;
+  } | null>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
   const [pageScale, setPageScale] = useState(0.85);
   const [fullscreen, setFullscreen] = useState(false);
+
+  // Persist anchors when they change
+  useEffect(() => {
+    saveContractAnchors(anchors);
+    onAnchorsChange?.(anchors);
+  }, [anchors, onAnchorsChange]);
+
+  // Reload anchors when custom event is dispatched
+  useEffect(() => {
+    const handler = () => {
+      setAnchors(loadContractAnchors());
+    };
+    window.addEventListener('contract-anchors-update', handler);
+    return () => window.removeEventListener('contract-anchors-update', handler);
+  }, []);
+
+  // Auto-select first anchor when designer mode turns on
+  useEffect(() => {
+    if (designerMode && !selectedAnchorId && anchors.length > 0) {
+      setSelectedAnchorId(anchors[0].id);
+    }
+  }, [designerMode, selectedAnchorId, anchors]);
+
+  // Handle drag start
+  const handleDragStart = useCallback((e: React.MouseEvent, anchorId: string) => {
+    if (!designerMode) return;
+    const anchor = anchors.find((a) => a.id === anchorId);
+    if (!anchor) return;
+    setDraggingAnchor({
+      id: anchorId,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      origX: anchor.x,
+      origY: anchor.y,
+    });
+    setSelectedAnchorId(anchorId);
+  }, [designerMode, anchors]);
+
+  // Handle delete anchor
+  const handleDeleteAnchor = useCallback((anchorId: string) => {
+    setAnchors((prev) => prev.filter((a) => a.id !== anchorId));
+    setSelectedAnchorId(null);
+  }, []);
+
+  // Handle drag move
+  const handleDragMove = useCallback((e: MouseEvent) => {
+    if (!draggingAnchor) return;
+    
+    const anchor = anchors.find((a) => a.id === draggingAnchor.id);
+    if (!anchor) return;
+    
+    // Calculate movement in mm
+    const dx = (e.clientX - draggingAnchor.startMouseX) / PX_PER_MM / pageScale;
+    const dy = (e.clientY - draggingAnchor.startMouseY) / PX_PER_MM / pageScale;
+    
+    const newX = Math.max(0, Math.min(210 - (anchor.width || 30), draggingAnchor.origX + dx));
+    const newY = Math.max(0, Math.min(297 - (anchor.height || 30), draggingAnchor.origY + dy));
+    
+    setAnchors((prev) => updateAnchorById(prev, draggingAnchor.id, { x: newX, y: newY }));
+  }, [draggingAnchor, pageScale, anchors]);
+
+  // Handle drag end
+  const handleDragEnd = useCallback(() => {
+    setDraggingAnchor(null);
+  }, []);
+
+  useEffect(() => {
+    if (draggingAnchor) {
+      window.addEventListener('mousemove', handleDragMove);
+      window.addEventListener('mouseup', handleDragEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleDragMove);
+        window.removeEventListener('mouseup', handleDragEnd);
+      };
+    }
+  }, [draggingAnchor, handleDragMove, handleDragEnd]);
 
   useEffect(() => {
     if (!useLetterhead) {
@@ -114,7 +209,7 @@ const ContractPreview: React.FC<Props> = ({
 
   // ── Page chrome ────────────────────────────────────────────────────
   const Page: React.FC<{ index: number; children: React.ReactNode }> = ({ index, children }) => (
-    <div style={{
+    <div ref={index === 0 ? pageRef : null} style={{
       width: PAGE_PX.w * pageScale,
       height: PAGE_PX.h * pageScale,
       position: 'relative',
@@ -132,12 +227,162 @@ const ContractPreview: React.FC<Props> = ({
         fontFamily: '"Times New Roman", Times, serif',
         color: '#111',
       }}>
+        {/* Ruler and guides overlay in designer mode */}
+        {designerMode && (
+          <>
+            {/* Horizontal ruler */}
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '20px',
+              backgroundColor: 'rgba(15, 118, 110, 0.05)',
+              borderBottom: '1px solid rgba(15, 118, 110, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              fontSize: '8px',
+              color: '#0F766E',
+              zIndex: 50,
+            }}>
+              {Array.from({ length: 21 }, (_, i) => (
+                <div key={i} style={{
+                  position: 'absolute',
+                  left: `${i * 10}mm`,
+                  top: 0,
+                  bottom: 0,
+                  width: '1px',
+                  backgroundColor: 'rgba(15, 118, 110, 0.5)',
+                }}>
+                  <span style={{
+                    position: 'absolute',
+                    left: '2px',
+                    top: '2px',
+                  }}>{i * 10}</span>
+                </div>
+              ))}
+            </div>
+            {/* Vertical ruler */}
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: '20px',
+              backgroundColor: 'rgba(15, 118, 110, 0.05)',
+              borderRight: '1px solid rgba(15, 118, 110, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              fontSize: '8px',
+              color: '#0F766E',
+              zIndex: 50,
+            }}>
+              {Array.from({ length: 30 }, (_, i) => (
+                <div key={i} style={{
+                  position: 'absolute',
+                  top: `${i * 10}mm`,
+                  left: 0,
+                  right: 0,
+                  height: '1px',
+                  backgroundColor: 'rgba(15, 118, 110, 0.5)',
+                }}>
+                  <span style={{
+                    position: 'absolute',
+                    top: '2px',
+                    left: '2px',
+                  }}>{i * 10}</span>
+                </div>
+              ))}
+            </div>
+            {/* Grid guides */}
+            <div style={{
+              position: 'absolute',
+              top: '20px',
+              left: '20px',
+              right: 0,
+              bottom: 0,
+              backgroundImage: `
+                linear-gradient(rgba(15, 118, 110, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(15, 118, 110, 0.05) 1px, transparent 1px)
+              `,
+              backgroundSize: '10mm 10mm',
+              zIndex: 1,
+            }} />
+          </>
+        )}
+        {/* QR Code - positioned using anchors */}
+        {qrCodeDataUrl && anchors.map((anchor) => {
+          if (anchor.kind !== 'qr') return null;
+          // Apply anchor to all pages if page is 0, or if it matches current page
+          if (anchor.page !== 0 && anchor.page !== index + 1) return null;
+          const isSelected = selectedAnchorId === anchor.id;
+          return (
+            <div
+              key={`${anchor.id}-${index}`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDragStart(e, anchor.id);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (designerMode) {
+                  handleDeleteAnchor(anchor.id);
+                }
+              }}
+              style={{
+                position: 'absolute',
+                left: `${anchor.x}mm`,
+                top: `${anchor.y}mm`,
+                width: `${anchor.width || 30}mm`,
+                height: `${anchor.height || 30}mm`,
+                cursor: designerMode ? 'move' : 'default',
+                border: designerMode ? (isSelected ? '3px solid #0F766E' : '2px dashed #0F766E') : 'none',
+                backgroundColor: designerMode ? 'rgba(15, 118, 110, 0.1)' : 'transparent',
+                zIndex: designerMode ? 100 : 1,
+              }}
+            >
+              <img src={qrCodeDataUrl} alt="Contract QR" style={{ width: '100%', height: '100%', pointerEvents: 'none' }} />
+              {designerMode && isSelected && (
+                <div
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleDeleteAnchor(anchor.id);
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: '-12px',
+                    right: '-12px',
+                    width: '24px',
+                    height: '24px',
+                    backgroundColor: '#ef4444',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'white',
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    zIndex: 200,
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                  }}
+                  title="Delete QR code"
+                >
+                  ×
+                </div>
+              )}
+            </div>
+          );
+        })}
         {/* Running header */}
         <div style={{
           position: 'absolute', top: 36, left: 0, right: 0,
           padding: `0 ${22 * PX_PER_MM}px`,
           display: 'flex', justifyContent: 'space-between',
           fontSize: '10pt', fontWeight: 700,
+          fontFamily: '"Times New Roman", Times, serif',
         }}>
           <span>{fields.contract_id || ''}</span>
           <span style={{ position: 'absolute', left: 0, right: 0, textAlign: 'center' }}>CONTRACT AGREEMENT</span>
@@ -152,6 +397,7 @@ const ContractPreview: React.FC<Props> = ({
           bottom: 28 * PX_PER_MM,
           fontSize: '10.5pt',
           lineHeight: 1.4,
+          fontFamily: '"Times New Roman", Times, serif',
         }}>
           {children}
         </div>
@@ -159,6 +405,7 @@ const ContractPreview: React.FC<Props> = ({
         <div style={{
           position: 'absolute', bottom: 22, right: 22 * PX_PER_MM,
           fontSize: '10pt',
+          fontFamily: '"Times New Roman", Times, serif',
         }}>
           Page <strong>{index + 1}</strong> of <strong>{totalPages}</strong>
         </div>
@@ -177,7 +424,7 @@ const ContractPreview: React.FC<Props> = ({
     if (s.special === 'annex_b_cost_table') {
       return (
         <div key={key} style={{ margin: '0 0 12pt' }}>
-          <h2 style={{ textAlign: 'center', fontSize: '13pt', fontWeight: 700, margin: '0 0 10pt' }}>
+          <h2 style={{ textAlign: 'center', fontSize: '13pt', fontWeight: 700, margin: '0 0 10pt', fontFamily: '"Times New Roman", Times, serif' }}>
             Annex B: Cost of Services
           </h2>
           <CostTablePreview items={fields.cost_items ?? []} />
@@ -187,9 +434,9 @@ const ContractPreview: React.FC<Props> = ({
     if (s.layout === 'annex') {
       return (
         <div key={key} style={{ margin: '0 0 12pt' }}>
-          <h2 style={{ textAlign: 'center', fontSize: '13pt', fontWeight: 700, margin: '0 0 6pt' }}>{s.heading}</h2>
+          <h2 style={{ textAlign: 'center', fontSize: '13pt', fontWeight: 700, margin: '0 0 6pt', fontFamily: '"Times New Roman", Times, serif' }}>{s.heading}</h2>
           {s.annexSubtitle && (
-            <h3 style={{ textAlign: 'center', fontSize: '11pt', fontWeight: 700, margin: '0 0 10pt' }}>
+            <h3 style={{ textAlign: 'center', fontSize: '11pt', fontWeight: 700, margin: '0 0 10pt', fontFamily: '"Times New Roman", Times, serif' }}>
               <span dangerouslySetInnerHTML={{ __html: fillContractTokens(s.annexSubtitle, fields).replace(/<[^>]+>/g, '') }} />
             </h3>
           )}
@@ -232,15 +479,17 @@ const ContractPreview: React.FC<Props> = ({
   // First page also includes the title block.
   const renderPageOneHeader = () => (
     <>
-      <h1 style={{
+      <h1 className="contract-title" style={{
         textAlign: 'center', fontSize: '14pt', fontWeight: 700,
         textTransform: 'uppercase', margin: '0 0 10pt',
+        fontFamily: '"Times New Roman", Times, serif',
       }}>
         CONTRACT AGREEMENT FOR {fields.product?.toUpperCase()} SERVICES
       </h1>
       <div style={{
         textAlign: 'center', fontSize: '13pt', fontWeight: 700,
         textDecoration: 'underline', margin: '0 0 16pt',
+        fontFamily: '"Times New Roman", Times, serif',
       }}>
         CONTRACT IDENTIFICATION No. {fields.contract_id || '—'}
       </div>
@@ -249,17 +498,39 @@ const ContractPreview: React.FC<Props> = ({
 
   return (
     <div className={cn(
-      'rounded-xl border overflow-hidden relative',
+      'rounded-xl border overflow-hidden relative contract-preview-wrapper contract-preview-container',
       dm ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-200',
       !fullscreen && '-mx-5 sm:-mx-8',
       fullscreen && 'fixed inset-0 z-50 rounded-none flex flex-col',
     )}>
-      <style>{`
+        <style>{`
+        /* Override global h1/h2/h3 styles for contract preview */
+        .contract-preview-wrapper h1,
+        .contract-preview-wrapper h2,
+        .contract-preview-wrapper h3 {
+          font-family: "Times New Roman", Times, serif !important;
+          letter-spacing: normal !important;
+        }
+        .contract-preview-wrapper h1.contract-title,
+        .contract-preview-wrapper h2,
+        .contract-preview-wrapper h3 {
+          font-family: "Times New Roman", Times, serif !important;
+          letter-spacing: normal !important;
+        }
+        /* Target elements with Times New Roman inline style */
+        h1[style*="Times New Roman"],
+        h2[style*="Times New Roman"],
+        h3[style*="Times New Roman"] {
+          font-family: "Times New Roman", Times, serif !important;
+          letter-spacing: normal !important;
+        }
+        .cgap-contract-body { font-family: "Times New Roman", Times, serif !important; }
         .cgap-contract-body p { margin: 0 0 6pt; text-align: justify; }
         .cgap-contract-body ul, .cgap-contract-body ol { margin: 4pt 0 6pt 18pt; padding-left: 0; }
         .cgap-contract-body li { margin: 0 0 3pt; }
         .cgap-contract-body strong { font-weight: 700; }
         .cgap-contract-body em { font-style: italic; }
+        .cgap-contract-body h1, .cgap-contract-body h2, .cgap-contract-body h3 { font-family: "Times New Roman", Times, serif !important; letter-spacing: normal !important; }
       `}</style>
       <div className={cn(
         'sticky top-0 z-20 flex flex-wrap items-center gap-2 px-3 py-1.5 border-b text-xs',
@@ -312,6 +583,7 @@ const ContractPreview: React.FC<Props> = ({
       >
         {editedHtml ? (
           <Page index={0}>
+            {renderPageOneHeader()}
             <div
               className="contract-edited-content cgap-contract-body"
               style={{ fontFamily: '"Times New Roman", Times, serif', fontSize: '11pt', lineHeight: 1.45 }}

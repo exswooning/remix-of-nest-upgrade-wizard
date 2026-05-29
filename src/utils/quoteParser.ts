@@ -3,6 +3,7 @@
  *    - "Label - value" (dash separator, with or without spaces)
  *    - "Label: value" (colon)
  *    - "Label = value"
+ *    - Tab-separated PAN/VAT detail format from IRD
  *  …and falls back to scanning anywhere in the text for an email, a
  *  numeric phone, or a "X users" hint. */
 
@@ -25,6 +26,18 @@ export interface ParsedQuoteRequest {
     categoryKey: string;
     planName: string;
     confidence: 'labelled' | 'scanned' | 'inferred';
+  };
+  /** PAN/VAT detail fields from IRD export format */
+  panDetails?: {
+    pan?: string;
+    nameEng?: string;
+    nameNep?: string;
+    address?: string;
+    ward?: string;
+    office?: string;
+    registrationDate?: string;
+    tradeNameEng?: string;
+    tradeNameNep?: string;
   };
   /** Anything that didn't match a known label — the parser surfaces these so
    *  the user can spot a missing/misnamed field before applying. */
@@ -71,6 +84,84 @@ const KNOWN_LABEL_RE = /^\s*(?:individual\s+)?(?:full\s*name|contact\s+person|na
 const PRODUCT_LABEL_RE = /^\s*(?:product(?:\s+required)?|plan|service|service\s+required)\s*[-:=]\s*(.+?)\s*$/im;
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Parse tab-separated PAN/VAT detail format from IRD export.
+ *  Format example:
+ *    PAN\t609828128
+ *    Name (Eng)\tNest Nepal Business Solutions
+ *    Name (Nep)\tनेस्ट नेपाल बिजनेस सलुसन्स
+ *    Address\tकागेश्वरी मनोहरा, नगरपालिका गोठाटार, विन्दवासिनि टोल
+ *    Ward\t9
+ *    Office\tआन्तरिक राजस्व कार्यालय कोटेश्वर
+ *    Effective Registration Date\t2077.06.27
+ *    Business Details
+ *    Trade Name (Eng)\tTrade Name (Nep)\tMain Business
+ *    Nest Nepal Business Solutions\tनेस्ट नेपाल बिजनेस सलुसन्स\tY
+ */
+function parsePanDetails(text: string): ParsedQuoteRequest['panDetails'] | null {
+  const lines = text.split('\n');
+  const panDetails: ParsedQuoteRequest['panDetails'] = {};
+  
+  // Check if this looks like a PAN export (starts with PAN\t)
+  const firstLine = lines[0]?.trim();
+  if (!firstLine?.startsWith('PAN\t')) return null;
+  
+  let inSection = false;
+  let sectionColumns: string[] = [];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    
+    // Check if this is a section header (no tab, all caps/title case)
+    if (!trimmed.includes('\t') && /^[A-Z][A-Za-z\s]+$/.test(trimmed)) {
+      inSection = true;
+      continue;
+    }
+    
+    const parts = trimmed.split('\t');
+    
+    // Section header row (columns)
+    if (inSection && parts.length > 1) {
+      sectionColumns = parts.map(p => p.trim());
+      inSection = false;
+      continue;
+    }
+    
+    // Data row in a section
+    if (sectionColumns.length > 0 && parts.length === sectionColumns.length) {
+      for (let i = 0; i < sectionColumns.length; i++) {
+        const col = sectionColumns[i].toLowerCase();
+        const val = parts[i]?.trim();
+        if (!val) continue;
+        
+        if (col.includes('trade name') && col.includes('(eng)')) {
+          panDetails.tradeNameEng = val;
+        } else if (col.includes('trade name') && col.includes('(nep)')) {
+          panDetails.tradeNameNep = val;
+        }
+      }
+      continue;
+    }
+    
+    // Simple key-value pairs
+    if (parts.length === 2) {
+      const key = parts[0].trim();
+      const val = parts[1].trim();
+      
+      if (key === 'PAN') panDetails.pan = val;
+      else if (key === 'Name (Eng)') panDetails.nameEng = val;
+      else if (key === 'Name (Nep)') panDetails.nameNep = val;
+      else if (key === 'Address') panDetails.address = val;
+      else if (key === 'Ward') panDetails.ward = val;
+      else if (key === 'Office') panDetails.office = val;
+      else if (key === 'Effective Registration Date') panDetails.registrationDate = val;
+    }
+  }
+  
+  // Only return if we found at least a PAN number
+  return panDetails.pan ? panDetails : null;
+}
 
 /** Match a WhatsApp chat export / paste line:
  *    [3:07 pm, 29/4/2026] Aryan from Nest Nepal: zoho people for 130 users
@@ -214,6 +305,15 @@ export function parseQuoteRequest(text: string, options?: { catalog?: PlanCatalo
   const wa = preprocessWhatsApp(raw);
   const norm = wa.cleanedText;
   const result: ParsedQuoteRequest = { unmatchedLines: [] };
+
+  // Try parsing PAN/VAT details first (tab-separated format)
+  const panData = parsePanDetails(norm);
+  if (panData) {
+    result.panDetails = panData;
+    // Map PAN fields to standard fields for compatibility
+    if (panData.nameEng) result.companyName = panData.nameEng;
+    if (panData.address) result.address = panData.address;
+  }
 
   // Seed customer-side info detected from WhatsApp before label scanning;
   // labelled lines in the body still override these.

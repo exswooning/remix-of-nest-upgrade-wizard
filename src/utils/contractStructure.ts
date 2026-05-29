@@ -250,7 +250,7 @@ function buildDefaultStructure(flavour: CategoryFlavour): ContractStructureSecti
       heading: 'Preamble',
       hideTitle: true,
       layout: 'fullWidth',
-      body_html: `<p>THIS CONTRACT (&ldquo;Contract&rdquo;) is entered into this {effective_date}, by and between <strong><em>{customer_name}</em></strong> (&ldquo;the Client&rdquo;) having its principal place of business at <strong><em>{customer_address}</em></strong> and <strong>NEST NEPAL BUSINESS SOLUTIONS PVT LTD</strong> (&ldquo;the Service Provider&rdquo;) having its principal office located at <strong>Kupandole, Lalitpur</strong>.</p>
+      body_html: `<p>THIS CONTRACT (&ldquo;Contract&rdquo;) is entered into this {effective_date}, by and between the <strong><em>{customer_name}</em></strong> <em>({customer_name_nepali})..</em> (&ldquo;the Client&rdquo;) having its principal place of business at <strong><em>{customer_address}</em></strong> <em>({customer_address_nepali})</em> and <strong><em>NEST NEPAL BUSINESS SOLUTIONS PVT LTD.</em></strong>(&ldquo;the Service Provider&rdquo;) having its principal office located at <strong><em>Kupandole, Lalitpur.</em></strong></p>
 <p>WHEREAS, the Client wishes to have the Service Provider performing/providing the services hereinafter referred to, and</p>
 <p>WHEREAS, the Service Provider is willing to perform/provide these services,</p>
 <p>NOW THEREFORE THE PARTIES hereby agree as follows:</p>`,
@@ -262,25 +262,26 @@ function buildDefaultStructure(flavour: CategoryFlavour): ContractStructureSecti
     },
     {
       id: 'terms', heading: 'Terms', numeral: '2.', layout: 'numbered',
-      body_html: `<p>A. The Service Provider shall provide the subscription services and technical support for a period of <strong><em>{service_term}</em></strong> commencing from the date of license activation. The contract covers the subscription period for <strong><em>{num_users}</em></strong> users. The renewal/modification/User addition of services shall be subject to a new agreement or an addendum to this contract or the current contract. Additional services that are to be provided under the current procurement are subject to their own Service Level Agreements and Scope of Service Agreements.</p>`,
+      body_html: `<p>A. The Service Provider shall provide the subscription services and technical support for a period of <strong><em>{service_term}</em></strong> commencing from the date of license activation. The contract covers the subscription period for <strong><em>{num_users}</em></strong> users including the periods of renewal. The modification/User addition of services shall be subject to a new agreement or an addendum/amendment to this contract or the current contract. The Client acknowledges that the subscription to the provided services is bound for the period of <strong><em>{service_term}</em></strong>. Additional services that are to be provided under the current procurement are subject to their own Service Level Agreements and Scope of Service Agreements.</p>`,
     },
     {
       id: 'payment', heading: 'Payment', numeral: '3.', layout: 'numbered',
       body_html: `<p><strong><u>A. Ceiling</u></strong></p>
-<p>For Services rendered pursuant to Annex A, the Client shall pay the Service Provider an amount not to exceed a ceiling of <strong><em>NRs. {amount}/-</em></strong> (In words: <strong><em>{amount_words}/-</em></strong>) including VAT as per the full payment. This amount has been established based on the understanding that it includes all of the Service Provider&rsquo;s costs and profits as well as any tax obligation.</p>
+<p>For Services rendered pursuant to Annex A, the Client shall pay the Service Provider an amount not to exceed a ceiling of <strong><em>NRs. {amount}/-</em></strong> (In words: <strong><em>{amount_words}/-</em></strong>) including VAT as per total charge within a total <strong><em>{service_term}</em></strong> of subscription. This amount has been established based on the understanding that it includes all of the Service Provider&rsquo;s costs and profits as well as any tax obligation.</p>
 <p><strong><u>B. Cost</u></strong></p>
 <p>The Client shall pay the Service Provider for Services rendered at the rate(s) in accordance with the rates agreed and specified in Annex B, <strong><em>&ldquo;Cost of Services&rdquo;</em></strong>.</p>
 <p><strong><u>C. Payment Conditions</u></strong></p>
-<p>The Client shall pay <strong><em>{payment_percent_words}</em></strong> <strong><em>of the total price</em></strong> of the subscription cost specified in Annex B preceding the activation of all licenses and handover of administrative credentials to the Client, verified by a &ldquo;Letter of Completion&rdquo; or &ldquo;Service Completion Report&rdquo; from the Client&rsquo;s IT section.</p>
-<p>Payments shall be made to Service Provider&rsquo;s bank account as mentioned below:</p>
-<p><strong>Bank Name:</strong> <strong><em>{bank_name}</em></strong></p>
-<p><strong>Account Name:</strong> <strong><em>{payee_name}</em></strong></p>
-<p><strong>Account Number:</strong> <strong><em>{bank_account}</em></strong></p>`,
+<p>The Client shall pay <strong><em>{payment_schedule}</em></strong>. After the successful activation of all licenses and handover of administrative credentials to the Client, verified by a &ldquo;Letter of Completion&rdquo; or &ldquo;Service Completion Report&rdquo; from the Client&rsquo;s IT section if no SCR is received an assumption of service delivery completion is to be made.</p>
+<p>Payments shall be made to Service Provider&rsquo;s bank account <em>as</em> mentioned below:</p>
+<p><strong><em>Bank Name: {bank_name}</em></strong></p>
+<p><strong><em>Account Name: {payee_name}</em></strong></p>
+<p><strong><em>Account Number: {bank_account}</em></strong></p>`,
     },
     {
       id: 'project_admin', heading: 'Project Administration', numeral: '4.', layout: 'numbered',
       body_html: `<p><strong><u>A. Coordinator</u></strong></p>
-<p>The Client designates <strong><em>{customer_attn}</em></strong> from <strong><em>{customer_name}</em></strong> as Client&rsquo;s Coordinator; the coordinator shall be responsible for the coordination of activities under the Contract, and for acceptance of the deliverables by the Client.</p>
+<p>The Client designates, <strong><em>{customer_attn}</em></strong> from <strong><em>{customer_name}</em></strong> <em>({customer_name_nepali})</em> with the contact information <strong><em>{customer_contact}</em></strong> as Client&rsquo;s Coordinator; the coordinator shall be responsible for the coordination of activities under the Contract, and for acceptance of the deliverables by the Client. In terms of this contract the service provider will assign an account manager responsible for all the service purchases and the client agrees to contact the designated account manager for all purchase related queries for itself and its sister companies and acknowledges that the client will contact the service provider for any and all services listed on the website of nestnepal.com and will provide the service provider a right of first refusal for all the internet enabled services that may need to be procured at any time within the validity of this contract.</p>
+<p>The service provider designates, <strong><em>{sp_coordinator_name}</em></strong> from <strong><em>NEST NEPAL BUSINESS SOLUTIONS PVT LTD.</em></strong> as the Service Provider&rsquo;s Coordinator with the contact information <strong><em>{sp_coordinator_contact}</em></strong>.</p>
 <p><strong><u>B. Records and Accounts</u></strong></p>
 <p>The Service Provider shall keep accurate and systematic records and accounts in respect of the Services, which will clearly identify all the charges and expenses. The modification of services will be subject to the current market rates and will be subject to mutual agreement.</p>`,
     },
@@ -316,7 +317,7 @@ function buildDefaultStructure(flavour: CategoryFlavour): ContractStructureSecti
     },
     {
       id: 'termination_procedure', heading: 'Procedure in case of termination of Contract before date of Expiry.', numeral: '12.', layout: 'numbered',
-      body_html: `<p>In the event of a failure to meet agreed service levels or determined termination of services from the end of the Service Provider, Nest Nepal agrees to refund the client with the total amount the client has paid for the affected service, calculated based on the remaining service credits from the disrupted service usage period. The refund will be processed in a manner whenever most effective determined by the service provider and other service related data and information of the client will be managed by the client and only if the client requests it assistance may be provided by the service provider. If the customer of their own will requests termination without cause such as disruption of service or a valid reason pertaining to the use of services such as billing or pricing negotiations no refund including the case of multiyear contracts.</p>`,
+      body_html: `<p>In the event of a failure to meet agreed service levels or determined termination of services from the end of the Service Provider, Nest Nepal agrees to refund the client with the total amount the client has paid for the affected service, calculated based on the remaining service credits/period from the disrupted service usage period. The refund will be processed in a manner whenever most effective determined by the service provider and other service related data and information of the client will be managed by the client and only if the client requests it assistance may be provided by the service provider. If the customer of their own will requests termination without mutual agreement aside from cause such as disruption of service or a valid reason pertaining to the use of services such as billing or pricing negotiations no refund including the case of multiyear contracts.</p>`,
     },
     {
       id: 'data_corruption', heading: 'Data Corruption', numeral: '13.', layout: 'numbered',
@@ -369,7 +370,7 @@ ${flavour.annexAScopeHtml}`,
       heading: 'Annex C: Relevant Documents',
       layout: 'annex',
       forcePageBreakBefore: true,
-      body_html: '<p>Duly Attached, Proforma Invoice Provided with the Agreement.</p>',
+      body_html: '<p><strong>Duly Attached, Financial Quotation Provided with the Agreement</strong></p>',
     },
   ];
 }

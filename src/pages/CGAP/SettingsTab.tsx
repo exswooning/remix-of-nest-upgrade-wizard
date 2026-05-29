@@ -5,6 +5,7 @@ import { Database, X, FileText, FileSpreadsheet, Save, Download, RotateCcw, Uplo
 import TemplateManager from '@/components/TemplateManager';
 import TemplateAssignmentsPanel from '@/components/TemplateAssignmentsPanel';
 import VrapCompanyManager from '@/components/VrapCompanyManager';
+import BankSlotManager from '@/components/BankSlotManager';
 import UserManagement from '@/components/UserManagement';
 import PriceManagement from '@/components/PriceManagement';
 import MathSettings from '@/components/MathSettings';
@@ -89,6 +90,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ darkMode = false }) => {
 
         <div className={`mt-6 pt-6 border-t ${dm ? 'border-gray-800' : 'border-gray-200'}`}>
           <VrapCompanyManager darkMode={dm} />
+        </div>
+
+        <div className={`mt-6 pt-6 border-t ${dm ? 'border-gray-800' : 'border-gray-200'}`}>
+          <BankSlotManager darkMode={dm} />
         </div>
       </div>
 

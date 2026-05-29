@@ -121,8 +121,12 @@
 
   /* Display type — Manrope for headings and brand labels. The body still
    * uses Inter; this rule only applies where the `font-display` utility (or
-   * a direct class) opts in, or to the explicit heading elements below. */
-  h1, h2, h3, .font-display {
+   * a direct class) opts in, or to the explicit heading elements below.
+   * Exclude contract preview wrapper to allow Times New Roman. */
+  h1:not(.contract-preview-wrapper h1):not(.contract-title),
+  h2:not(.contract-preview-wrapper h2),
+  h3:not(.contract-preview-wrapper h3),
+  .font-display {
     font-family: 'Manrope', 'Inter', system-ui, sans-serif;
     letter-spacing: -0.015em;
   }

@@ -31,6 +31,7 @@
 import jsPDF from 'jspdf';
 import { writeRichHtml } from './htmlToPdfText';
 import { fillContractTokens, type ContractStructureSection } from './contractStructure';
+import { loadContractAnchors, type ContractAnchor } from './contractAnchors';
 
 export interface CostLineItem {
   description: string;
@@ -528,6 +529,8 @@ export interface GenerateOptions {
    *  omitted, the PDF renders on a blank white page. Embedded once per
    *  PDF (via jsPDF alias dedupe) regardless of page count. */
   letterheadDataUrl?: string;
+  /** Base64 data URL of the QR code image to place in top right corner. */
+  qrCodeDataUrl?: string;
 }
 
 // ── Main generator ────────────────────────────────────────────────────
@@ -541,13 +544,35 @@ export function generateContractPdf(fields: ContractFields, options: GenerateOpt
     // 'letterhead' alias → jsPDF dedupes the image data across pages.
     pdf.addImage(options.letterheadDataUrl, 'PNG', 0, 0, PAGE.w, PAGE.h, 'letterhead', 'NONE');
   };
+  
+  const stampQRCode = (pageNum: number) => {
+    if (!options.qrCodeDataUrl) return;
+    
+    // Load anchor positions from localStorage
+    const anchors = loadContractAnchors();
+    
+    // Render all QR anchors for this page
+    anchors.forEach((anchor) => {
+      if (anchor.kind !== 'qr') return;
+      // Apply anchor to all pages if page is 0, or if it matches current page
+      if (anchor.page !== 0 && anchor.page !== pageNum) return;
+      
+      const qrSize = anchor.width || 30;
+      const qrX = anchor.x;
+      const qrY = anchor.y;
+      pdf.addImage(options.qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize, `contract-qr-${anchor.id}-${pageNum}`, 'NONE');
+    });
+  };
+  
   stampLetterhead();
+  stampQRCode(pageNum);
 
   const newPage = () => {
     pdf.addPage();
     pageNum++;
     y = M.top;
     stampLetterhead();
+    stampQRCode(pageNum);
   };
 
   const remaining = () => FOOTER_Y - 6 - y;
@@ -820,13 +845,35 @@ export function generateContractPdfFromStructure(
     if (!options.letterheadDataUrl) return;
     pdf.addImage(options.letterheadDataUrl, 'PNG', 0, 0, PAGE.w, PAGE.h, 'letterhead', 'NONE');
   };
+  
+  const stampQRCode = (pageNum: number) => {
+    if (!options.qrCodeDataUrl) return;
+    
+    // Load anchor positions from localStorage
+    const anchors = loadContractAnchors();
+    
+    // Render all QR anchors for this page
+    anchors.forEach((anchor) => {
+      if (anchor.kind !== 'qr') return;
+      // Apply anchor to all pages if page is 0, or if it matches current page
+      if (anchor.page !== 0 && anchor.page !== pageNum) return;
+      
+      const qrSize = anchor.width || 30;
+      const qrX = anchor.x;
+      const qrY = anchor.y;
+      pdf.addImage(options.qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize, `contract-qr-${anchor.id}-${pageNum}`, 'NONE');
+    });
+  };
+  
   stampLetterhead();
+  stampQRCode(pageNum);
 
   const newPage = () => {
     pdf.addPage();
     pageNum++;
     cursor.y = M.top;
     stampLetterhead();
+    stampQRCode(pageNum);
   };
 
   const remaining = () => FOOTER_Y - 6 - cursor.y;

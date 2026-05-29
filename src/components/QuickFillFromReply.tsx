@@ -170,6 +170,55 @@ const QuickFillFromReply: React.FC<Props> = ({
               </div>
             )}
           </div>
+          {parsed.panDetails && (
+            <div className="mt-3 pt-2 border-t border-gray-300/30">
+              <div className={`text-[10px] uppercase tracking-wider mb-2 ${dm ? "text-teal-400" : "text-teal-600"}`}>
+                PAN Details
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
+                {parsed.panDetails.pan && (
+                  <div>
+                    <strong className={dm ? "text-gray-300" : "text-gray-700"}>PAN:</strong> {parsed.panDetails.pan}
+                  </div>
+                )}
+                {parsed.panDetails.nameEng && (
+                  <div>
+                    <strong className={dm ? "text-gray-300" : "text-gray-700"}>Name (Eng):</strong> {parsed.panDetails.nameEng}
+                  </div>
+                )}
+                {parsed.panDetails.nameNep && (
+                  <div>
+                    <strong className={dm ? "text-gray-300" : "text-gray-700"}>Name (Nep):</strong> <span lang="ne">{parsed.panDetails.nameNep}</span>
+                  </div>
+                )}
+                {parsed.panDetails.tradeNameEng && (
+                  <div>
+                    <strong className={dm ? "text-gray-300" : "text-gray-700"}>Trade Name (Eng):</strong> {parsed.panDetails.tradeNameEng}
+                  </div>
+                )}
+                {parsed.panDetails.tradeNameNep && (
+                  <div>
+                    <strong className={dm ? "text-gray-300" : "text-gray-700"}>Trade Name (Nep):</strong> <span lang="ne">{parsed.panDetails.tradeNameNep}</span>
+                  </div>
+                )}
+                {parsed.panDetails.ward && (
+                  <div>
+                    <strong className={dm ? "text-gray-300" : "text-gray-700"}>Ward:</strong> {parsed.panDetails.ward}
+                  </div>
+                )}
+                {parsed.panDetails.office && (
+                  <div>
+                    <strong className={dm ? "text-gray-300" : "text-gray-700"}>Office:</strong> {parsed.panDetails.office}
+                  </div>
+                )}
+                {parsed.panDetails.registrationDate && (
+                  <div>
+                    <strong className={dm ? "text-gray-300" : "text-gray-700"}>Reg. Date:</strong> {parsed.panDetails.registrationDate}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {parsed.unmatchedLines.length > 0 && (
             <div className="mt-2 pt-2 border-t border-gray-300/30">
               <div className={`text-[10px] uppercase tracking-wider mb-1 ${dm ? "text-amber-400" : "text-amber-600"}`}>

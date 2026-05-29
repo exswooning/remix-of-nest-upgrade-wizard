@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useCGAP } from '@/contexts/CGAPContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ChevronsUpDown, Check, Package, Plus, Trash2, Eye, ArrowUp, ArrowDown, RotateCcw, ScissorsSquareDashedBottom, X } from 'lucide-react';
+import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ChevronsUpDown, Check, Package, Plus, Trash2, Eye, ArrowUp, ArrowDown, RotateCcw, ScissorsSquareDashedBottom, X, Move, QrCode, Printer } from 'lucide-react';
 import { numberToWords, periodToText, formatNepaliNumber, generateAbbreviation, getTodayISO } from '@/utils/cgapAutoFill';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -24,13 +24,15 @@ import {
 import SectionEditor from '@/components/SectionEditor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { logActivity } from '@/utils/activityLog';
+import { loadBankSlots, updateBankSlot, populateAllBankSlots, BANK_SLOTS, type BankSlot } from '@/utils/bankSlots';
 import { resolveLetterhead } from '@/utils/templateAssignments';
 import { Switch } from '@/components/ui/switch';
 import ContractPreview from './ContractPreview';
+import { loadContractAnchors, saveContractAnchors, type ContractAnchor } from '@/utils/contractAnchors';
 import ContractCustomTemplate from './ContractCustomTemplate';
-import PanVatLookup from '@/components/PanVatLookup';
 import QuickFillFromReply from '@/components/QuickFillFromReply';
 import { EDITED_HTML_KEY, FIELDS_SNAPSHOT_KEY } from '@/pages/ContractEditorPage';
+import { generateContractQR, storeContractMetadata, type ContractQRMetadata } from '@/utils/contractQR';
 import { PenLine, ExternalLink } from 'lucide-react';
 
 /** Fetch a letterhead image and return it as a Base64 PNG data URL so
@@ -83,7 +85,6 @@ const TEST_DATA: Record<string, string> = {
   bankName: 'Laxmi Sunrise Bank',
   payeeName: 'Nest Nepal Business Solution Pvt. Ltd.',
   bankAccount: '03211002193',
-  uptimePct: '99.9%',
 };
 
 const DEFAULT_NEW_FIELDS: Partial<Record<string, string>> = {
@@ -91,7 +92,6 @@ const DEFAULT_NEW_FIELDS: Partial<Record<string, string>> = {
   bankName: 'Laxmi Sunrise Bank',
   payeeName: 'Nest Nepal Business Solution Pvt. Ltd.',
   bankAccount: '03211002193',
-  uptimePct: '99.9%',
 };
 
 const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriod', 'companyAbv']);
@@ -99,17 +99,17 @@ const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriod', 'companyAbv']);
 interface ContractTabProps { darkMode?: boolean; }
 
 const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
-  const { fieldMappings, generateContractId, addContractLog } = useCGAP();
+  const { fieldMappings, generateContractId, peekContractId, addContractLog } = useCGAP();
   const { isAdmin, currentUsername, getPlanData } = useAuth();
   const { toast } = useToast();
   const [fields, setFields] = useState<Record<string, string>>(() => ({ ...DEFAULT_NEW_FIELDS } as Record<string, string>));
   const [costItems, setCostItems] = useState<CostLineItem[]>([{ description: '', qty: '1', unitPrice: '' }]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   // Letterhead toggle — applies to both the live preview and the PDF
-  // export. Defaults to ON so the document always looks branded; flip OFF
-  // for plain-A4 contracts that will be printed on pre-printed letterhead
-  // paper, or when you just want a clean copy.
-  const [useLetterhead, setUseLetterhead] = useState(true);
+  // export. Defaults to OFF so the document is plain A4 by default; flip ON
+  // to stamp the configured letterhead image on every page.
+  const [useLetterhead, setUseLetterhead] = useState(false);
   // Edited-mode: when the user has opened the standalone editor and made
   // changes, the editor writes HTML into localStorage. We mirror it here
   // so the preview can render it instead of the template.
@@ -118,12 +118,43 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [invoicePage, setInvoicePage] = useState('');
   const [generatedId, setGeneratedId] = useState('');
+  // Manual override of the auto-computed Contract ID. When this is
+  // non-null, the live ID display + previews + downloads all use this
+  // value instead of `peekContractId(abv)`. Useful when migrating an
+  // existing customer or matching a hand-written ID.
+  const [contractIdOverride, setContractIdOverride] = useState<string | null>(null);
   const [step, setStep] = useState(-1);
   const [done, setDone] = useState(false);
   const [isSigned, setIsSigned] = useState(false);
   const [productOpen, setProductOpen] = useState(false);
+  const [designerMode, setDesignerMode] = useState(false);
+  const [newQrPage, setNewQrPage] = useState('1');
   const [selectedProduct, setSelectedProduct] = useState('');
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [showCustomTemplate, setShowCustomTemplate] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // ─── Bank slots (similar to VRAP issuing company slots) ───────────────
+  const [bankSlots, setBankSlots] = useState<ReturnType<typeof loadBankSlots>>(() => {
+    const slots = loadBankSlots();
+    // If slots are empty, populate with pre-configured data
+    if (!slots[0]?.bankName) {
+      return populateAllBankSlots();
+    }
+    return slots;
+  });
+  const [selectedBankSlots, setSelectedBankSlots] = useState<BankSlot[]>(['A']);
+
+  useEffect(() => {
+    const handler = () => setBankSlots(loadBankSlots());
+    window.addEventListener('cgap-bank-slots-update', handler);
+    return () => window.removeEventListener('cgap-bank-slots-update', handler);
+  }, []);
+
+  const selectedBankConfigs = useMemo(
+    () => bankSlots.filter((c) => selectedBankSlots.includes(c.slot)),
+    [bankSlots, selectedBankSlots],
+  );
 
   // ── Section structure (SLA-style, per UCAP category) ──────────────
   // Admins can reorder, add, edit, and page-break each contract clause.
@@ -223,8 +254,17 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
 
   // Auto-fill companyAbv from clientCompanyName
   useEffect(() => {
-    const abv = generateAbbreviation(fields.clientCompanyName || '');
-    setFields(prev => ({ ...prev, companyAbv: abv }));
+    const name = fields.clientCompanyName || '';
+    // Check if company name has brackets like "Nest Nepal (NNBS)"
+    const bracketMatch = name.match(/\(([^)]+)\)$/);
+    if (bracketMatch) {
+      // Extract abbreviation from brackets
+      setFields(prev => ({ ...prev, companyAbv: bracketMatch[1] }));
+    } else {
+      // Use the default abbreviation generator
+      const abv = generateAbbreviation(name);
+      setFields(prev => ({ ...prev, companyAbv: abv }));
+    }
   }, [fields.clientCompanyName]);
 
   // Auto-fill paymentWords when paymentAmount changes
@@ -318,42 +358,104 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
 
   // Single source of truth for the field bag — used by both the live preview
   // and the PDF download so the two never drift.
-  const contractFieldBag: ContractFields = useMemo(() => ({
-    contract_id: generatedId || '',
-    effective_date: fields.effectiveDate || getTodayISO(),
-    customer_name: fields.clientCompanyName || '',
-    customer_name_nepali: fields.clientCompanyNameNepali || '',
-    customer_address: fields.clientLocation || '',
-    customer_address_nepali: fields.clientLocationNepali || '',
-    customer_attn: fields.clientCoordinator || '',
-    product: selectedProduct || 'Google Workspace — Business Starter',
-    service_term: fields.contractPeriod || `${fields.contractPeriodNum || ''} months`,
-    num_users: fields.numUsers || '',
-    amount: fields.paymentAmount || '',
-    amount_words: fields.paymentWords || '',
-    advance_percent: fields.advancePercent || '100',
-    uptime_pct: fields.uptimePct || '99.9%',
-    bank_name: fields.bankName || '',
-    payee_name: fields.payeeName || '',
-    bank_account: fields.bankAccount || '',
-    signatory_name: fields.signatoryName || '',
-    signatory_title: fields.signatoryTitle || '',
-    witness_name: fields.witnessName || '',
-    witness_designation: fields.witnessDesignation || '',
-    sp_signatory_name: fields.spSignatoryName || '',
-    sp_signatory_title: fields.spSignatoryTitle || '',
-    sp_witness_name: fields.spWitnessName || '',
-    sp_witness_designation: fields.spWitnessDesignation || '',
-    cost_items: costItems,
-  }), [fields, selectedProduct, generatedId, costItems]);
+  // Live contract ID — the value that appears in the preview / on the
+  // downloaded PDF. Resolution order: explicit user override (when set)
+  // → the most recently committed `generatedId` (post-download) →
+  // `peekContractId` based on the current company abbreviation. The peek
+  // path is side-effect-free so re-renders don't burn through counter
+  // numbers.
+  const liveContractId = useMemo(() => {
+    if (contractIdOverride && contractIdOverride.trim()) return contractIdOverride.trim();
+    if (generatedId) return generatedId;
+    return peekContractId(fields.companyAbv || 'XXX');
+  }, [contractIdOverride, generatedId, fields.companyAbv, peekContractId]);
+
+  const contractFieldBag: ContractFields = useMemo(() => {
+    // Handle multiple selections
+    const selectedBanks = bankSlots.filter(s => selectedBankSlots.includes(s.slot));
+    if (selectedBanks.length === 1) {
+      const bank = selectedBanks[0];
+      return {
+        contract_id: liveContractId,
+        effective_date: fields.effectiveDate || getTodayISO(),
+        customer_name: fields.clientCompanyName || '',
+        customer_name_nepali: fields.clientCompanyNameNepali || '',
+        customer_address: fields.clientLocation || '',
+        customer_address_nepali: fields.clientLocationNepali || '',
+        customer_attn: fields.clientCoordinator || '',
+        product: selectedProduct || 'Google Workspace — Business Starter',
+        service_term: fields.contractPeriod || `${fields.contractPeriodNum || ''} months`,
+        num_users: fields.numUsers || '',
+        amount: fields.paymentAmount || '',
+        amount_words: fields.paymentWords || '',
+        advance_percent: fields.advancePercent || '100',
+        uptime_pct: fields.uptimePct || '99.9%',
+        bank_name: bank.bankName || fields.bankName || '',
+        payee_name: bank.accountName || fields.payeeName || '',
+        bank_account: bank.accountNumber || fields.bankAccount || '',
+        bank_branch: bank.branch || '',
+        include_qr_code: bank.includeQrCode || false,
+        signatory_name: fields.signatoryName || '',
+        signatory_title: fields.signatoryTitle || '',
+        witness_name: fields.witnessName || '',
+        witness_designation: fields.witnessDesignation || '',
+        sp_signatory_name: fields.spSignatoryName || '',
+        sp_signatory_title: fields.spSignatoryTitle || '',
+        sp_witness_name: fields.spWitnessName || '',
+        sp_witness_designation: fields.spWitnessDesignation || '',
+        cost_items: costItems,
+      };
+    }
+    // Multiple selections - combine all
+    return {
+      contract_id: liveContractId,
+      effective_date: fields.effectiveDate || getTodayISO(),
+      customer_name: fields.clientCompanyName || '',
+      customer_name_nepali: fields.clientCompanyNameNepali || '',
+      customer_address: fields.clientLocation || '',
+      customer_address_nepali: fields.clientLocationNepali || '',
+      customer_attn: fields.clientCoordinator || '',
+      product: selectedProduct || 'Google Workspace — Business Starter',
+      service_term: fields.contractPeriod || `${fields.contractPeriodNum || ''} months`,
+      num_users: fields.numUsers || '',
+      amount: fields.paymentAmount || '',
+      amount_words: fields.paymentWords || '',
+      advance_percent: fields.advancePercent || '100',
+      uptime_pct: fields.uptimePct || '99.9%',
+      bank_name: selectedBanks.map(b => b.bankName).join(', '),
+      payee_name: selectedBanks.map(b => b.accountName).join(', '),
+      bank_account: selectedBanks.map(b => b.accountNumber).join(', '),
+      bank_branch: selectedBanks.map(b => b.branch).filter(Boolean).join(', '),
+      include_qr_code: selectedBanks.some(b => b.includeQrCode),
+      signatory_name: fields.signatoryName || '',
+      signatory_title: fields.signatoryTitle || '',
+      witness_name: fields.witnessName || '',
+      witness_designation: fields.witnessDesignation || '',
+      sp_signatory_name: fields.spSignatoryName || '',
+      sp_signatory_title: fields.spSignatoryTitle || '',
+      sp_witness_name: fields.spWitnessName || '',
+      sp_witness_designation: fields.spWitnessDesignation || '',
+      cost_items: costItems,
+    };
+  }, [fields, selectedProduct, liveContractId, costItems, selectedBankSlots, bankSlots]);
 
   /** Programmatic .docx download — uses our built-in Nest Nepal contract
    *  layout via the `docx` library. No template upload required; the
    *  formatting is encoded in `contractDocxBuilder`. Lazy-imports the
    *  builder so the ~200 KB `docx` dependency only loads on click. */
+  /** Resolve the ID to stamp on a generated document. If the user has
+   *  set an override, use that as-is (no counter bump). Otherwise reuse
+   *  the previously-committed `generatedId`, or claim a fresh one. */
+  const resolveDocumentId = (): string => {
+    if (contractIdOverride && contractIdOverride.trim()) return contractIdOverride.trim();
+    if (generatedId) return generatedId;
+    const fresh = generateContractId(fields.companyAbv || 'XXX');
+    setGeneratedId(fresh);
+    return fresh;
+  };
+
   const downloadDocx = async () => {
-    const id = generatedId || generateContractId(fields.companyAbv || 'XXX');
-    if (!generatedId) setGeneratedId(id);
+    const id = resolveDocumentId();
     try {
       const [{ buildContractDocx }, { saveAs }] = await Promise.all([
         import('@/utils/contractDocxBuilder'),
@@ -378,7 +480,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   /** Build the PDF from the editable section structure. Shared between
    *  the "Download" path (writes a file) and the "Preview PDF" path
    *  (drops the blob into an iframe). */
-  const buildPdf = async (id: string) => {
+  const buildPdf = async (id: string, usePlaceholderQr = false) => {
     let letterheadDataUrl: string | undefined;
     if (useLetterhead) {
       try {
@@ -389,17 +491,38 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         }
       } catch { /* no-op */ }
     }
+    
+    // Generate QR code with contract metadata (unless using placeholder QR)
+    let qrCodeDataUrlToUse: string | undefined;
+    if (!usePlaceholderQr) {
+      try {
+        const metadata: ContractQRMetadata = {
+          contractId: id,
+          username: currentUsername || 'unknown',
+          createdAt: new Date().toISOString(),
+          product: selectedProduct || 'unknown',
+          clientName: fields.clientCompanyName || '',
+          clientLocation: fields.clientLocation || '',
+          amount: fields.paymentAmount || '',
+          bankSlots: selectedBankSlots,
+        };
+        storeContractMetadata(metadata);
+        qrCodeDataUrlToUse = await generateContractQR(metadata);
+        setQrCodeDataUrl(qrCodeDataUrlToUse);
+      } catch { /* no-op */ }
+    } else {
+      qrCodeDataUrlToUse = qrCodeDataUrl; // Use placeholder QR from state (nestnepal.com)
+    }
+    
     return generateContractPdfFromStructure(
       { ...contractFieldBag, contract_id: id },
       sections,
-      { letterheadDataUrl },
+      { letterheadDataUrl, qrCodeDataUrl: qrCodeDataUrlToUse },
     );
   };
 
   const downloadPdf = async () => {
-    const id = generatedId || generateContractId(fields.companyAbv || 'XXX');
-    if (!generatedId) setGeneratedId(id);
-
+    const id = resolveDocumentId();
     const pdf = await buildPdf(id);
     const filename = `${id || 'contract'}.pdf`;
     pdf.save(filename);
@@ -412,22 +535,70 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     toast({ title: 'Contract PDF downloaded', description: filename });
   };
 
-  const refreshPdfPreview = async () => {
+  const downloadPdfAndSaveToDatabase = async () => {
+    const id = resolveDocumentId();
+    const pdf = await buildPdf(id);
+    const filename = `${id || 'contract'}.pdf`;
+    
+    // Download to computer
+    pdf.save(filename);
+    
+    // Save to database
+    try {
+      const pdfBlob = pdf.output('blob');
+      const { data, error } = await supabase.storage
+        .from('contracts')
+        .upload(`${currentUsername}/${filename}`, pdfBlob, {
+          upsert: true,
+          contentType: 'application/pdf',
+        });
+      
+      if (error) {
+        console.error('Error saving to database:', error);
+        toast({ title: 'Downloaded, but database save failed', description: error.message, variant: 'destructive' });
+      } else {
+        logActivity({
+          kind: 'pdf',
+          module: 'CGAP/Contract',
+          action: 'Contract PDF downloaded and saved to database',
+          meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, category: categoryKey, path: data.path },
+        });
+        toast({ title: 'Contract PDF downloaded and saved', description: `Saved to database as ${filename}` });
+      }
+    } catch (err) {
+      console.error('Error saving to database:', err);
+      toast({ title: 'Downloaded, but database save failed', description: 'An error occurred while saving to database', variant: 'destructive' });
+    }
+  };
+
+  /** Build the iframe-preview blob from whatever's currently in the
+   *  form. Uses `liveContractId` (no counter bump) so the preview can
+   *  auto-refresh on every change without burning through IDs. */
+  const refreshPdfPreview = useCallback(async () => {
     setPreviewBuilding(true);
     try {
-      const id = generatedId || generateContractId(fields.companyAbv || 'XXX');
-      if (!generatedId) setGeneratedId(id);
-      const pdf = await buildPdf(id);
+      const pdf = await buildPdf(liveContractId, true); // Use placeholder QR (nestnepal.com)
       const blob = pdf.output('blob');
       const url = URL.createObjectURL(blob);
       setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to build preview';
-      toast({ title: 'Preview failed', description: msg, variant: 'destructive' });
+      // Silent on auto-refresh — only surface manual failures via toast.
+      console.warn('Contract preview build failed:', err);
     } finally {
       setPreviewBuilding(false);
     }
-  };
+    // buildPdf closes over contractFieldBag + sections + useLetterhead;
+    // we include them so a structure/field change re-fires this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveContractId, sections, contractFieldBag, useLetterhead, qrCodeDataUrl]);
+
+  // Auto-build the preview on mount + whenever the inputs change. Hard
+  // debounce (1.2 s) because TipTap fires onChange on every keystroke
+  // and jsPDF generation is non-trivial (≈80-150 ms for a 17-page doc).
+  useEffect(() => {
+    const t = setTimeout(() => { refreshPdfPreview(); }, 1200);
+    return () => clearTimeout(t);
+  }, [refreshPdfPreview]);
 
   // Mirror the field bag to localStorage so the standalone editor tab can
   // re-render a fresh template baseline on demand (e.g. after "Reset to
@@ -437,6 +608,17 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     try { localStorage.setItem(FIELDS_SNAPSHOT_KEY, JSON.stringify(contractFieldBag)); }
     catch { /* localStorage full / blocked — ignore */ }
   }, [contractFieldBag]);
+
+  // Generate placeholder QR code for nestnepal.com for preview display
+  useEffect(() => {
+    const generatePlaceholderQR = async () => {
+      try {
+        const qrUrl = await generateContractQR({ contractId: 'nestnepal.com', username: 'preview', createdAt: new Date().toISOString(), product: 'placeholder', clientName: '', clientLocation: '', amount: '', bankSlots: [] });
+        setQrCodeDataUrl(qrUrl);
+      } catch { /* no-op */ }
+    };
+    generatePlaceholderQR();
+  }, []);
 
   // Listen for edits coming from the standalone editor in another tab.
   // The `storage` event only fires in *other* tabs (the writer doesn't
@@ -561,29 +743,6 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         </Button>
       </div>
 
-      {/* PAN/VAT auto-lookup — fills the client fields below from the
-          Nepal IRD public search. CORS-blocked from the browser; needs
-          a proxy (see VITE_PAN_PROXY_URL) or the manual-paste fallback. */}
-      <PanVatLookup
-        darkMode={dm}
-        accentColor={ACCENT}
-        onApply={(r) => {
-          // Trade name typically reads cleaner than the legal name; fall back
-          // to legal if no trade name was registered. User can edit either
-          // value afterward — this just pre-fills.
-          const name = r.tradeName || r.legalName;
-          const nameNp = r.tradeNameNepali || r.legalNameNepali;
-          if (name) set('clientCompanyName', name);
-          if (nameNp) set('clientCompanyNameNepali', nameNp);
-          if (r.address) set('clientLocation', r.address);
-          if (r.addressNepali) set('clientLocationNepali', r.addressNepali);
-          const npHit = nameNp || r.addressNepali;
-          toast({
-            title: 'PAN/VAT applied',
-            description: `Filled client company${r.address ? ' + address' : ''}${npHit ? ' (incl. Nepali)' : ''} from PAN ${r.pan}.`,
-          });
-        }}
-      />
 
       {/* Quick fill from customer's reply — paste a WhatsApp / email
           message, parser extracts company / contact person / address /
@@ -598,49 +757,20 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           if (out.companyName) set('clientCompanyName', out.companyName);
           if (out.fullName) set('clientCoordinator', out.fullName);
           if (out.address) set('clientLocation', out.address);
+          // Handle PAN details if present
+          if (out.panDetails) {
+            if (out.panDetails.nameEng && !out.companyName) set('clientCompanyName', out.panDetails.nameEng);
+            if (out.panDetails.nameNep) set('clientCompanyNameNepali', out.panDetails.nameNep);
+            if (out.panDetails.address && !out.address) {
+              set('clientLocation', out.panDetails.address);
+              set('clientLocationNepali', out.panDetails.address);
+            }
+          }
           // Email / phone don't map to existing ContractTab fields, but
           // the parser still shows them in the "Extracted" preview so the
           // user can copy them somewhere manually if needed.
         }}
       />
-
-      {/* Company & Client Section */}
-      {sectionHeader('Client Details', 'Client company and coordinator from Section 4A of the contract')}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {companyFields.map(renderField)}
-      </div>
-
-      {/* Nepali (Devanagari) variants — populated by the PAN/VAT lookup
-          when IRD has them. Editable so users can fix anything the parser
-          mis-split. Tucked behind a disclosure so it doesn't crowd the
-          main form when not needed. */}
-      <details className={`rounded-lg border ${dm ? 'border-gray-800 bg-gray-900/40' : 'border-gray-200 bg-gray-50'}`}>
-        <summary className={`cursor-pointer px-3 py-2 text-xs ${dm ? 'text-gray-400' : 'text-gray-600'}`}>
-          Nepali (Devanagari) translations <span className={`ml-2 normal-case ${dm ? 'text-gray-600' : 'text-gray-500'}`}>· auto-filled by PAN/VAT lookup when available</span>
-        </summary>
-        <div className="px-3 pb-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <Label className={labelCls}>Company name (नेपाली)</Label>
-            <Input
-              lang="ne"
-              value={fields.clientCompanyNameNepali || ''}
-              onChange={(e) => set('clientCompanyNameNepali', e.target.value)}
-              placeholder="यति डिस्टिलरी प्रा. लि."
-              className={inputCls(false)}
-            />
-          </div>
-          <div>
-            <Label className={labelCls}>Address (नेपाली)</Label>
-            <Input
-              lang="ne"
-              value={fields.clientLocationNepali || ''}
-              onChange={(e) => set('clientLocationNepali', e.target.value)}
-              placeholder="भरतपुर, महानगरपालिका"
-              className={inputCls(false)}
-            />
-          </div>
-        </div>
-      </details>
 
       {/* Product & Contract Terms Section */}
       {sectionHeader('Product & Contract Terms', 'Select a product from UCAP plans; Section 2A — Period text auto-fills from months')}
@@ -699,27 +829,59 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         )}
       </div>
 
+      {/* Product-specific details - only show when product is selected */}
+      {selectedProduct && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {contractFields.map(renderField)}
+          <div>
+            <Label className={labelCls}>Effective Date</Label>
+            <Input
+              type="date"
+              value={fields.effectiveDate || ''}
+              onChange={(e) => set('effectiveDate', e.target.value)}
+              className={inputCls(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Company & Client Section */}
+      {sectionHeader('Client Details', 'Client company and coordinator from Section 4A of the contract')}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {contractFields.map(renderField)}
-        <div>
-          <Label className={labelCls}>Effective Date</Label>
-          <Input
-            type="date"
-            value={fields.effectiveDate || ''}
-            onChange={(e) => set('effectiveDate', e.target.value)}
-            className={inputCls(false)}
-          />
-        </div>
-        <div>
-          <Label className={labelCls}>Service Uptime</Label>
-          <Input
-            value={fields.uptimePct || ''}
-            onChange={(e) => set('uptimePct', e.target.value)}
-            placeholder="99.9%"
-            className={inputCls(false)}
-          />
-        </div>
+        {companyFields.map(renderField)}
       </div>
+
+      {/* Nepali (Devanagari) variants — populated by the PAN/VAT lookup
+          when IRD has them. Editable so users can fix anything the parser
+          mis-split. Tucked behind a disclosure so it doesn't crowd the
+          main form when not needed. */}
+      <details className={`rounded-lg border ${dm ? 'border-gray-800 bg-gray-900/40' : 'border-gray-200 bg-gray-50'}`}>
+        <summary className={`cursor-pointer px-3 py-2 text-xs ${dm ? 'text-gray-400' : 'text-gray-600'}`}>
+          Nepali (Devanagari) details <span className={`ml-2 normal-case ${dm ? 'text-gray-600' : 'text-gray-500'}`}>· auto-filled by PAN/VAT lookup when available</span>
+        </summary>
+        <div className="px-3 pb-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label className={labelCls}>Company details (नेपाली)</Label>
+            <Input
+              lang="ne"
+              value={fields.clientCompanyNameNepali || ''}
+              onChange={(e) => set('clientCompanyNameNepali', e.target.value)}
+              placeholder="यति डिस्टिलरी प्रा. लि."
+              className={inputCls(false)}
+            />
+          </div>
+          <div>
+            <Label className={labelCls}>Address (नेपाली)</Label>
+            <Input
+              lang="ne"
+              value={fields.clientLocationNepali || ''}
+              onChange={(e) => set('clientLocationNepali', e.target.value)}
+              placeholder="भरतपुर, महानगरपालिका"
+              className={inputCls(false)}
+            />
+          </div>
+        </div>
+      </details>
 
       {/* Payment Section */}
       {sectionHeader('Payment', 'Section 3A — Ceiling amount; words auto-fill from numerals')}
@@ -728,20 +890,129 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       </div>
 
       {sectionHeader('Bank Details', 'Section 3C — where the Client pays')}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div>
-          <Label className={labelCls}>Bank Name</Label>
-          <Input value={fields.bankName || ''} onChange={(e) => set('bankName', e.target.value)} className={inputCls(false)} />
-        </div>
-        <div>
-          <Label className={labelCls}>Account Name (Payee)</Label>
-          <Input value={fields.payeeName || ''} onChange={(e) => set('payeeName', e.target.value)} className={inputCls(false)} />
-        </div>
-        <div>
-          <Label className={labelCls}>Account Number</Label>
-          <Input value={fields.bankAccount || ''} onChange={(e) => set('bankAccount', e.target.value)} className={inputCls(false)} />
+      <div className="mb-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          {BANK_SLOTS.map((s) => {
+            const c = bankSlots.find((x) => x.slot === s);
+            const isActive = selectedBankSlots.includes(s);
+            const hasBankDetails = Boolean(c?.bankName && c?.accountNumber);
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => {
+                  setSelectedBankSlots(prev => {
+                    if (prev.includes(s)) {
+                      // If deselecting and it's the only one, default to A
+                      const newSelection = prev.filter(x => x !== s);
+                      return newSelection.length === 0 ? ['A'] : newSelection;
+                    }
+                    // If selecting, add the slot
+                    return [...prev, s];
+                  });
+                }}
+                className={cn(
+                  'text-left rounded-xl p-3 border transition-colors',
+                  isActive
+                    ? (dm ? 'bg-teal-900/30 border-teal-500' : 'bg-teal-50 border-teal-400')
+                    : (dm ? 'bg-gray-800/40 border-gray-700 hover:bg-gray-800' : 'bg-white/60 border-gray-200 hover:bg-gray-50'),
+                )}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="outline" className="font-mono text-[10px]" style={{ borderColor: ACCENT, color: ACCENT }}>{s}</Badge>
+                  <span className={`text-sm font-medium ${dm ? 'text-gray-100' : 'text-gray-800'}`}>{c?.label || `Bank ${s}`}</span>
+                </div>
+                <div className={`text-[10px] ${dm ? 'text-gray-500' : 'text-gray-500'}`}>
+                  {hasBankDetails ? '✓ bank details' : '— no details'} · {c?.includeQrCode ? '✓ QR' : '— no QR'}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
+      {selectedBankSlots.includes('C') && selectedBankSlots.length === 1 ? (
+        <div className={`p-1 rounded border ${dm ? 'bg-gray-800/40 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+          <Label className={`text-[7px] ${dm ? 'text-gray-400' : 'text-gray-500'}`}>FonePay QR</Label>
+          <div className={`mt-0.5 p-0.5 rounded border ${dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            {selectedBankConfigs.find(c => c.slot === 'C')?.qrImage ? (
+              <img src={selectedBankConfigs.find(c => c.slot === 'C')?.qrImage} alt="FonePay QR" className="max-w-[50px] h-auto" />
+            ) : (
+              <p className={`text-[8px] ${dm ? 'text-gray-500' : 'text-gray-500'}`}>No QR code uploaded</p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {selectedBankConfigs.map((config) => (
+            <div key={config.slot} className={`mb-2 pb-2 border-b ${dm ? 'border-gray-800' : 'border-gray-200'}`}>
+              <div className={`text-[8px] font-medium mb-1 ${dm ? 'text-gray-400' : 'text-gray-600'}`}>{config.label}</div>
+              {config.slot === 'C' && config.includeQrCode ? (
+                <div className={`p-1 rounded border ${dm ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                  {config.qrImage ? (
+                    <img src={config.qrImage} alt="FonePay QR" className="max-w-[50px] h-auto" />
+                  ) : (
+                    <p className={`text-[8px] ${dm ? 'text-gray-500' : 'text-gray-500'}`}>No QR code uploaded</p>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-0.5">
+                  <div>
+                    <Label className={`text-[7px] ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Bank</Label>
+                    <Input
+                      value={config.bankName || ''}
+                      disabled
+                      className={`mt-0 text-[9px] h-5 ${inputCls(false)}`}
+                      placeholder="Bank name"
+                    />
+                  </div>
+                  <div>
+                    <Label className={`text-[7px] ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Account Name</Label>
+                    <Input
+                      value={config.accountName || ''}
+                      disabled
+                      className={`mt-0 text-[9px] h-5 ${inputCls(false)}`}
+                      placeholder="Account name"
+                    />
+                  </div>
+                  <div>
+                    <Label className={`text-[7px] ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Account Number</Label>
+                    <Input
+                      value={config.accountNumber || ''}
+                      disabled
+                      className={`mt-0 text-[9px] h-5 ${inputCls(false)}`}
+                      placeholder="Account number"
+                    />
+                  </div>
+                </div>
+              )}
+              {config.slot !== 'C' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-0.5 mt-0.5">
+                  <div>
+                    <Label className={`text-[7px] ${dm ? 'text-gray-400' : 'text-gray-500'}`}>Branch</Label>
+                    <Input
+                      value={config.branch || ''}
+                      disabled
+                      className={`mt-0 text-[9px] h-5 ${inputCls(false)}`}
+                      placeholder="Branch"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 pt-1.5">
+                    <Checkbox
+                      id={`include-qr-${config.slot}`}
+                      checked={config.includeQrCode || false}
+                      disabled
+                      className="w-2 h-2"
+                    />
+                    <label htmlFor={`include-qr-${config.slot}`} className={`text-[7px] ${dm ? 'text-gray-500' : 'text-gray-500'}`}>
+                      Include FonePay QR
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </>
+      )}
 
       {/* Client Signatory Section */}
       {sectionHeader('For the Client', 'Signing party and witness (Page 7)')}
@@ -806,6 +1077,153 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           />
           <span>Use letterhead{!useLetterhead && <span className={`ml-2 italic ${dm ? 'text-amber-400' : 'text-amber-600'}`}>· blank page</span>}</span>
         </label>
+        <Button
+          variant={designerMode ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setDesignerMode(!designerMode)}
+          className="gap-1.5 h-8"
+          style={designerMode ? { backgroundColor: '#0F766E', color: 'white' } : {}}
+          title="Toggle designer mode to drag and position QR codes"
+        >
+          <Move className="w-3.5 h-3.5" /> {designerMode ? 'Exit designer' : 'Edit layout'}
+        </Button>
+        {designerMode && (
+          <>
+            <Input
+              type="number"
+              min="1"
+              max="20"
+              value={newQrPage}
+              onChange={(e) => setNewQrPage(e.target.value)}
+              className="w-16 h-8 text-xs"
+              placeholder="Page"
+              title="Page number to add QR code"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const anchors = loadContractAnchors();
+                const pageNum = parseInt(newQrPage) || 1;
+                const newId = `qr_code_${Date.now()}`;
+                const newAnchor = { id: newId, kind: 'qr' as const, x: 50, y: 50, width: 30, height: 30, page: pageNum };
+                saveContractAnchors([...anchors, newAnchor]);
+                // Trigger re-render by dispatching custom event
+                window.dispatchEvent(new Event('contract-anchors-update'));
+              }}
+              className="gap-1.5 h-8"
+              title={`Add new QR code to page ${newQrPage}`}
+            >
+              <QrCode className="w-3.5 h-3.5" /> Add QR
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (confirm('Remove all QR codes?')) {
+                  saveContractAnchors([]);
+                  window.dispatchEvent(new Event('contract-anchors-update'));
+                }
+              }}
+              className="gap-1.5 h-8"
+              title="Remove all QR codes"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Clear all
+            </Button>
+            <Input
+              type="number"
+              min="1"
+              max="20"
+              placeholder="To page"
+              className="w-16 h-8 text-xs"
+              title="Target page to copy QR coordinates"
+              id="copy-qr-target-page"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const targetPageInput = document.getElementById('copy-qr-target-page') as HTMLInputElement;
+                const targetPage = parseInt(targetPageInput?.value || '1') || 1;
+                const anchors = loadContractAnchors();
+                const selectedAnchor = anchors.find(a => a.id === 'qr_code'); // Default to first QR
+                if (selectedAnchor) {
+                  const newAnchor = {
+                    ...selectedAnchor,
+                    id: `qr_code_${Date.now()}`,
+                    page: targetPage,
+                  };
+                  saveContractAnchors([...anchors, newAnchor]);
+                  window.dispatchEvent(new Event('contract-anchors-update'));
+                  toast({ title: 'QR copied', description: `QR copied to page ${targetPage}` });
+                }
+              }}
+              className="gap-1.5 h-8"
+              title="Copy selected QR to target page"
+            >
+              Copy to page
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                // Open print dialog with A4 page size using a new window approach
+                const printWindow = window.open('', '_blank');
+                if (printWindow) {
+                  const previewContainer = document.querySelector('.contract-preview-container');
+                  if (previewContainer) {
+                    printWindow.document.write(`
+                      <!DOCTYPE html>
+                      <html>
+                      <head>
+                        <title>Print Contract</title>
+                        <style>
+                          @page {
+                            size: A4;
+                            margin: 0;
+                          }
+                          body {
+                            margin: 0;
+                            padding: 0;
+                          }
+                          .page {
+                            page-break-after: always;
+                            width: 210mm;
+                            height: 297mm;
+                            overflow: hidden;
+                            position: relative;
+                          }
+                        </style>
+                      </head>
+                      <body>
+                        ${previewContainer.innerHTML}
+                      </body>
+                      </html>
+                    `);
+                    printWindow.document.close();
+                    printWindow.onload = () => {
+                      printWindow.print();
+                      printWindow.close();
+                    };
+                  }
+                }
+              }}
+              className="gap-1.5 h-8"
+              title="Print preview to PDF (A4)"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print to PDF
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={downloadPdfAndSaveToDatabase}
+              className="gap-1.5 h-8"
+              title="Download PDF and save to database"
+            >
+              <Download className="w-3.5 h-3.5" /> Download & Save
+            </Button>
+          </>
+        )}
         <span className="flex-1" />
         {editedHtml ? (
           <>
@@ -826,33 +1244,57 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           </Button>
         )}
       </div>
-      <ContractPreview fields={contractFieldBag} sections={sections} darkMode={dm} useLetterhead={useLetterhead} editedHtml={editedHtml} />
+      <ContractPreview fields={contractFieldBag} sections={sections} darkMode={dm} useLetterhead={useLetterhead} editedHtml={editedHtml} qrCodeDataUrl={qrCodeDataUrl} designerMode={designerMode} onAnchorsChange={(anchors) => saveContractAnchors(anchors)} />
 
-      {/* PDF preview (iframe) — same UX as SLA. Builds the actual PDF on
-          demand so users can confirm pagination + fonts before downloading. */}
-      <div className={`${card} py-3 flex items-center gap-3 flex-wrap`}>
-        <span className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-600'} flex items-center gap-1.5`}>
-          <Eye className="w-3.5 h-3.5" /> PDF preview
-        </span>
-        <span className={`text-[11px] ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
-          Renders the downloaded PDF in an iframe — confirms pagination + fonts match exactly.
-        </span>
-        <span className="flex-1" />
-        <Button variant="outline" size="sm" onClick={refreshPdfPreview} disabled={previewBuilding} className="gap-1.5">
-          {previewBuilding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
-          {previewUrl ? 'Refresh PDF' : 'Preview PDF'}
-        </Button>
-        {previewUrl && (
-          <Button variant="ghost" size="sm" onClick={() => setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; })}>
-            <X className="w-3.5 h-3.5 mr-1" /> Close
+      {/* Print preview (iframe) — auto-refreshes ~1.2 s after each edit
+          so you always see exactly what the downloaded PDF looks like
+          without clicking a button. Manual refresh available too. */}
+      <Collapsible open={showPrintPreview} onOpenChange={setShowPrintPreview}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className={`${card} w-full justify-start gap-2`}>
+            <Eye className="w-4 h-4" />
+            Print preview
+            {previewBuilding && <Loader2 className="w-3 h-3 animate-spin" />}
+            <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${showPrintPreview ? 'rotate-180' : ''}`} />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-2">
+          <div className={`${card} p-4`}>
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className={`text-[11px] ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+                Auto-refreshes after every change — confirms pagination + fonts match the download exactly.
+              </span>
+              <span className="flex-1" />
+              <Button variant="outline" size="sm" onClick={refreshPdfPreview} disabled={previewBuilding} className="gap-1.5">
+                <Eye className="w-3.5 h-3.5" /> Refresh now
+              </Button>
+            </div>
+            {previewUrl ? (
+              <iframe src={previewUrl} title="Contract PDF preview" className="w-full rounded-lg border border-border bg-white" style={{ height: '900px' }} />
+            ) : (
+              <div className="w-full rounded-lg border border-dashed border-border bg-white/50 flex items-center justify-center" style={{ height: '900px' }}>
+                <span className={`text-xs flex items-center gap-2 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Building first preview…
+                </span>
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* Contract ID - inconspicuous label at bottom */}
+      <div className={`flex items-center justify-between px-2 py-1 ${dm ? 'text-gray-600' : 'text-gray-400'}`}>
+        <span className="text-[10px]">Contract ID: <code className="font-mono">{liveContractId}</code></span>
+        {contractIdOverride !== null ? (
+          <Button variant="ghost" size="sm" onClick={() => setContractIdOverride(null)} className="h-6 text-[10px]">
+            Use auto
+          </Button>
+        ) : (
+          <Button variant="ghost" size="sm" onClick={() => setContractIdOverride(liveContractId)} className="h-6 text-[10px]">
+            Edit
           </Button>
         )}
       </div>
-      {previewUrl && (
-        <div className={card}>
-          <iframe src={previewUrl} title="Contract PDF preview" className="w-full rounded-lg border border-border bg-white" style={{ height: '900px' }} />
-        </div>
-      )}
 
       {/* Pages & Sections (admin only) — port of SLA's section manager.
           Admins reorder/add/delete/page-break clauses; bodies edit via
@@ -970,8 +1412,23 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       )}
 
       {/* Custom .docx template — upload once, fill from the form, download. */}
-      {sectionHeader('Your own .docx template', 'Upload a Word file with {placeholder} markers — the form above fills them, your formatting is preserved')}
-      <ContractCustomTemplate fields={contractFieldBag} darkMode={dm} contractId={generatedId || fields.companyAbv ? generatedId : undefined} />
+      <Collapsible open={showCustomTemplate} onOpenChange={setShowCustomTemplate}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className={`${card} w-full justify-start gap-2`}>
+            <FileText className="w-4 h-4" />
+            Your own .docx template
+            <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${showCustomTemplate ? 'rotate-180' : ''}`} />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-2">
+          <div className={`${card} p-4`}>
+            <p className={`text-[11px] mb-3 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+              Upload a Word file with placeholder markers — the form above fills them, your formatting is preserved
+            </p>
+            <ContractCustomTemplate fields={contractFieldBag} darkMode={dm} contractId={generatedId || fields.companyAbv ? generatedId : undefined} />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Invoice Upload — Annex C */}
       <div className={card}>
