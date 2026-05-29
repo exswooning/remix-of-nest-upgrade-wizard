@@ -42,6 +42,11 @@ If you've deployed CGAP to a domain outside the defaults (localhost / vercel.app
 
 If we change the extension code (e.g. IRD's HTML structure changes), pull the latest repo or re-download the folder, replace the local files, and click the reload icon on the extension card in `chrome://extensions`.
 
+### Changelog
+
+- **v1.1.0** — Streamed progress events. The app shows a live progress bar with stage labels (`Opening hidden lookup window…` → `Loading IRD page…` → `Waiting for IRD to render data…` → `Reading scraped fields…` → 100%) during each lookup. Communication moved from one-shot `chrome.runtime.sendMessage` to a long-lived `chrome.runtime.connect` port so multiple progress messages can stream over the same channel before the final result. **If you previously installed v1.0.0, re-download + reload — the older version won't emit progress events but is otherwise compatible.**
+- **v1.0.0** — Initial release.
+
 ## How it works under the hood
 
 Three pieces, communicating via the standard extension message-passing APIs:

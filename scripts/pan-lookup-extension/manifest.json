@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "CGAP PAN Lookup Bridge",
-  "version": "1.0.0",
-  "description": "Bridges Nepal IRD PAN/VAT search to the CGAP contract generator. Opens a hidden IRD window, scrapes the rendered result, and fills the form automatically.",
+  "version": "1.1.0",
+  "description": "Bridges Nepal IRD PAN/VAT search to the CGAP contract generator. Opens a hidden IRD window, scrapes the rendered result, and fills the form automatically — with live progress updates.",
   "permissions": ["tabs", "scripting"],
   "host_permissions": [
     "https://ird.gov.np/*"

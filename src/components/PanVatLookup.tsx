@@ -76,6 +76,10 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
   const [extensionInstalled, setExtensionInstalled] = useState<boolean | null>(null);
   const [extensionVersion, setExtensionVersion] = useState<string | null>(null);
 
+  /** Live progress from the extension: step name, percent (0–100),
+   *  human-readable label. Cleared when the lookup finishes or errors. */
+  const [progress, setProgress] = useState<{ step: string; pct: number; label: string } | null>(null);
+
   useEffect(() => {
     const detect = () => {
       const meta = document.querySelector('meta[name="cgap-pan-extension"]');
@@ -123,25 +127,43 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
     return new Promise((resolve, reject) => {
       const requestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const timeout = setTimeout(() => {
-        window.removeEventListener('message', onResponse);
+        window.removeEventListener('message', onMessage);
         reject(new Error('Extension did not respond within 35 s'));
       }, 35000);
 
-      const onResponse = (e: MessageEvent) => {
+      // Extension v1.1+ streams progress events via the same channel
+      // BEFORE the final response. We handle both: progress events bump
+      // the progress bar; the response event resolves/rejects.
+      const onMessage = (e: MessageEvent) => {
         if (e.source !== window) return;
         const d = e.data;
-        if (!d || d.type !== 'cgap-pan-response' || d.requestId !== requestId) return;
+        if (!d || d.requestId !== requestId) return;
+
+        if (d.type === 'cgap-pan-progress') {
+          setProgress({
+            step: String(d.step || 'working'),
+            pct: typeof d.pct === 'number' ? d.pct : 0,
+            label: String(d.label || 'Working…'),
+          });
+          return;
+        }
+        if (d.type !== 'cgap-pan-response') return;
+
         clearTimeout(timeout);
-        window.removeEventListener('message', onResponse);
+        window.removeEventListener('message', onMessage);
         if (!d.ok) {
           reject(new Error(d.error || 'Extension lookup failed'));
         } else if (!d.data || Object.keys(d.data).length === 0) {
           reject(new Error('Extension returned no fields — IRD page may not have rendered data'));
         } else {
+          // Show 100% briefly before parsing so the bar visibly completes.
+          setProgress({ step: 'done', pct: 100, label: 'Done — filling form…' });
           resolve(parseRenderServiceResponse({ pan: panRaw, data: d.data }, panRaw));
         }
       };
-      window.addEventListener('message', onResponse);
+      window.addEventListener('message', onMessage);
+      // Initial progress hint before the extension reports its own.
+      setProgress({ step: 'starting', pct: 5, label: 'Asking the extension to look up the PAN…' });
       window.postMessage({ type: 'cgap-pan-request', requestId, pan: panRaw }, '*');
     });
   };
@@ -234,6 +256,7 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
     setError(null);
     setResult(null);
     setBusy(true);
+    setProgress(null);
     try {
       // Prefer the extension path when installed — it's the only fully
       // automated free option (uses the user's real browser, so IRD's
@@ -248,6 +271,9 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
       setError(err instanceof Error ? err.message : 'Lookup failed');
     } finally {
       setBusy(false);
+      // Clear the progress bar a moment after we're done so the "100%"
+      // state is visible for a heartbeat instead of vanishing instantly.
+      setTimeout(() => setProgress(null), 800);
     }
   };
 
@@ -541,6 +567,35 @@ const PanVatLookup: React.FC<Props> = ({ darkMode = false, onApply, accentColor 
           >
             <FileCode2 className="w-3 h-3" /> Parse pasted content
           </Button>
+        </div>
+      )}
+
+      {/* Live progress bar — fed by the extension's port stream during
+          an in-flight lookup. Shown only while a lookup is running (or
+          briefly after — the 800 ms hold in runLookup lets the user
+          actually see 100% before it disappears). */}
+      {progress && (
+        <div className={`mt-3 px-3 py-2 rounded-lg border ${dm ? 'bg-teal-950/30 border-teal-900/60' : 'bg-teal-50 border-teal-200'}`}>
+          <div className="flex items-center justify-between mb-1.5 text-[11px]">
+            <span className={`flex items-center gap-1.5 ${dm ? 'text-teal-200' : 'text-teal-800'}`}>
+              {progress.pct < 100
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <CheckCircle2 className="w-3 h-3" />}
+              {progress.label}
+            </span>
+            <span className={`tabular-nums font-mono text-[10px] ${dm ? 'text-teal-400' : 'text-teal-600'}`}>
+              {progress.pct}%
+            </span>
+          </div>
+          <div className={`h-1.5 rounded-full overflow-hidden ${dm ? 'bg-teal-900/60' : 'bg-teal-100'}`}>
+            <div
+              className="h-full rounded-full transition-all duration-300 ease-out"
+              style={{
+                width: `${Math.max(2, Math.min(100, progress.pct))}%`,
+                background: accentColor,
+              }}
+            />
+          </div>
         </div>
       )}
 
