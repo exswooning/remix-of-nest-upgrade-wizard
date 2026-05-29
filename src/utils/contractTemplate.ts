@@ -29,6 +29,8 @@
  */
 
 import jsPDF from 'jspdf';
+import { writeRichHtml } from './htmlToPdfText';
+import { fillContractTokens, type ContractStructureSection } from './contractStructure';
 
 export interface CostLineItem {
   description: string;
@@ -788,6 +790,137 @@ function drawCostTable(pdf: jsPDF, fields: ContractFields, yStart: number): numb
   pdf.text('Grand Total', startX + cols[0] + cols[1] + cols[2] - 14, y + 5);
   pdf.text(`NRs. ${grand.toLocaleString('en-IN')}`, startX + total - 2, y + 5, { align: 'right' });
   return y + 12;
+}
+
+// ── Section-based generator (mirrors SLATab pattern) ─────────────────
+//
+// `generateContractPdfFromStructure` is the new entrypoint used by the
+// refactored Contract tab. It walks an editable `ContractStructureSection[]`
+// (each section carries TipTap HTML in `body_html`), applies `{token}`
+// substitution per section, and emits vector text via the shared
+// `writeRichHtml` walker. Two "special" sections render the signature
+// table and the Annex B cost table using the same drawers as the legacy
+// `generateContractPdf` path — that keeps the structured pieces pixel-
+// identical regardless of which entrypoint produced the PDF.
+//
+// The legacy `generateContractPdf(fields, options)` above is kept intact
+// for `contractDocxBuilder.ts` and any other consumer that still expects
+// the hardcoded SECTIONS path.
+
+export function generateContractPdfFromStructure(
+  fields: ContractFields,
+  sections: ContractStructureSection[],
+  options: GenerateOptions = {},
+): jsPDF {
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  let pageNum = 1;
+  const cursor = { y: M.top };
+
+  const stampLetterhead = () => {
+    if (!options.letterheadDataUrl) return;
+    pdf.addImage(options.letterheadDataUrl, 'PNG', 0, 0, PAGE.w, PAGE.h, 'letterhead', 'NONE');
+  };
+  stampLetterhead();
+
+  const newPage = () => {
+    pdf.addPage();
+    pageNum++;
+    cursor.y = M.top;
+    stampLetterhead();
+  };
+
+  const remaining = () => FOOTER_Y - 6 - cursor.y;
+  const ensure = (need: number) => { if (need > remaining()) newPage(); };
+
+  // — Title block (page 1 only) ——————————————————————————————————
+  pdf.setFont('times', 'bold');
+  pdf.setFontSize(14);
+  setColor(pdf, BLACK);
+  const titleText = `CONTRACT AGREEMENT FOR ${(fields.product || '{product}').toUpperCase()} SERVICES`;
+  const titleLines = pdf.splitTextToSize(titleText, PAGE.w - M.left - M.right) as string[];
+  pdf.text(titleLines, PAGE.w / 2, cursor.y + 4, { align: 'center' });
+  cursor.y += titleLines.length * 7 + 6;
+
+  pdf.setFont('times', 'bold');
+  pdf.setFontSize(13);
+  const idText = `CONTRACT IDENTIFICATION No. ${fields.contract_id || '—'}`;
+  pdf.text(idText, PAGE.w / 2, cursor.y, { align: 'center' });
+  const idWidth = pdf.getTextWidth(idText);
+  pdf.setLineWidth(0.4);
+  pdf.line(PAGE.w / 2 - idWidth / 2, cursor.y + 1.5, PAGE.w / 2 + idWidth / 2, cursor.y + 1.5);
+  cursor.y += 10;
+
+  // — Walk sections ————————————————————————————————————————————————
+  const contentW = PAGE.w - M.left - M.right;
+  for (const section of sections) {
+    if (section.forcePageBreakBefore) newPage();
+
+    // Special: signature page draws the bordered 2-column table.
+    if (section.special === 'signature_page') {
+      cursor.y = M.top;
+      drawSignaturePage(pdf, fields, cursor.y);
+      // drawSignaturePage doesn't return a y; assume it consumed the page.
+      // Force next section onto a fresh page.
+      cursor.y = FOOTER_Y;
+      continue;
+    }
+
+    // Special: Annex B cost table.
+    if (section.special === 'annex_b_cost_table') {
+      pdf.setFont('times', 'bold');
+      pdf.setFontSize(13);
+      setColor(pdf, BLACK);
+      pdf.text('Annex B: Cost of Services', PAGE.w / 2, cursor.y + 4, { align: 'center' });
+      cursor.y += 12;
+      cursor.y = drawCostTable(pdf, fields, cursor.y);
+      continue;
+    }
+
+    // Annex layout — centred title + optional subtitle, body full width.
+    if (section.layout === 'annex') {
+      pdf.setFont('times', 'bold');
+      pdf.setFontSize(13);
+      setColor(pdf, BLACK);
+      pdf.text(section.heading, PAGE.w / 2, cursor.y + 4, { align: 'center' });
+      cursor.y += 10;
+      if (section.annexSubtitle) {
+        const sub = fillContractTokens(section.annexSubtitle, fields).replace(/<[^>]+>/g, '');
+        pdf.setFont('times', 'bold');
+        pdf.setFontSize(11);
+        pdf.text(sub, PAGE.w / 2, cursor.y, { align: 'center' });
+        cursor.y += 8;
+      }
+      const filled = fillContractTokens(section.body_html, fields);
+      writeRichHtml({ pdf, left: M.left, contentW, cursor, ensureSpace: ensure, font: 'times' }, filled);
+      continue;
+    }
+
+    // Numbered / fullWidth: optional heading then HTML body.
+    if (section.layout === 'numbered' && !section.hideTitle && section.numeral) {
+      ensure(8);
+      pdf.setFont('times', 'bold');
+      pdf.setFontSize(11);
+      setColor(pdf, BLACK);
+      pdf.text(`${section.numeral} ${section.heading}`, M.left, cursor.y);
+      cursor.y += 6;
+    } else if (!section.hideTitle && section.layout !== 'fullWidth' && section.numeral) {
+      // No-op fallback
+    }
+
+    const filled = fillContractTokens(section.body_html, fields);
+    writeRichHtml({ pdf, left: M.left, contentW, cursor, ensureSpace: ensure, font: 'times' }, filled);
+    cursor.y += 3; // gap between sections
+  }
+
+  // — Pass: header + footer on every page ——————————————————————————
+  const total = pdf.getNumberOfPages();
+  for (let p = 1; p <= total; p++) {
+    pdf.setPage(p);
+    drawHeader(pdf, fields);
+    drawFooter(pdf, p, total);
+  }
+  void pageNum;
+  return pdf;
 }
 
 function drawSignaturePage(pdf: jsPDF, fields: ContractFields, yStart: number) {

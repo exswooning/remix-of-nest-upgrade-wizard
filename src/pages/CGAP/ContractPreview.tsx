@@ -1,20 +1,19 @@
 /**
- * Live preview for the CGAP Contract tab. Mirrors the structure of the
- * jsPDF generator (`generateContractPdf`):
+ * Live preview for the CGAP Contract tab.
  *
- *   - Running header on every page: `{contract_id}` left, "CONTRACT
- *     AGREEMENT" centred.
- *   - Page 1 has the centred title + underlined "CONTRACT IDENTIFICATION
- *     No. …" line + preamble paragraphs (full width).
- *   - Numbered sections render in a two-column grid: number+title in a
- *     narrow left column, body blocks in a wider right column.
- *   - Signature page = bordered 2-column table (For the Client / For the
- *     Service Provider).
- *   - Annex pages = full-width centred titles + body.
+ * Renders a `ContractStructureSection[]` array (the same structure the
+ * admin "Pages & Sections" panel edits) onto A4-shaped pages with the
+ * configured letterhead behind them. Two sections are "special":
+ *   - `signature_page` → bordered 2-column signature table.
+ *   - `annex_b_cost_table` → cost-of-services table from the form's
+ *     `cost_items` array.
  *
- * Pagination is heuristic — each block carries an estimated mm height
- * (close enough that the preview lays out at the same page count as the
- * downloaded PDF for typical content). The PDF download remains the
+ * Everything else is plain TipTap HTML; tokens get substituted via
+ * `fillContractTokens` and the result is dropped in as innerHTML.
+ *
+ * Pagination is heuristic — each section carries an estimated mm height
+ * (close enough that the preview lays out at roughly the same page count
+ * as the downloaded PDF for typical content). The downloaded PDF is the
  * source of truth; this is the WYSIWYG confirmation.
  */
 
@@ -24,22 +23,20 @@ import { Loader2, ZoomIn, ZoomOut, Maximize2, Minimize2, X } from 'lucide-react'
 import { cn } from '@/lib/utils';
 import { resolveLetterhead } from '@/utils/templateAssignments';
 import { type LetterheadConfig } from '@/utils/letterheadTemplate';
+import { type ContractFields, type CostLineItem } from '@/utils/contractTemplate';
 import {
-  SECTIONS,
-  fillTokens,
-  type ContractSection,
-  type SectionBlock,
-  type ContractFields,
-  type CostLineItem,
-} from '@/utils/contractTemplate';
+  fillContractTokens,
+  type ContractStructureSection,
+} from '@/utils/contractStructure';
 
 interface Props {
   fields: ContractFields;
+  sections: ContractStructureSection[];
   darkMode?: boolean;
   /** When false, skip loading + applying the letterhead image — preview
    *  renders on a blank white page. Defaults to true. Mirrors the same
-   *  option passed to `generateContractPdf` so what you see is what the
-   *  downloaded PDF looks like. */
+   *  option passed to `generateContractPdfFromStructure` so what you see
+   *  is what the downloaded PDF looks like. */
   useLetterhead?: boolean;
   /** When set, render the user's freeform HTML (from the standalone
    *  ContractEditorPage in another tab) instead of the structured
@@ -51,48 +48,25 @@ interface Props {
 const PAGE_PX = { w: 794, h: 1123 };
 const PX_PER_MM = PAGE_PX.w / 210;
 
-/** Estimate a block's printed height in mm so we know when to break to a
- *  new page. Doesn't have to match jsPDF exactly. */
-const estimateBlockHeightMm = (b: SectionBlock, bodyWidthChars: number): number => {
-  const text = (b.text ?? '').replace(/\*\*/g, '');
-  const lines = Math.max(1, Math.ceil(text.length / bodyWidthChars));
-  switch (b.type) {
-    case 'p':      return 4 + lines * 4.5;
-    case 'sub':    return 6;
-    case 'list':   return 4 + lines * 4.5;
-    case 'bullet': return 4 + lines * 4.5;
-    case 'kv':     return 5;
-  }
-  return 5;
-};
-
-const estimateSectionHeightMm = (s: ContractSection): number => {
-  const charsPerLine = s.fullWidth ? 95 : 65; // narrower right column
-  let total = 0;
-  if (s.annexTitle) total += 14;
+/** Estimate a section's printed height in mm so we know when to break
+ *  to a new page. Doesn't have to match jsPDF exactly. */
+const estimateSectionHeightMm = (s: ContractStructureSection): number => {
+  if (s.special === 'signature_page') return 240;       // dominates a full page
+  if (s.special === 'annex_b_cost_table') return 100;   // table area
+  // Strip tags + estimate by char count.
+  const text = s.body_html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const charsPerLine = s.layout === 'annex' || s.layout === 'fullWidth' ? 95 : 80;
+  const lines = Math.max(1, Math.ceil(text.length / charsPerLine));
+  let total = 4 + lines * 4.8;
+  if (s.layout === 'annex') total += 14;          // centred title
   if (s.annexSubtitle) total += 8;
-  if (s.number) total += 6;
-  for (const b of s.blocks) total += estimateBlockHeightMm(b, charsPerLine);
-  return total + 4; // section gap
+  if (s.numeral && !s.hideTitle) total += 6;
+  return total + 4;                                // section gap
 };
 
-/** Parse `**bold**` runs and render as a React fragment. */
-const renderRich = (text: string): React.ReactNode => {
-  const parts: React.ReactNode[] = [];
-  const re = /\*\*([^*]+)\*\*/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let idx = 0;
-  while ((m = re.exec(text))) {
-    if (m.index > last) parts.push(<span key={idx++}>{text.slice(last, m.index)}</span>);
-    parts.push(<strong key={idx++} style={{ fontStyle: 'italic' }}>{m[1]}</strong>);
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) parts.push(<span key={idx++}>{text.slice(last)}</span>);
-  return parts.length ? parts : text;
-};
-
-const ContractPreview: React.FC<Props> = ({ fields, darkMode = false, useLetterhead = true, editedHtml = null }) => {
+const ContractPreview: React.FC<Props> = ({
+  fields, sections, darkMode = false, useLetterhead = true, editedHtml = null,
+}) => {
   const dm = darkMode;
   const [letterhead, setLetterhead] = useState<LetterheadConfig | null>(null);
   const [letterheadLoading, setLetterheadLoading] = useState(true);
@@ -114,26 +88,25 @@ const ContractPreview: React.FC<Props> = ({ fields, darkMode = false, useLetterh
     return () => { cancelled = true; };
   }, [useLetterhead]);
 
-  // Partition sections into pages. The preamble + early sections fit on
-  // page 1; annexes always start a new page (already flagged on the data).
-  // We also force a page-break before the signature placeholder.
-  const pageGroups = useMemo<ContractSection[][]>(() => {
-    const pages: ContractSection[][] = [[]];
-    const MAX_MM = 240; // usable body height per page minus running header/footer
+  // Partition sections into pages. Honours `forcePageBreakBefore` and
+  // a soft mm budget per page.
+  const pageGroups = useMemo<ContractStructureSection[][]>(() => {
+    const pages: ContractStructureSection[][] = [[]];
+    const MAX_MM = 240; // usable body height per page minus header/footer
     let running = 0;
-    for (const s of SECTIONS) {
+    for (const s of sections) {
       const h = estimateSectionHeightMm(s);
-      if (s.pageBreakBefore || running + h > MAX_MM) {
-        pages.push([]);
+      if (s.forcePageBreakBefore || running + h > MAX_MM) {
+        if (pages[pages.length - 1].length > 0) pages.push([]);
         running = 0;
       }
       pages[pages.length - 1].push(s);
       running += h;
     }
     return pages;
-  }, []);
+  }, [sections]);
 
-  const totalPages = pageGroups.length + 1; // +1 for the signature page
+  const totalPages = pageGroups.length;
 
   const zoomIn = () => setPageScale((s) => Math.min(2, +(s + 0.1).toFixed(2)));
   const zoomOut = () => setPageScale((s) => Math.max(0.4, +(s - 0.1).toFixed(2)));
@@ -193,69 +166,51 @@ const ContractPreview: React.FC<Props> = ({ fields, darkMode = false, useLetterh
     </div>
   );
 
-  const renderBlock = (b: SectionBlock, key: string) => {
-    const text = b.text ? fillTokens(b.text, fields) : '';
-    switch (b.type) {
-      case 'p':
-        return <p key={key} style={{ margin: '0 0 6pt', textAlign: 'justify' }}>{renderRich(text)}</p>;
-      case 'sub':
-        return <div key={key} style={{ margin: '4pt 0 2pt', fontWeight: 700, textDecoration: 'underline' }}>{text.replace(/\*\*/g, '')}</div>;
-      case 'list': {
-        const m = text.match(/^(\([^)]+\))\s*(.*)$/s) || text.match(/^([A-Z]\.)\s*(.*)$/s);
-        if (m) {
-          return (
-            <div key={key} style={{ display: 'flex', gap: 6, margin: '0 0 4pt', textAlign: 'justify' }}>
-              <span style={{ flex: '0 0 auto', minWidth: 14 }}>{m[1]}</span>
-              <span style={{ flex: 1 }}>{renderRich(m[2])}</span>
-            </div>
-          );
-        }
-        return <p key={key} style={{ margin: '0 0 4pt' }}>{renderRich(text)}</p>;
-      }
-      case 'bullet':
-        return (
-          <div key={key} style={{ display: 'flex', gap: 8, margin: '0 0 3pt' }}>
-            <span style={{ flex: '0 0 auto' }}>•</span>
-            <span style={{ flex: 1 }}>{renderRich(text)}</span>
-          </div>
-        );
-      case 'kv':
-        return (
-          <div key={key} style={{ margin: '0 0 3pt' }}>
-            <strong>{b.key}</strong>{' '}
-            <strong style={{ fontStyle: 'italic' }}>
-              {b.value ? fillTokens(b.value, fields).replace(/\*\*/g, '') : ''}
-            </strong>
-          </div>
-        );
+  const renderSection = (s: ContractStructureSection, key: string) => {
+    if (s.special === 'signature_page') {
+      return (
+        <div key={key} style={{ marginTop: 12 }}>
+          <SignatureTablePreview fields={fields} />
+        </div>
+      );
     }
-  };
-
-  const renderSection = (s: ContractSection, key: string) => {
-    if (s.annexTitle) {
+    if (s.special === 'annex_b_cost_table') {
       return (
         <div key={key} style={{ margin: '0 0 12pt' }}>
-          <h2 style={{ textAlign: 'center', fontSize: '13pt', fontWeight: 700, margin: '0 0 6pt' }}>{s.annexTitle}</h2>
+          <h2 style={{ textAlign: 'center', fontSize: '13pt', fontWeight: 700, margin: '0 0 10pt' }}>
+            Annex B: Cost of Services
+          </h2>
+          <CostTablePreview items={fields.cost_items ?? []} />
+        </div>
+      );
+    }
+    if (s.layout === 'annex') {
+      return (
+        <div key={key} style={{ margin: '0 0 12pt' }}>
+          <h2 style={{ textAlign: 'center', fontSize: '13pt', fontWeight: 700, margin: '0 0 6pt' }}>{s.heading}</h2>
           {s.annexSubtitle && (
             <h3 style={{ textAlign: 'center', fontSize: '11pt', fontWeight: 700, margin: '0 0 10pt' }}>
-              {fillTokens(s.annexSubtitle, fields).replace(/\*\*/g, '')}
+              <span dangerouslySetInnerHTML={{ __html: fillContractTokens(s.annexSubtitle, fields).replace(/<[^>]+>/g, '') }} />
             </h3>
           )}
-          {/* Cost-table cue */}
-          {s.annexTitle === 'Annex B: Cost of Services' && s.blocks.length === 0 ? (
-            <CostTablePreview items={fields.cost_items ?? []} />
-          ) : s.blocks.map((b, i) => renderBlock(b, `${key}-${i}`))}
+          <div
+            className="cgap-contract-body"
+            dangerouslySetInnerHTML={{ __html: fillContractTokens(s.body_html, fields) }}
+          />
         </div>
       );
     }
-    if (s.fullWidth) {
+    if (s.hideTitle || s.layout === 'fullWidth' || !s.numeral) {
       return (
         <div key={key} style={{ margin: '0 0 8pt' }}>
-          {s.blocks.map((b, i) => renderBlock(b, `${key}-${i}`))}
+          <div
+            className="cgap-contract-body"
+            dangerouslySetInnerHTML={{ __html: fillContractTokens(s.body_html, fields) }}
+          />
         </div>
       );
     }
-    // Numbered section — two-column grid.
+    // Numbered two-column layout.
     return (
       <div key={key} style={{
         display: 'grid',
@@ -264,11 +219,12 @@ const ContractPreview: React.FC<Props> = ({ fields, darkMode = false, useLetterh
         margin: '0 0 10pt',
       }}>
         <div style={{ fontWeight: 700, fontSize: '11pt' }}>
-          {s.number} {s.title}
+          {s.numeral} {s.heading}
         </div>
-        <div>
-          {s.blocks.map((b, i) => renderBlock(b, `${key}-${i}`))}
-        </div>
+        <div
+          className="cgap-contract-body"
+          dangerouslySetInnerHTML={{ __html: fillContractTokens(s.body_html, fields) }}
+        />
       </div>
     );
   };
@@ -298,6 +254,13 @@ const ContractPreview: React.FC<Props> = ({ fields, darkMode = false, useLetterh
       !fullscreen && '-mx-5 sm:-mx-8',
       fullscreen && 'fixed inset-0 z-50 rounded-none flex flex-col',
     )}>
+      <style>{`
+        .cgap-contract-body p { margin: 0 0 6pt; text-align: justify; }
+        .cgap-contract-body ul, .cgap-contract-body ol { margin: 4pt 0 6pt 18pt; padding-left: 0; }
+        .cgap-contract-body li { margin: 0 0 3pt; }
+        .cgap-contract-body strong { font-weight: 700; }
+        .cgap-contract-body em { font-style: italic; }
+      `}</style>
       <div className={cn(
         'sticky top-0 z-20 flex flex-wrap items-center gap-2 px-3 py-1.5 border-b text-xs',
         dm ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200',
@@ -348,15 +311,10 @@ const ContractPreview: React.FC<Props> = ({ fields, darkMode = false, useLetterh
         style={fullscreen ? undefined : { maxHeight: '80vh', minHeight: 320 }}
       >
         {editedHtml ? (
-          // Edited mode: drop the user's HTML into a single page. CSS
-          // overflow handles the visible portion; the downloaded PDF (when
-          // we eventually pipe edited HTML into it) would re-paginate.
           <Page index={0}>
             <div
-              className="contract-edited-content"
+              className="contract-edited-content cgap-contract-body"
               style={{ fontFamily: '"Times New Roman", Times, serif', fontSize: '11pt', lineHeight: 1.45 }}
-              // We trust this HTML — it came from our own TipTap editor in
-              // the same origin, written into the same browser's localStorage.
               dangerouslySetInnerHTML={{ __html: editedHtml }}
             />
           </Page>
@@ -368,10 +326,6 @@ const ContractPreview: React.FC<Props> = ({ fields, darkMode = false, useLetterh
                 {group.map((s, i) => renderSection(s, `${pageIdx}-${i}`))}
               </Page>
             ))}
-            {/* Signature page */}
-            <Page index={pageGroups.length}>
-              <SignatureTablePreview fields={fields} />
-            </Page>
           </>
         )}
       </div>

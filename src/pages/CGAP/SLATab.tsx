@@ -22,6 +22,7 @@ import {
 } from '@/utils/slaTemplate';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { logActivity } from '@/utils/activityLog';
+import { writeRichHtml as sharedWriteRichHtml } from '@/utils/htmlToPdfText';
 
 const ACCENT = '#0F766E';  // brand teal
 
@@ -291,111 +292,18 @@ const SLATab: React.FC<SLATabProps> = ({ darkMode = false }) => {
         y += 1.5;
       };
 
-      /** Walk TipTap-style HTML and emit styled vector text. Supports inline
-       *  bold/italic/underline runs (word-wrapped), paragraphs, hard breaks,
-       *  bulleted lists, and numbered lists. Block-level only — nested lists
-       *  flatten to indent 1 deep. */
+      /** Walk TipTap-style HTML and emit styled vector text. Implementation
+       *  lives in `src/utils/htmlToPdfText.ts` so the Contract generator
+       *  shares the same parser. We pass a mutable `cursor` object so the
+       *  walker keeps our local `y` in sync. */
       const writeRichHtml = (html: string, opts: { size?: number; color?: [number, number, number] } = {}) => {
-        const { size = 10.5, color = [17, 17, 17] } = opts;
-        const lh = size * 0.46;
-        pdf.setTextColor(color[0], color[1], color[2]);
-
-        const dom = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html');
-        const root = dom.body.firstChild as HTMLElement | null;
-        if (!root) return;
-
-        // Cursor used for inline runs. Reset to leftIndent at start of each
-        // block element. ensureSpace handles page breaks.
-        let cx = M.left;
-        let leftIndent = M.left;
-        let rightEdge = M.left + contentW;
-
-        const setFontFor = (bold: boolean, italic: boolean) => {
-          const style = bold && italic ? 'bolditalic' : bold ? 'bold' : italic ? 'italic' : 'normal';
-          pdf.setFont('helvetica', style);
-          pdf.setFontSize(size);
-        };
-
-        const emit = (text: string, style: { bold: boolean; italic: boolean; underline: boolean }) => {
-          if (!text) return;
-          setFontFor(style.bold, style.italic);
-          const tokens = text.split(/(\s+)/);
-          for (const tok of tokens) {
-            if (tok === '') continue;
-            const w = pdf.getTextWidth(tok);
-            if (cx > leftIndent && cx + w > rightEdge) {
-              // wrap
-              cx = leftIndent;
-              y += lh;
-              ensureSpace(lh);
-              if (/^\s+$/.test(tok)) continue; // swallow leading-after-wrap whitespace
-            }
-            ensureSpace(lh);
-            pdf.text(tok, cx, y);
-            if (style.underline && !/^\s+$/.test(tok)) {
-              pdf.setDrawColor(color[0], color[1], color[2]);
-              pdf.setLineWidth(0.15);
-              pdf.line(cx, y + 0.6, cx + w, y + 0.6);
-            }
-            cx += w;
-          }
-        };
-
-        const walkInline = (node: Node, style: { bold: boolean; italic: boolean; underline: boolean }) => {
-          if (node.nodeType === Node.TEXT_NODE) {
-            emit(node.textContent || '', style);
-            return;
-          }
-          if (node.nodeType !== Node.ELEMENT_NODE) return;
-          const el = node as HTMLElement;
-          const tag = el.tagName.toLowerCase();
-          let next = style;
-          if (tag === 'strong' || tag === 'b') next = { ...style, bold: true };
-          else if (tag === 'em' || tag === 'i') next = { ...style, italic: true };
-          else if (tag === 'u') next = { ...style, underline: true };
-          else if (tag === 'br') { cx = leftIndent; y += lh; ensureSpace(lh); return; }
-          el.childNodes.forEach((c) => walkInline(c, next));
-        };
-
-        const writeInlineBlock = (block: HTMLElement, indent = 0, bulletPrefix?: string) => {
-          leftIndent = M.left + indent;
-          rightEdge = M.left + contentW;
-          cx = leftIndent;
-          ensureSpace(lh + 1);
-          if (bulletPrefix) {
-            setFontFor(false, false);
-            pdf.setTextColor(color[0], color[1], color[2]);
-            pdf.text(bulletPrefix, leftIndent - 5, y);
-          }
-          block.childNodes.forEach((c) => walkInline(c, { bold: false, italic: false, underline: false }));
-          y += lh + 1.5; // bottom margin between blocks
-        };
-
-        const walkBlock = (node: Node) => {
-          if (node.nodeType !== Node.ELEMENT_NODE) return;
-          const el = node as HTMLElement;
-          const tag = el.tagName.toLowerCase();
-          if (tag === 'p') {
-            writeInlineBlock(el);
-          } else if (tag === 'ul') {
-            [...el.children].forEach((li) => {
-              if (li.tagName.toLowerCase() === 'li') writeInlineBlock(li as HTMLElement, 5, '•');
-            });
-            y += 1;
-          } else if (tag === 'ol') {
-            [...el.children].forEach((li, i) => {
-              if (li.tagName.toLowerCase() === 'li') writeInlineBlock(li as HTMLElement, 6, `${i + 1}.`);
-            });
-            y += 1;
-          } else {
-            // Fallback — treat as paragraph
-            writeInlineBlock(el);
-          }
-        };
-
-        [...root.children].forEach(walkBlock);
-        // Reset cursor state
-        cx = M.left; leftIndent = M.left;
+        const cursor = { y };
+        sharedWriteRichHtml(
+          { pdf, left: M.left, contentW, cursor, ensureSpace, font: 'helvetica' },
+          html,
+          opts,
+        );
+        y = cursor.y;
       };
 
       /* ── PAGE 1 — Cover page ────────────────────────────────────────── */

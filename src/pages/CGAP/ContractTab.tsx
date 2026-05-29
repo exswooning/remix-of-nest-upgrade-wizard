@@ -10,11 +10,19 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ChevronsUpDown, Check, Package, Plus, Trash2 } from 'lucide-react';
+import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ChevronsUpDown, Check, Package, Plus, Trash2, Eye, ArrowUp, ArrowDown, RotateCcw, ScissorsSquareDashedBottom, X } from 'lucide-react';
 import { numberToWords, periodToText, formatNepaliNumber, generateAbbreviation, getTodayISO } from '@/utils/cgapAutoFill';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { generateContractPdf, renderContractAsHtml, type CostLineItem, type ContractFields } from '@/utils/contractTemplate';
+import { generateContractPdfFromStructure, type CostLineItem, type ContractFields } from '@/utils/contractTemplate';
+import {
+  loadContractStructure, saveContractStructure, blankContractSection,
+  getDefaultStructureForCategory, suggestedContractProductFor,
+  CONTRACT_CATEGORY_KEYS, CONTRACT_CATEGORY_LABELS,
+  type ContractStructureSection,
+} from '@/utils/contractStructure';
+import SectionEditor from '@/components/SectionEditor';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { logActivity } from '@/utils/activityLog';
 import { resolveLetterhead } from '@/utils/templateAssignments';
 import { Switch } from '@/components/ui/switch';
@@ -116,6 +124,62 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [productOpen, setProductOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // ── Section structure (SLA-style, per UCAP category) ──────────────
+  // Admins can reorder, add, edit, and page-break each contract clause.
+  // Persisted per-category to `contract-sections-${categoryKey}`. Non-
+  // admin users still see the form + Generate button; the section
+  // manager is hidden behind isAdmin.
+  const [categoryKey, setCategoryKey] = useState<string>('google-workspace');
+  const [sections, setSections] = useState<ContractStructureSection[]>(() => loadContractStructure('google-workspace'));
+
+  // Persist any change to the current category's structure (debounced via
+  // React's batching — saveContractStructure is cheap, no real need to
+  // debounce manually).
+  useEffect(() => {
+    saveContractStructure(categoryKey, sections);
+  }, [categoryKey, sections]);
+
+  const handleCategoryChange = (next: string) => {
+    if (next === categoryKey) return;
+    saveContractStructure(categoryKey, sections);
+    setCategoryKey(next);
+    setSections(loadContractStructure(next));
+    // Suggest a default product so the title block reads sensibly when
+    // switching categories cold. User can override.
+    const sp = suggestedContractProductFor(next);
+    if (sp && !selectedProduct) setSelectedProduct(sp);
+  };
+
+  const updateSection = (id: string, patch: Partial<ContractStructureSection>) =>
+    setSections((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  const moveSection = (idx: number, delta: -1 | 1) => {
+    setSections((prev) => {
+      const next = [...prev];
+      const target = idx + delta;
+      if (target < 0 || target >= next.length) return prev;
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+  };
+  const deleteSection = (id: string) => {
+    if (!confirm('Delete this section? It will be removed from this category only.')) return;
+    setSections((prev) => prev.filter((s) => s.id !== id));
+  };
+  const addSection = () => setSections((prev) => [...prev, blankContractSection()]);
+  const resetSections = () => {
+    if (!confirm(`Reset all sections for "${CONTRACT_CATEGORY_LABELS[categoryKey]}" to defaults? Custom edits will be lost.`)) return;
+    setSections(getDefaultStructureForCategory(categoryKey));
+  };
+
+  // ── Iframe preview (SLA-style PDF preview) ────────────────────────
+  // The live A4 preview below stays as-is for instant WYSIWYG feedback.
+  // The iframe path here renders the *actual* downloaded PDF inside an
+  // <iframe> so users can confirm pagination, fonts, and the cost-table
+  // layout match exactly. Opens on demand; revoked when closed.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewBuilding, setPreviewBuilding] = useState(false);
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   const productGroups = useMemo(() => {
     const staticGroups = [
@@ -311,13 +375,10 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     }
   };
 
-  const downloadPdf = async () => {
-    const id = generatedId || generateContractId(fields.companyAbv || 'XXX');
-    if (!generatedId) setGeneratedId(id);
-
-    // Resolve letterhead asynchronously when the toggle is on. The image
-    // load is best-effort: if it fails (network, CORS), we silently fall
-    // back to a blank page rather than block the download.
+  /** Build the PDF from the editable section structure. Shared between
+   *  the "Download" path (writes a file) and the "Preview PDF" path
+   *  (drops the blob into an iframe). */
+  const buildPdf = async (id: string) => {
     let letterheadDataUrl: string | undefined;
     if (useLetterhead) {
       try {
@@ -328,20 +389,44 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         }
       } catch { /* no-op */ }
     }
-
-    const pdf = generateContractPdf(
+    return generateContractPdfFromStructure(
       { ...contractFieldBag, contract_id: id },
+      sections,
       { letterheadDataUrl },
     );
+  };
+
+  const downloadPdf = async () => {
+    const id = generatedId || generateContractId(fields.companyAbv || 'XXX');
+    if (!generatedId) setGeneratedId(id);
+
+    const pdf = await buildPdf(id);
     const filename = `${id || 'contract'}.pdf`;
     pdf.save(filename);
     logActivity({
       kind: 'pdf',
       module: 'CGAP/Contract',
       action: 'Contract PDF generated',
-      meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, letterhead: !!letterheadDataUrl },
+      meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, category: categoryKey },
     });
     toast({ title: 'Contract PDF downloaded', description: filename });
+  };
+
+  const refreshPdfPreview = async () => {
+    setPreviewBuilding(true);
+    try {
+      const id = generatedId || generateContractId(fields.companyAbv || 'XXX');
+      if (!generatedId) setGeneratedId(id);
+      const pdf = await buildPdf(id);
+      const blob = pdf.output('blob');
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to build preview';
+      toast({ title: 'Preview failed', description: msg, variant: 'destructive' });
+    } finally {
+      setPreviewBuilding(false);
+    }
   };
 
   // Mirror the field bag to localStorage so the standalone editor tab can
@@ -741,7 +826,148 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           </Button>
         )}
       </div>
-      <ContractPreview fields={contractFieldBag} darkMode={dm} useLetterhead={useLetterhead} editedHtml={editedHtml} />
+      <ContractPreview fields={contractFieldBag} sections={sections} darkMode={dm} useLetterhead={useLetterhead} editedHtml={editedHtml} />
+
+      {/* PDF preview (iframe) — same UX as SLA. Builds the actual PDF on
+          demand so users can confirm pagination + fonts before downloading. */}
+      <div className={`${card} py-3 flex items-center gap-3 flex-wrap`}>
+        <span className={`text-xs ${dm ? 'text-gray-400' : 'text-gray-600'} flex items-center gap-1.5`}>
+          <Eye className="w-3.5 h-3.5" /> PDF preview
+        </span>
+        <span className={`text-[11px] ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+          Renders the downloaded PDF in an iframe — confirms pagination + fonts match exactly.
+        </span>
+        <span className="flex-1" />
+        <Button variant="outline" size="sm" onClick={refreshPdfPreview} disabled={previewBuilding} className="gap-1.5">
+          {previewBuilding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+          {previewUrl ? 'Refresh PDF' : 'Preview PDF'}
+        </Button>
+        {previewUrl && (
+          <Button variant="ghost" size="sm" onClick={() => setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; })}>
+            <X className="w-3.5 h-3.5 mr-1" /> Close
+          </Button>
+        )}
+      </div>
+      {previewUrl && (
+        <div className={card}>
+          <iframe src={previewUrl} title="Contract PDF preview" className="w-full rounded-lg border border-border bg-white" style={{ height: '900px' }} />
+        </div>
+      )}
+
+      {/* Pages & Sections (admin only) — port of SLA's section manager.
+          Admins reorder/add/delete/page-break clauses; bodies edit via
+          the same TipTap SectionEditor SLA uses. Persists per category
+          to localStorage. */}
+      {isAdmin && (
+        <div className={card}>
+          <Collapsible defaultOpen={false}>
+            <CollapsibleTrigger className="w-full flex items-center justify-between group">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Label className={labelCls}>Pages &amp; Sections (admin)</Label>
+                <Badge variant="outline" className="text-[9px] h-4">{sections.length} sections</Badge>
+                <Badge variant="outline" className="text-[9px] h-4">{CONTRACT_CATEGORY_LABELS[categoryKey] ?? categoryKey}</Badge>
+              </div>
+              <ChevronDown className="w-4 h-4 transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3 space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Label className={`${labelCls} normal-case font-normal`}>Editing</Label>
+                  <Select value={categoryKey} onValueChange={handleCategoryChange}>
+                    <SelectTrigger className="h-8 text-xs w-[200px]">
+                      <SelectValue placeholder="Pick a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONTRACT_CATEGORY_KEYS.map((k) => (
+                        <SelectItem key={k} value={k} className="text-xs">{CONTRACT_CATEGORY_LABELS[k]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className={`text-[11px] ${dm ? 'text-gray-500' : 'text-gray-500'}`}>
+                    Edits are saved to this browser per category. <code>{'{customer_name}'}</code>, <code>{'{product}'}</code>, <code>{'{amount}'}</code> etc. substitute at PDF time.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={addSection} className="h-7 text-xs gap-1.5">
+                    <Plus className="w-3 h-3" /> Add section
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={resetSections} className="h-7 text-xs gap-1.5">
+                    <RotateCcw className="w-3 h-3" /> Reset to default
+                  </Button>
+                </div>
+              </div>
+
+              {sections.map((sec, idx) => (
+                <div
+                  key={sec.id}
+                  className={cn(
+                    'p-3 rounded-xl border',
+                    dm ? 'bg-gray-900/40 border-gray-700' : 'bg-white/70 border-gray-200',
+                    sec.forcePageBreakBefore && (dm ? 'border-l-4 border-l-teal-500' : 'border-l-4 border-l-teal-400'),
+                    sec.special && (dm ? 'bg-amber-950/20' : 'bg-amber-50/60'),
+                  )}
+                >
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${dm ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                      {String(idx + 1).padStart(2, '0')}
+                    </span>
+                    <Input
+                      value={sec.heading}
+                      onChange={(e) => updateSection(sec.id, { heading: e.target.value })}
+                      placeholder="Section heading"
+                      className="h-8 text-sm font-semibold flex-1 min-w-[200px]"
+                    />
+                    <Input
+                      value={sec.numeral ?? ''}
+                      onChange={(e) => updateSection(sec.id, { numeral: e.target.value })}
+                      placeholder="No."
+                      className="h-8 text-xs w-16 text-center"
+                      title="Optional manual numeral (e.g. 7.). Leave blank to omit numbering."
+                    />
+                    <label className={`inline-flex items-center gap-1.5 px-2 h-8 rounded border text-[11px] cursor-pointer ${sec.forcePageBreakBefore ? (dm ? 'bg-teal-900/30 border-teal-700 text-teal-200' : 'bg-teal-50 border-teal-300 text-teal-700') : (dm ? 'border-gray-700' : 'border-gray-300')}`}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(sec.forcePageBreakBefore)}
+                        onChange={(e) => updateSection(sec.id, { forcePageBreakBefore: e.target.checked })}
+                        className="w-3 h-3"
+                      />
+                      <ScissorsSquareDashedBottom className="w-3 h-3" /> Start on new page
+                    </label>
+                    <div className="flex items-center gap-0.5">
+                      <Button variant="ghost" size="sm" onClick={() => moveSection(idx, -1)} disabled={idx === 0} className="h-7 w-7 p-0" title="Move up">
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => moveSection(idx, 1)} disabled={idx === sections.length - 1} className="h-7 w-7 p-0" title="Move down">
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteSection(sec.id)} className="h-7 w-7 p-0 text-red-500 hover:text-red-600" title="Delete section">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  {sec.special ? (
+                    <p className={`text-xs italic px-2 py-2 rounded ${dm ? 'text-amber-300 bg-amber-950/30' : 'text-amber-700 bg-amber-100/60'}`}>
+                      Auto-rendered section ({sec.special === 'signature_page' ? 'signature table' : 'cost-of-services table'}) — body text is ignored at render time. Use the form above to drive the content.
+                    </p>
+                  ) : (
+                    <SectionEditor
+                      value={sec.body_html}
+                      onChange={(html) => updateSection(sec.id, { body_html: html })}
+                      darkMode={dm}
+                    />
+                  )}
+                </div>
+              ))}
+
+              <div className="flex justify-center">
+                <Button variant="outline" size="sm" onClick={addSection} className="gap-1.5">
+                  <Plus className="w-3 h-3" /> Add another section
+                </Button>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
 
       {/* Custom .docx template — upload once, fill from the form, download. */}
       {sectionHeader('Your own .docx template', 'Upload a Word file with {placeholder} markers — the form above fills them, your formatting is preserved')}
