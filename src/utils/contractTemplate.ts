@@ -414,10 +414,17 @@ export const CONTRACT_TEMPLATE_BLOCKS: Block[] = (() => {
 })();
 
 // ── Page geometry ─────────────────────────────────────────────────────
+// All values in mm. Coordinates match contract_layout_template.json:
+//   left margin       = 62.36 pt  ≈ 22 mm      (M.left)
+//   body column x     = 192.76 pt ≈ 68 mm      (= M.left + LABEL_COL_WIDTH + COL_GAP)
+//   footer y          = 790 pt    ≈ 278.68 mm  (FOOTER_Y)
+//   footer page-no x  = 500 pt    ≈ 176.39 mm  (right-aligned via M.right)
+//   footer contract x = 70 pt     ≈ 24.69 mm   (FOOTER_CONTRACT_X)
 const PAGE = { w: 210, h: 297 };
 const M = { left: 22, right: 22, top: 28, bottom: 22 };
 const HEADER_Y = 12;
-const FOOTER_Y = 286;
+const FOOTER_Y = 278.68;
+const FOOTER_CONTRACT_X = 24.69;
 const LABEL_COL_WIDTH = 42;   // narrow left column for section labels
 const COL_GAP = 4;
 
@@ -511,17 +518,18 @@ const drawHeader = (pdf: jsPDF, fields: ContractFields) => {
   pdf.text('CONTRACT AGREEMENT', PAGE.w / 2, HEADER_Y, { align: 'center' });
 };
 
-const drawFooter = (pdf: jsPDF, pageNum: number, totalPages: number) => {
-  pdf.setFont('times', 'normal');
-  pdf.setFontSize(10);
+const drawFooter = (pdf: jsPDF, pageNum: number, totalPages: number, fields?: ContractFields) => {
   setColor(pdf, BLACK);
-  pdf.text(`Page `, PAGE.w - M.right - 20, FOOTER_Y);
-  pdf.setFont('times', 'bold');
-  pdf.text(`${pageNum}`, PAGE.w - M.right - 13, FOOTER_Y);
+  pdf.setFontSize(10);
+  // Contract id at left (bold). Mirrors the running header so each page
+  // is self-identifying even when only the footer is visible.
+  if (fields?.contract_id) {
+    pdf.setFont('times', 'bold');
+    pdf.text(fields.contract_id, FOOTER_CONTRACT_X, FOOTER_Y);
+  }
+  // Page number at right.
   pdf.setFont('times', 'normal');
-  pdf.text(` of `, PAGE.w - M.right - 10, FOOTER_Y);
-  pdf.setFont('times', 'bold');
-  pdf.text(`${totalPages}`, PAGE.w - M.right - 4, FOOTER_Y);
+  pdf.text(`Page ${pageNum} of ${totalPages}`, PAGE.w - M.right, FOOTER_Y, { align: 'right' });
 };
 
 export interface GenerateOptions {
@@ -547,16 +555,19 @@ export function generateContractPdf(fields: ContractFields, options: GenerateOpt
   
   const stampQRCode = (pageNum: number) => {
     if (!options.qrCodeDataUrl) return;
-    
-    // Load anchor positions from localStorage
+
+    // Load anchor positions from localStorage. Per-page QR anchors
+    // override the universal (page: 0) anchor on the page they target —
+    // mirrors the precedence rule in `ContractPreview.tsx` so dragging
+    // the QR on a single page only moves it there.
     const anchors = loadContractAnchors();
-    
-    // Render all QR anchors for this page
+    const hasPageSpecificQr = anchors.some((a) => a.kind === 'qr' && a.page === pageNum);
+
     anchors.forEach((anchor) => {
       if (anchor.kind !== 'qr') return;
-      // Apply anchor to all pages if page is 0, or if it matches current page
+      if (anchor.page === 0 && hasPageSpecificQr) return;
       if (anchor.page !== 0 && anchor.page !== pageNum) return;
-      
+
       const qrSize = anchor.width || 30;
       const qrX = anchor.x;
       const qrY = anchor.y;
@@ -671,7 +682,7 @@ export function generateContractPdf(fields: ContractFields, options: GenerateOpt
   for (let p = 1; p <= total; p++) {
     pdf.setPage(p);
     drawHeader(pdf, fields);
-    drawFooter(pdf, p, total);
+    drawFooter(pdf, p, total, fields);
   }
 
   return pdf;
@@ -848,16 +859,19 @@ export function generateContractPdfFromStructure(
   
   const stampQRCode = (pageNum: number) => {
     if (!options.qrCodeDataUrl) return;
-    
-    // Load anchor positions from localStorage
+
+    // Load anchor positions from localStorage. Per-page QR anchors
+    // override the universal (page: 0) anchor on the page they target —
+    // mirrors the precedence rule in `ContractPreview.tsx` so dragging
+    // the QR on a single page only moves it there.
     const anchors = loadContractAnchors();
-    
-    // Render all QR anchors for this page
+    const hasPageSpecificQr = anchors.some((a) => a.kind === 'qr' && a.page === pageNum);
+
     anchors.forEach((anchor) => {
       if (anchor.kind !== 'qr') return;
-      // Apply anchor to all pages if page is 0, or if it matches current page
+      if (anchor.page === 0 && hasPageSpecificQr) return;
       if (anchor.page !== 0 && anchor.page !== pageNum) return;
-      
+
       const qrSize = anchor.width || 30;
       const qrX = anchor.x;
       const qrY = anchor.y;
@@ -880,22 +894,31 @@ export function generateContractPdfFromStructure(
   const ensure = (need: number) => { if (need > remaining()) newPage(); };
 
   // — Title block (page 1 only) ——————————————————————————————————
+  // Y-coordinates match `contract_layout_template.json` (page 1 elements):
+  //   title             y = 76.09 pt  ≈ 26.85 mm
+  //   contract_id       y = 122.49 pt ≈ 43.21 mm
+  //   opening paragraph y = 153.35 pt ≈ 54.10 mm
+  // Keep these in step with `ContractPreview.tsx` so the live preview and
+  // the downloaded PDF agree page-for-page.
+  const TITLE_Y = 26.85;
+  const CONTRACT_ID_Y = 43.21;
+  const OPENING_PARA_Y = 54.10;
+
   pdf.setFont('times', 'bold');
   pdf.setFontSize(14);
   setColor(pdf, BLACK);
   const titleText = `CONTRACT AGREEMENT FOR ${(fields.product || '{product}').toUpperCase()} SERVICES`;
   const titleLines = pdf.splitTextToSize(titleText, PAGE.w - M.left - M.right) as string[];
-  pdf.text(titleLines, PAGE.w / 2, cursor.y + 4, { align: 'center' });
-  cursor.y += titleLines.length * 7 + 6;
+  pdf.text(titleLines, PAGE.w / 2, TITLE_Y, { align: 'center' });
 
   pdf.setFont('times', 'bold');
   pdf.setFontSize(13);
   const idText = `CONTRACT IDENTIFICATION No. ${fields.contract_id || '—'}`;
-  pdf.text(idText, PAGE.w / 2, cursor.y, { align: 'center' });
+  pdf.text(idText, PAGE.w / 2, CONTRACT_ID_Y, { align: 'center' });
   const idWidth = pdf.getTextWidth(idText);
   pdf.setLineWidth(0.4);
-  pdf.line(PAGE.w / 2 - idWidth / 2, cursor.y + 1.5, PAGE.w / 2 + idWidth / 2, cursor.y + 1.5);
-  cursor.y += 10;
+  pdf.line(PAGE.w / 2 - idWidth / 2, CONTRACT_ID_Y + 1.5, PAGE.w / 2 + idWidth / 2, CONTRACT_ID_Y + 1.5);
+  cursor.y = OPENING_PARA_Y;
 
   // — Walk sections ————————————————————————————————————————————————
   const contentW = PAGE.w - M.left - M.right;
@@ -939,6 +962,21 @@ export function generateContractPdfFromStructure(
       }
       const filled = fillContractTokens(section.body_html, fields);
       writeRichHtml({ pdf, left: M.left, contentW, cursor, ensureSpace: ensure, font: 'times' }, filled);
+      
+      // Render sub-sections. Heading is prepended as inline <strong> so
+      // it flows on the same line as the body's first sentence (e.g.
+      // "(i) The Service Provider shall…") — mirrors ContractPreview.
+      if (section.subSections && section.subSections.length > 0) {
+        section.subSections.forEach((subSec) => {
+          if (subSec.forcePageBreakBefore) newPage();
+          else cursor.y += 4; // gap before sub-section
+          const subFilled = fillContractTokens(subSec.body_html, fields);
+          const inlined = `<strong>${subSec.heading}</strong>&nbsp;${subFilled}`;
+          writeRichHtml({ pdf, left: M.left, contentW, cursor, ensureSpace: ensure, font: 'times' }, inlined);
+          cursor.y += 3; // gap after sub-section
+        });
+      }
+
       continue;
     }
 
@@ -957,6 +995,21 @@ export function generateContractPdfFromStructure(
     const filled = fillContractTokens(section.body_html, fields);
     writeRichHtml({ pdf, left: M.left, contentW, cursor, ensureSpace: ensure, font: 'times' }, filled);
     cursor.y += 3; // gap between sections
+    
+    // Render sub-sections
+    if (section.subSections && section.subSections.length > 0) {
+      section.subSections.forEach((subSec) => {
+        if (subSec.forcePageBreakBefore) newPage();
+        else cursor.y += 4; // gap before sub-section
+        pdf.setFont('times', 'bold');
+        pdf.setFontSize(11);
+        pdf.text(subSec.heading, M.left, cursor.y);
+        cursor.y += 6;
+        const subFilled = fillContractTokens(subSec.body_html, fields);
+        writeRichHtml({ pdf, left: M.left, contentW, cursor, ensureSpace: ensure, font: 'times' }, subFilled);
+        cursor.y += 3; // gap after sub-section
+      });
+    }
   }
 
   // — Pass: header + footer on every page ——————————————————————————
@@ -964,16 +1017,20 @@ export function generateContractPdfFromStructure(
   for (let p = 1; p <= total; p++) {
     pdf.setPage(p);
     drawHeader(pdf, fields);
-    drawFooter(pdf, p, total);
+    drawFooter(pdf, p, total, fields);
   }
   void pageNum;
   return pdf;
 }
 
-function drawSignaturePage(pdf: jsPDF, fields: ContractFields, yStart: number) {
+function drawSignaturePage(pdf: jsPDF, _fields: ContractFields, yStart: number) {
+  // Signature page is intentionally blank for handwritten fill-in.
+  // No form fields are interpolated — the cells always render empty so
+  // the printed contract has space for ink signatures, witnessed names,
+  // and titles regardless of what the user typed in the form.
   let y = yStart;
   const usable = PAGE.w - M.left - M.right;
-  const colW = usable / 2;
+  const colW = usable / 2;       // forced 50/50 split
   const leftX = M.left;
   const rightX = M.left + colW;
 
@@ -992,48 +1049,34 @@ function drawSignaturePage(pdf: jsPDF, fields: ContractFields, yStart: number) {
     y += h;
   };
 
-  const valueRow = (leftVal: string, rightVal: string, h: number) => {
+  const emptyRow = (h: number) => {
     pdf.rect(leftX, y, colW, h);
     pdf.rect(rightX, y, colW, h);
-    pdf.setFont('times', 'normal');
-    pdf.setFontSize(10);
-    if (leftVal) pdf.text(leftVal, leftX + 3, y + 6);
-    if (rightVal) pdf.text(rightVal, rightX + 3, y + 6);
     y += h;
   };
 
-  // Section heading row: "FOR THE CLIENT" / "FOR THE SERVICE PROVIDER"
-  labelRow('FOR THE CLIENT');
-  // Overwrite the second cell label since labelRow writes the same text to both.
-  // Re-write the heading cells with their distinct labels.
-  pdf.setFillColor(255, 255, 255);
-  pdf.rect(leftX, y - 8, colW, 8, 'F');
-  pdf.rect(rightX, y - 8, colW, 8, 'F');
-  pdf.rect(leftX, y - 8, colW, 8);
-  pdf.rect(rightX, y - 8, colW, 8);
+  // Section heading row: distinct labels in each cell.
+  const headH = 8;
+  pdf.rect(leftX, y, colW, headH);
+  pdf.rect(rightX, y, colW, headH);
   pdf.setFont('times', 'bold');
   pdf.setFontSize(11);
-  pdf.text('FOR THE CLIENT', leftX + colW / 2, y - 2.5, { align: 'center' });
-  pdf.text('FOR THE SERVICE PROVIDER', rightX + colW / 2, y - 2.5, { align: 'center' });
+  setColor(pdf, BLACK);
+  pdf.text('FOR THE CLIENT', leftX + colW / 2, y + 5.5, { align: 'center' });
+  pdf.text('FOR THE SERVICE PROVIDER', rightX + colW / 2, y + 5.5, { align: 'center' });
+  y += headH;
 
-  // Signed By
   labelRow('Signed By');
-  valueRow(fields.signatory_name, fields.sp_signatory_name, 12);
-  // Title
+  emptyRow(12);
   labelRow('Title');
-  valueRow(fields.signatory_title, fields.sp_signatory_title, 12);
-  // Signature
+  emptyRow(12);
   labelRow('Signature');
-  valueRow('', '', 28);
-  // Witness section header (label only, no value row beneath)
+  emptyRow(28);
   labelRow('With the witness of');
-  // Name
   labelRow('Name');
-  valueRow(fields.witness_name, fields.sp_witness_name, 12);
-  // Designation
+  emptyRow(12);
   labelRow('Designation');
-  valueRow(fields.witness_designation, fields.sp_witness_designation, 12);
-  // Signature
+  emptyRow(12);
   labelRow('Signature');
-  valueRow('', '', 28);
+  emptyRow(28);
 }

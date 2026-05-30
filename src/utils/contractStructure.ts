@@ -45,6 +45,15 @@ export interface ContractStructureSection {
   layout?: 'numbered' | 'fullWidth' | 'annex';
   /** Optional centred subtitle below the annex title. */
   annexSubtitle?: string;
+  /** Sub-sections within this section, each with its own editable content */
+  subSections?: ContractSubSection[];
+}
+
+export interface ContractSubSection {
+  id: string;
+  heading: string;          // sub-section heading
+  body_html: string;        // TipTap HTML for this sub-section
+  forcePageBreakBefore?: boolean;
 }
 
 // ── Token substitution ──────────────────────────────────────────────
@@ -257,33 +266,75 @@ function buildDefaultStructure(flavour: CategoryFlavour): ContractStructureSecti
     },
     {
       id: 'services', heading: 'Services', numeral: '1.', layout: 'numbered',
-      body_html: `<p>(i) The Service Provider shall perform the services specified in Annex A, &ldquo;Terms of References,&rdquo; which is made an integral part of this Contract (&ldquo;the Services&rdquo;). This includes the provisioning of <strong><em>{product}</em></strong> services.</p>
-<p>(ii) The Service Provider shall provide the license credentials, administrative access, and support reports listed within the time periods specified in the ToR.</p>`,
+      body_html: '',
+      subSections: [
+        {
+          id: 'services_i',
+          heading: '(i)',
+          body_html: `The Service Provider shall perform the services specified in Annex A, &ldquo;Terms of References,&rdquo; which is made an integral part of this Contract (&ldquo;the Services&rdquo;). This includes the provisioning of <strong><em>{product}</em></strong> services.`,
+        },
+        {
+          id: 'services_ii',
+          heading: '(ii)',
+          body_html: `The Service Provider shall provide the license credentials, administrative access, and support reports listed within the time periods specified in the ToR.`,
+        },
+      ],
     },
     {
       id: 'terms', heading: 'Terms', numeral: '2.', layout: 'numbered',
-      body_html: `<p>A. The Service Provider shall provide the subscription services and technical support for a period of <strong><em>{service_term}</em></strong> commencing from the date of license activation. The contract covers the subscription period for <strong><em>{num_users}</em></strong> users including the periods of renewal. The modification/User addition of services shall be subject to a new agreement or an addendum/amendment to this contract or the current contract. The Client acknowledges that the subscription to the provided services is bound for the period of <strong><em>{service_term}</em></strong>. Additional services that are to be provided under the current procurement are subject to their own Service Level Agreements and Scope of Service Agreements.</p>`,
+      body_html: '',
+      subSections: [
+        {
+          id: 'terms_a',
+          heading: 'A.',
+          body_html: `The Service Provider shall provide the subscription services and technical support for a period of <strong><em>{service_term}</em></strong> commencing from the date of license activation. The contract covers the subscription period for <strong><em>{num_users}</em></strong> users. The renewal/modification/User addition of services shall be subject to a new agreement or an addendum to this contract or the current contract. Additional services that are to be provided under the current procurement are subject to their own Service Level Agreements and Scope of Service Agreements.`,
+        },
+      ],
     },
     {
       id: 'payment', heading: 'Payment', numeral: '3.', layout: 'numbered',
-      body_html: `<p><strong><u>A. Ceiling</u></strong></p>
-<p>For Services rendered pursuant to Annex A, the Client shall pay the Service Provider an amount not to exceed a ceiling of <strong><em>NRs. {amount}/-</em></strong> (In words: <strong><em>{amount_words}/-</em></strong>) including VAT as per total charge within a total <strong><em>{service_term}</em></strong> of subscription. This amount has been established based on the understanding that it includes all of the Service Provider&rsquo;s costs and profits as well as any tax obligation.</p>
-<p><strong><u>B. Cost</u></strong></p>
-<p>The Client shall pay the Service Provider for Services rendered at the rate(s) in accordance with the rates agreed and specified in Annex B, <strong><em>&ldquo;Cost of Services&rdquo;</em></strong>.</p>
-<p><strong><u>C. Payment Conditions</u></strong></p>
-<p>The Client shall pay <strong><em>{payment_schedule}</em></strong>. After the successful activation of all licenses and handover of administrative credentials to the Client, verified by a &ldquo;Letter of Completion&rdquo; or &ldquo;Service Completion Report&rdquo; from the Client&rsquo;s IT section if no SCR is received an assumption of service delivery completion is to be made.</p>
-<p>Payments shall be made to Service Provider&rsquo;s bank account <em>as</em> mentioned below:</p>
+      body_html: '',
+      subSections: [
+        {
+          id: 'payment_ceiling',
+          heading: 'A. Ceiling',
+          body_html: `For Services rendered pursuant to Annex A, the Client shall pay the Service Provider an amount not to exceed a ceiling of <strong><em>NRs. {amount}/-</em></strong> (In words: <strong><em>{amount_words}/-</em></strong>) including VAT as per the full payment. This amount has been established based on the understanding that it includes all of the Service Provider&rsquo;s costs and profits as well as any tax obligation.`,
+        },
+        {
+          id: 'payment_cost',
+          heading: 'B. Cost',
+          body_html: `The Client shall pay the Service Provider for Services rendered at the rate(s) in accordance with the rates agreed and specified in Annex B, <strong><em>&ldquo;Cost of Services&rdquo;</em></strong>.`,
+        },
+        {
+          id: 'payment_conditions',
+          heading: 'C. Payment Conditions',
+          // Page break before so page 1 ends cleanly at "B. Cost" and the
+          // bank-details block lands at the top of page 2 — matches the
+          // page-1 reference screenshot.
+          forcePageBreakBefore: true,
+          body_html: `The Client shall pay <strong><em>{payment_schedule}</em></strong> preceding the activation of all licenses and handover of administrative credentials to the Client, verified by a &ldquo;Letter of Completion&rdquo; or &ldquo;Service Completion Report&rdquo; from the Client&rsquo;s IT section.
+<p>Payments shall be made to Service Provider&rsquo;s bank account as mentioned below:</p>
 <p><strong><em>Bank Name: {bank_name}</em></strong></p>
 <p><strong><em>Account Name: {payee_name}</em></strong></p>
 <p><strong><em>Account Number: {bank_account}</em></strong></p>`,
+        },
+      ],
     },
     {
       id: 'project_admin', heading: 'Project Administration', numeral: '4.', layout: 'numbered',
-      body_html: `<p><strong><u>A. Coordinator</u></strong></p>
-<p>The Client designates, <strong><em>{customer_attn}</em></strong> from <strong><em>{customer_name}</em></strong> <em>({customer_name_nepali})</em> with the contact information <strong><em>{customer_contact}</em></strong> as Client&rsquo;s Coordinator; the coordinator shall be responsible for the coordination of activities under the Contract, and for acceptance of the deliverables by the Client. In terms of this contract the service provider will assign an account manager responsible for all the service purchases and the client agrees to contact the designated account manager for all purchase related queries for itself and its sister companies and acknowledges that the client will contact the service provider for any and all services listed on the website of nestnepal.com and will provide the service provider a right of first refusal for all the internet enabled services that may need to be procured at any time within the validity of this contract.</p>
-<p>The service provider designates, <strong><em>{sp_coordinator_name}</em></strong> from <strong><em>NEST NEPAL BUSINESS SOLUTIONS PVT LTD.</em></strong> as the Service Provider&rsquo;s Coordinator with the contact information <strong><em>{sp_coordinator_contact}</em></strong>.</p>
-<p><strong><u>B. Records and Accounts</u></strong></p>
-<p>The Service Provider shall keep accurate and systematic records and accounts in respect of the Services, which will clearly identify all the charges and expenses. The modification of services will be subject to the current market rates and will be subject to mutual agreement.</p>`,
+      body_html: '',
+      subSections: [
+        {
+          id: 'project_admin_coordinator',
+          heading: 'A. Coordinator',
+          body_html: `The Client designates <strong><em>{customer_attn}</em></strong> from <strong><em>{customer_name}</em></strong> as Client&rsquo;s Coordinator; the coordinator shall be responsible for the coordination of activities under the Contract, and for acceptance of the deliverables by the Client.`,
+        },
+        {
+          id: 'project_admin_records',
+          heading: 'B. Records and Accounts',
+          body_html: `The Service Provider shall keep accurate and systematic records and accounts in respect of the Services, which will clearly identify all the charges and expenses. The modification of services will be subject to the current market rates and will be subject to mutual agreement.`,
+        },
+      ],
     },
     {
       id: 'performance', heading: 'Performance Standard', numeral: '5.', layout: 'numbered',
@@ -317,7 +368,7 @@ function buildDefaultStructure(flavour: CategoryFlavour): ContractStructureSecti
     },
     {
       id: 'termination_procedure', heading: 'Procedure in case of termination of Contract before date of Expiry.', numeral: '12.', layout: 'numbered',
-      body_html: `<p>In the event of a failure to meet agreed service levels or determined termination of services from the end of the Service Provider, Nest Nepal agrees to refund the client with the total amount the client has paid for the affected service, calculated based on the remaining service credits/period from the disrupted service usage period. The refund will be processed in a manner whenever most effective determined by the service provider and other service related data and information of the client will be managed by the client and only if the client requests it assistance may be provided by the service provider. If the customer of their own will requests termination without mutual agreement aside from cause such as disruption of service or a valid reason pertaining to the use of services such as billing or pricing negotiations no refund including the case of multiyear contracts.</p>`,
+      body_html: `<p>In the event of a failure to meet agreed service levels or determined termination of services from the end of the Service Provider, Nest Nepal agrees to refund the client with the total amount the client has paid for the affected service, calculated based on the remaining service credits from the disrupted service usage period. The refund will be processed in a manner whenever most effective determined by the service provider and other service related data and information of the client will be managed by the client and only if the client requests it assistance may be provided by the service provider. If the customer of their own will requests termination without cause such as disruption of service or a valid reason pertaining to the use of services such as billing or pricing negotiations no refund including the case of multiyear contracts.</p>`,
     },
     {
       id: 'data_corruption', heading: 'Data Corruption', numeral: '13.', layout: 'numbered',
@@ -329,15 +380,49 @@ function buildDefaultStructure(flavour: CategoryFlavour): ContractStructureSecti
     },
     {
       id: 'termination', heading: 'Termination', numeral: '15.', layout: 'numbered',
-      body_html: `<p>The Client may terminate this Contract with at least thirty (30) working days prior written notice to the Service Provider after the occurrence of any of the events specified in paragraphs (a) through (d) of this Clause in the case of Client and (e) through (h):</p>
-<p>(a) If the Service Provider does not remedy a failure in the performance of its obligations under the Contract within thirty (30) working days after being notified (excluding unscheduled maintenance and accidental occurrences of service interruption not from the end of the service provider), or within any further period as the Client may have subsequently approved in writing;</p>
-<p>(b) If either party becomes insolvent or bankrupt;</p>
-<p>(c) If the Service Provider, in the judgment of the Client or the Bank, has engaged in corrupt, fraudulent, collusive, coercive, or obstructive practices (as defined in the prevailing Bank&rsquo;s sanctions procedures) in competing for or in performing the Contract;</p>
-<p>(d) If the Client and/or Service Provider, in its sole discretion and for any reason whatsoever, decides to terminate this Contract bearing the clauses that may be in effect mentioned herein.</p>
-<p>(e) The payment is not received within the specified time which if not specified will be held as one week the service provider has the right to terminate services until the payment is fulfilled.</p>
-<p>(f) If the Client, in the judgment of the Service Provider or the Bank, has engaged in corrupt, fraudulent, collusive, coercive, or obstructive practices (as defined in the prevailing Bank&rsquo;s sanctions procedures) in competing for or in performing the Contract.</p>
-<p>(g) The service provider will provide support and assistance in the available methods determined to be the most suitable for the situation as determined by the service provider either physically or virtually. Upon contract termination or expiration, the Service Provider shall provide reasonable transition support to ensure continuity of services for a period of up to ten (10) days without additional charge contingent on the fact that no additional charge is incurred to the service provider during the provision of support during the transition.</p>
-<p>(h) The Service provider has the right to terminate the services in its sole judgement for whatever reason that may be found applicable including billing and service provision covered under section <strong><em>(12) on page 4</em></strong>.</p>`,
+      body_html: `<p>The Client may terminate this Contract with at least thirty (30) working days prior written notice to the Service Provider after the occurrence of any of the events specified in paragraphs (a) through (d) of this Clause in the case of Client and (e) through (h):</p>`,
+      subSections: [
+        {
+          id: 'termination_a',
+          heading: '(a)',
+          body_html: `If the Service Provider does not remedy a failure in the performance of its obligations under the Contract within thirty (30) working days after being notified (excluding unscheduled maintenance and accidental occurrences of service interruption not from the end of the service provider), or within any further period as the Client may have subsequently approved in writing;`,
+        },
+        {
+          id: 'termination_b',
+          heading: '(b)',
+          body_html: `If either party becomes insolvent or bankrupt;`,
+        },
+        {
+          id: 'termination_c',
+          heading: '(c)',
+          body_html: `If the Service Provider, in the judgment of the Client or the Bank, has engaged in corrupt, fraudulent, collusive, coercive, or obstructive practices (as defined in the prevailing Bank&rsquo;s sanctions procedures) in competing for or in performing the Contract;`,
+        },
+        {
+          id: 'termination_d',
+          heading: '(d)',
+          body_html: `If the Client and/or Service Provider, in its sole discretion and for any reason whatsoever, decides to terminate this Contract bearing the clauses that may be in effect mentioned herein.`,
+        },
+        {
+          id: 'termination_e',
+          heading: '(e)',
+          body_html: `The payment is not received within the specified time which if not specified will be held as one week the service provider has the right to terminate services until the payment is fulfilled.`,
+        },
+        {
+          id: 'termination_f',
+          heading: '(f)',
+          body_html: `If the Client, in the judgment of the Service Provider or the Bank, has engaged in corrupt, fraudulent, collusive, coercive, or obstructive practices (as defined in the prevailing Bank&rsquo;s sanctions procedures) in competing for or in performing the Contract.`,
+        },
+        {
+          id: 'termination_g',
+          heading: '(g)',
+          body_html: `The service provider will provide support and assistance in the available methods determined to be the most suitable for the situation as determined by the service provider either physically or virtually. Upon contract termination or expiration, the Service Provider shall provide reasonable transition support to ensure continuity of services for a period of up to ten (10) days without additional charge contingent on the fact that no additional charge is incurred to the service provider during the provision of support during the transition.`,
+        },
+        {
+          id: 'termination_h',
+          heading: '(h)',
+          body_html: `The Service provider has the right to terminate the services in its sole judgement for whatever reason that may be found applicable including billing and service provision covered under section <strong><em>(12) on page 4</em></strong>.`,
+        },
+      ],
     },
     {
       id: 'signature_page',
@@ -352,10 +437,13 @@ function buildDefaultStructure(flavour: CategoryFlavour): ContractStructureSecti
       layout: 'annex',
       forcePageBreakBefore: true,
       annexSubtitle: flavour.annexASubtitle,
-      body_html: `<p><strong><u>Service Overview</u></strong></p>
-${flavour.annexAOverviewHtml}
-<p><strong><u>Scope of Services</u></strong></p>
-${flavour.annexAScopeHtml}`,
+      body_html: flavour.annexAOverviewHtml,
+    },
+    {
+      id: 'annex_a_scope',
+      heading: 'Annex A: Scope of Services',
+      layout: 'annex',
+      body_html: flavour.annexAScopeHtml,
     },
     {
       id: 'annex_b',
@@ -370,7 +458,7 @@ ${flavour.annexAScopeHtml}`,
       heading: 'Annex C: Relevant Documents',
       layout: 'annex',
       forcePageBreakBefore: true,
-      body_html: '<p><strong>Duly Attached, Financial Quotation Provided with the Agreement</strong></p>',
+      body_html: '<p><strong>Duly Attached, Proforma Invoice Provided with the Agreement.</strong></p>',
     },
   ];
 }
@@ -390,7 +478,7 @@ export function loadContractStructure(categoryKey = 'google-workspace'): Contrac
     if (!raw) return getDefaultStructureForCategory(categoryKey);
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) return getDefaultStructureForCategory(categoryKey);
-    return (parsed as ContractStructureSection[]).map((s) => ({
+    const normalized: ContractStructureSection[] = (parsed as ContractStructureSection[]).map((s) => ({
       id: s.id || Math.random().toString(36).slice(2, 9),
       heading: s.heading || 'Untitled',
       numeral: s.numeral,
@@ -400,7 +488,35 @@ export function loadContractStructure(categoryKey = 'google-workspace'): Contrac
       hideTitle: Boolean(s.hideTitle),
       layout: s.layout ?? 'numbered',
       annexSubtitle: s.annexSubtitle,
+      // Preserve subSections — the previous version stripped them on
+      // every load, which silently nuked the bodies for the
+      // sub-clauses (Services i/ii, Terms A, Payment A/B/C, etc.)
+      // because the very next save flushed `subSections: undefined`
+      // back to localStorage.
+      subSections: Array.isArray(s.subSections)
+        ? s.subSections.map((sub) => ({
+            id: sub.id || Math.random().toString(36).slice(2, 9),
+            heading: sub.heading || '',
+            body_html: sub.body_html || '',
+            forcePageBreakBefore: Boolean(sub.forcePageBreakBefore),
+          }))
+        : undefined,
     }));
+    // Auto-migrate from older default shapes so the user doesn't have to
+    // click "Reset to default" per category. Markers checked, in order:
+    //   1. Services numeral still '2.' → pre-2026-05-30 renumber
+    //   2. Payment 3.C "Payment Conditions" lacks `forcePageBreakBefore`
+    //      → pre the page-1 layout lock-in (page 1 should end at "B. Cost")
+    // If any marker matches, replace the whole structure with the current
+    // defaults. Safe to add more markers as defaults evolve.
+    const services = normalized.find((s) => s.id === 'services');
+    const payment = normalized.find((s) => s.id === 'payment');
+    const paymentConditions = payment?.subSections?.find((sub) => sub.id === 'payment_conditions');
+    const needsMigration =
+      services?.numeral === '2.' ||
+      (paymentConditions && !paymentConditions.forcePageBreakBefore);
+    if (needsMigration) return getDefaultStructureForCategory(categoryKey);
+    return normalized;
   } catch {
     return getDefaultStructureForCategory(categoryKey);
   }

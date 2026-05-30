@@ -55,6 +55,10 @@ interface Props {
   designerMode?: boolean;
   /** Callback when anchors change */
   onAnchorsChange?: (anchors: ContractAnchor[]) => void;
+  /** Callback when the user selects an anchor (click or drag-start) in
+   *  designer mode. ContractTab uses this to drive "Copy to page" — it
+   *  needs to know which on-screen QR is the source. */
+  onSelectedAnchorChange?: (id: string | null) => void;
 }
 
 const PAGE_PX = { w: 794, h: 1123 };
@@ -78,15 +82,20 @@ const estimateSectionHeightMm = (s: ContractStructureSection): number => {
 
 const ContractPreview: React.FC<Props> = ({
   fields, sections, darkMode = false, useLetterhead = true, editedHtml = null, qrCodeDataUrl = null,
-  designerMode = false, onAnchorsChange,
+  designerMode = false, onAnchorsChange, onSelectedAnchorChange,
 }) => {
   const dm = darkMode;
   const [letterhead, setLetterhead] = useState<LetterheadConfig | null>(null);
   const [letterheadLoading, setLetterheadLoading] = useState(true);
   const [anchors, setAnchors] = useState<ContractAnchor[]>(() => loadContractAnchors());
-  const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
+  const [selectedAnchorId, setSelectedAnchorIdRaw] = useState<string | null>(null);
+  const setSelectedAnchorId = useCallback((id: string | null) => {
+    setSelectedAnchorIdRaw(id);
+    onSelectedAnchorChange?.(id);
+  }, [onSelectedAnchorChange]);
   const [draggingAnchor, setDraggingAnchor] = useState<{
     id: string; startMouseX: number; startMouseY: number; origX: number; origY: number;
+    width: number; height: number;
   } | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const [pageScale, setPageScale] = useState(0.85);
@@ -114,19 +123,47 @@ const ContractPreview: React.FC<Props> = ({
     }
   }, [designerMode, selectedAnchorId, anchors]);
 
-  // Handle drag start
-  const handleDragStart = useCallback((e: React.MouseEvent, anchorId: string) => {
+  // Handle drag start. `pageIndex` is the 0-based index of the page the
+  // user clicked on. When dragging a universal (page: 0) QR anchor, fork
+  // it into a per-page override so other pages stay put — this is how
+  // "position QR individually per page" works.
+  const handleDragStart = useCallback((e: React.MouseEvent, anchorId: string, pageIndex: number) => {
     if (!designerMode) return;
     const anchor = anchors.find((a) => a.id === anchorId);
     if (!anchor) return;
+
+    let effectiveId = anchorId;
+    let effectiveX = anchor.x;
+    let effectiveY = anchor.y;
+    const width = anchor.width || 30;
+    const height = anchor.height || 30;
+
+    // Fork: universal QR anchor → per-page override on drag.
+    if (anchor.kind === 'qr' && anchor.page === 0) {
+      const targetPage = pageIndex + 1;
+      const forkedId = `${anchor.id}__p${targetPage}`;
+      const existingFork = anchors.find((a) => a.id === forkedId);
+      if (existingFork) {
+        effectiveId = existingFork.id;
+        effectiveX = existingFork.x;
+        effectiveY = existingFork.y;
+      } else {
+        const forked: ContractAnchor = { ...anchor, id: forkedId, page: targetPage };
+        setAnchors((prev) => [...prev, forked]);
+        effectiveId = forkedId;
+      }
+    }
+
     setDraggingAnchor({
-      id: anchorId,
+      id: effectiveId,
       startMouseX: e.clientX,
       startMouseY: e.clientY,
-      origX: anchor.x,
-      origY: anchor.y,
+      origX: effectiveX,
+      origY: effectiveY,
+      width,
+      height,
     });
-    setSelectedAnchorId(anchorId);
+    setSelectedAnchorId(effectiveId);
   }, [designerMode, anchors]);
 
   // Handle delete anchor
@@ -138,19 +175,16 @@ const ContractPreview: React.FC<Props> = ({
   // Handle drag move
   const handleDragMove = useCallback((e: MouseEvent) => {
     if (!draggingAnchor) return;
-    
-    const anchor = anchors.find((a) => a.id === draggingAnchor.id);
-    if (!anchor) return;
-    
+
     // Calculate movement in mm
     const dx = (e.clientX - draggingAnchor.startMouseX) / PX_PER_MM / pageScale;
     const dy = (e.clientY - draggingAnchor.startMouseY) / PX_PER_MM / pageScale;
-    
-    const newX = Math.max(0, Math.min(210 - (anchor.width || 30), draggingAnchor.origX + dx));
-    const newY = Math.max(0, Math.min(297 - (anchor.height || 30), draggingAnchor.origY + dy));
-    
+
+    const newX = Math.max(0, Math.min(210 - draggingAnchor.width, draggingAnchor.origX + dx));
+    const newY = Math.max(0, Math.min(297 - draggingAnchor.height, draggingAnchor.origY + dy));
+
     setAnchors((prev) => updateAnchorById(prev, draggingAnchor.id, { x: newX, y: newY }));
-  }, [draggingAnchor, pageScale, anchors]);
+  }, [draggingAnchor, pageScale]);
 
   // Handle drag end
   const handleDragEnd = useCallback(() => {
@@ -183,13 +217,53 @@ const ContractPreview: React.FC<Props> = ({
     return () => { cancelled = true; };
   }, [useLetterhead]);
 
+  // Expand sections so a sub-section that wants its own page becomes a
+  // continuation slice (no heading / body — just the page-broken
+  // sub-sections). Keeps the pagination loop below simple: every "Start
+  // on new page" flag — section-level OR sub-section-level — turns into
+  // a real page break in both the preview and the downloaded PDF.
+  const expandedSections = useMemo<ContractStructureSection[]>(() => {
+    const out: ContractStructureSection[] = [];
+    for (const s of sections) {
+      const subs = s.subSections ?? [];
+      const breakIndices = subs
+        .map((ss, i) => (ss.forcePageBreakBefore ? i : -1))
+        .filter((i) => i > 0);
+      if (breakIndices.length === 0) {
+        out.push(s);
+        continue;
+      }
+      const splitPoints = Array.from(new Set([0, ...breakIndices, subs.length])).sort((a, b) => a - b);
+      for (let i = 0; i < splitPoints.length - 1; i++) {
+        const [start, end] = [splitPoints[i], splitPoints[i + 1]];
+        const sliceSubs = subs.slice(start, end);
+        if (start === 0) {
+          out.push({ ...s, subSections: sliceSubs });
+        } else {
+          out.push({
+            ...s,
+            id: `${s.id}__c${i}`,
+            heading: '',
+            hideTitle: true,
+            body_html: '',
+            numeral: undefined,
+            annexSubtitle: undefined,
+            forcePageBreakBefore: true,
+            subSections: sliceSubs,
+          });
+        }
+      }
+    }
+    return out;
+  }, [sections]);
+
   // Partition sections into pages. Honours `forcePageBreakBefore` and
   // a soft mm budget per page.
   const pageGroups = useMemo<ContractStructureSection[][]>(() => {
     const pages: ContractStructureSection[][] = [[]];
     const MAX_MM = 240; // usable body height per page minus header/footer
     let running = 0;
-    for (const s of sections) {
+    for (const s of expandedSections) {
       const h = estimateSectionHeightMm(s);
       if (s.forcePageBreakBefore || running + h > MAX_MM) {
         if (pages[pages.length - 1].length > 0) pages.push([]);
@@ -199,7 +273,7 @@ const ContractPreview: React.FC<Props> = ({
       running += h;
     }
     return pages;
-  }, [sections]);
+  }, [expandedSections]);
 
   const totalPages = pageGroups.length;
 
@@ -215,7 +289,7 @@ const ContractPreview: React.FC<Props> = ({
       position: 'relative',
       flex: '0 0 auto',
     }}>
-      <div style={{
+      <div data-contract-page={index + 1} className="contract-page-surface" style={{
         position: 'absolute', top: 0, left: 0,
         width: PAGE_PX.w, height: PAGE_PX.h,
         transform: `scale(${pageScale})`, transformOrigin: 'top left',
@@ -310,19 +384,25 @@ const ContractPreview: React.FC<Props> = ({
             }} />
           </>
         )}
-        {/* QR Code - positioned using anchors */}
-        {qrCodeDataUrl && anchors.map((anchor) => {
-          if (anchor.kind !== 'qr') return null;
-          // Apply anchor to all pages if page is 0, or if it matches current page
-          if (anchor.page !== 0 && anchor.page !== index + 1) return null;
-          const isSelected = selectedAnchorId === anchor.id;
-          return (
+        {/* QR Code - positioned using anchors. Per-page anchors override
+            the universal (page: 0) anchor on the page they target — so
+            dragging the QR on page 3 forks a page-3 override and other
+            pages keep showing the universal one. */}
+        {qrCodeDataUrl && (() => {
+          const currentPage = index + 1;
+          const hasPageSpecificQr = anchors.some((a) => a.kind === 'qr' && a.page === currentPage);
+          return anchors.map((anchor) => {
+            if (anchor.kind !== 'qr') return null;
+            if (anchor.page === 0 && hasPageSpecificQr) return null;
+            if (anchor.page !== 0 && anchor.page !== currentPage) return null;
+            const isSelected = selectedAnchorId === anchor.id;
+            return (
             <div
               key={`${anchor.id}-${index}`}
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                handleDragStart(e, anchor.id);
+                handleDragStart(e, anchor.id, index);
               }}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -374,8 +454,9 @@ const ContractPreview: React.FC<Props> = ({
                 </div>
               )}
             </div>
-          );
-        })}
+            );
+          });
+        })()}
         {/* Running header */}
         <div style={{
           position: 'absolute', top: 36, left: 0, right: 0,
@@ -401,13 +482,30 @@ const ContractPreview: React.FC<Props> = ({
         }}>
           {children}
         </div>
-        {/* Footer */}
+        {/* Footer — contract id at left, page number at right. Y = 278.68 mm
+             matches JSON footer_*.y; x positions match JSON
+             footer_contract_no.x (24.69 mm) and footer_page_no.x (176.39 mm). */}
+        {fields.contract_id && (
+          <div style={{
+            position: 'absolute',
+            top: 278.68 * PX_PER_MM,
+            left: 24.69 * PX_PER_MM,
+            fontSize: '10pt', fontWeight: 700,
+            fontFamily: '"Times New Roman", Times, serif',
+            whiteSpace: 'nowrap',
+          }}>
+            {fields.contract_id}
+          </div>
+        )}
         <div style={{
-          position: 'absolute', bottom: 22, right: 22 * PX_PER_MM,
+          position: 'absolute',
+          top: 278.68 * PX_PER_MM,
+          left: 176.39 * PX_PER_MM,
           fontSize: '10pt',
           fontFamily: '"Times New Roman", Times, serif',
+          whiteSpace: 'nowrap',
         }}>
-          Page <strong>{index + 1}</strong> of <strong>{totalPages}</strong>
+          {`Page ${index + 1} of ${totalPages}`}
         </div>
       </div>
     </div>
@@ -444,6 +542,17 @@ const ContractPreview: React.FC<Props> = ({
             className="cgap-contract-body"
             dangerouslySetInnerHTML={{ __html: fillContractTokens(s.body_html, fields) }}
           />
+          {/* Render sub-sections */}
+          {s.subSections && s.subSections.map((subSec) => (
+            <div
+              key={subSec.id}
+              className="cgap-contract-body"
+              style={{ marginTop: '8pt' }}
+              dangerouslySetInnerHTML={{
+                __html: `<strong>${subSec.heading}</strong>&nbsp;${fillContractTokens(subSec.body_html, fields)}`,
+              }}
+            />
+          ))}
         </div>
       );
     }
@@ -454,6 +563,17 @@ const ContractPreview: React.FC<Props> = ({
             className="cgap-contract-body"
             dangerouslySetInnerHTML={{ __html: fillContractTokens(s.body_html, fields) }}
           />
+          {/* Render sub-sections */}
+          {s.subSections && s.subSections.map((subSec) => (
+            <div
+              key={subSec.id}
+              className="cgap-contract-body"
+              style={{ marginTop: '8pt' }}
+              dangerouslySetInnerHTML={{
+                __html: `<strong>${subSec.heading}</strong>&nbsp;${fillContractTokens(subSec.body_html, fields)}`,
+              }}
+            />
+          ))}
         </div>
       );
     }
@@ -468,31 +588,58 @@ const ContractPreview: React.FC<Props> = ({
         <div style={{ fontWeight: 700, fontSize: '11pt' }}>
           {s.numeral} {s.heading}
         </div>
-        <div
-          className="cgap-contract-body"
-          dangerouslySetInnerHTML={{ __html: fillContractTokens(s.body_html, fields) }}
-        />
+        <div>
+          <div
+            className="cgap-contract-body"
+            dangerouslySetInnerHTML={{ __html: fillContractTokens(s.body_html, fields) }}
+          />
+          {/* Render sub-sections */}
+          {s.subSections && s.subSections.map((subSec) => (
+            <div
+              key={subSec.id}
+              className="cgap-contract-body"
+              style={{ marginTop: '8pt' }}
+              dangerouslySetInnerHTML={{
+                __html: `<strong>${subSec.heading}</strong>&nbsp;${fillContractTokens(subSec.body_html, fields)}`,
+              }}
+            />
+          ))}
+        </div>
       </div>
     );
   };
 
-  // First page also includes the title block.
+  // First page title block. Margins computed so the title baseline lands
+  // at the y-coordinates from `contract_layout_template.json` (page 1):
+  //   title             y = 76.09 pt  ≈ 26.85 mm
+  //   contract_id       y = 122.49 pt ≈ 43.21 mm
+  //   opening paragraph y = 153.35 pt ≈ 54.10 mm
+  // Body container starts at top: 28 mm, so title needs a small negative
+  // margin-top to clear the 28 mm offset and land at 26.85 mm.
   const renderPageOneHeader = () => (
     <>
       <h1 className="contract-title" style={{
         textAlign: 'center', fontSize: '14pt', fontWeight: 700,
-        textTransform: 'uppercase', margin: '0 0 10pt',
+        textTransform: 'uppercase',
+        // 26.85 mm (JSON) − 28 mm (body top) = −1.15 mm to title top
+        margin: '-1.15mm 0 0',
+        lineHeight: 1.3,
         fontFamily: '"Times New Roman", Times, serif',
       }}>
         CONTRACT AGREEMENT FOR {fields.product?.toUpperCase()} SERVICES
       </h1>
       <div style={{
         textAlign: 'center', fontSize: '13pt', fontWeight: 700,
-        textDecoration: 'underline', margin: '0 0 16pt',
+        textDecoration: 'underline',
+        // gap from title baseline (~26.85 mm) to contract_id baseline (43.21 mm) ≈ 16.36 mm,
+        // minus the title's own line-height (~5 mm) = ~11 mm
+        margin: '11mm 0 0',
         fontFamily: '"Times New Roman", Times, serif',
       }}>
         CONTRACT IDENTIFICATION No. {fields.contract_id || '—'}
       </div>
+      {/* Spacer pushes the first body section to y ≈ 54.10 mm */}
+      <div style={{ height: '7mm' }} />
     </>
   );
 
@@ -656,7 +803,11 @@ const CostTablePreview: React.FC<{ items: CostLineItem[] }> = ({ items }) => {
   );
 };
 
-const SignatureTablePreview: React.FC<{ fields: ContractFields }> = ({ fields }) => {
+const SignatureTablePreview: React.FC<{ fields: ContractFields }> = () => {
+  // Signature page is intentionally left blank for handwritten fill-in.
+  // No form fields are interpolated — the cells always render empty so
+  // the printed contract has space for ink signatures, witnessed names,
+  // and titles regardless of what the user typed in the form.
   const cellTH: React.CSSProperties = {
     border: '1px solid #000',
     padding: '6pt',
@@ -664,6 +815,7 @@ const SignatureTablePreview: React.FC<{ fields: ContractFields }> = ({ fields })
     fontWeight: 700,
     fontSize: '11pt',
     background: '#fff',
+    width: '50%',
   };
   const cellTD: React.CSSProperties = {
     border: '1px solid #000',
@@ -671,11 +823,16 @@ const SignatureTablePreview: React.FC<{ fields: ContractFields }> = ({ fields })
     fontSize: '10pt',
     height: '12mm',
     verticalAlign: 'top',
+    width: '50%',
   };
   const cellSig: React.CSSProperties = { ...cellTD, height: '24mm' };
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+      <colgroup>
+        <col style={{ width: '50%' }} />
+        <col style={{ width: '50%' }} />
+      </colgroup>
       <thead>
         <tr>
           <th style={cellTH}>FOR THE CLIENT</th>
@@ -684,16 +841,16 @@ const SignatureTablePreview: React.FC<{ fields: ContractFields }> = ({ fields })
       </thead>
       <tbody>
         <tr><th style={cellTH}>Signed By</th><th style={cellTH}>Signed By</th></tr>
-        <tr><td style={cellTD}>{fields.signatory_name || ''}</td><td style={cellTD}>{fields.sp_signatory_name || ''}</td></tr>
+        <tr><td style={cellTD}></td><td style={cellTD}></td></tr>
         <tr><th style={cellTH}>Title</th><th style={cellTH}>Title</th></tr>
-        <tr><td style={cellTD}>{fields.signatory_title || ''}</td><td style={cellTD}>{fields.sp_signatory_title || ''}</td></tr>
+        <tr><td style={cellTD}></td><td style={cellTD}></td></tr>
         <tr><th style={cellTH}>Signature</th><th style={cellTH}>Signature</th></tr>
         <tr><td style={cellSig}></td><td style={cellSig}></td></tr>
         <tr><th style={cellTH}>With the witness of</th><th style={cellTH}>With the witness of</th></tr>
         <tr><th style={cellTH}>Name</th><th style={cellTH}>Name</th></tr>
-        <tr><td style={cellTD}>{fields.witness_name || ''}</td><td style={cellTD}>{fields.sp_witness_name || ''}</td></tr>
+        <tr><td style={cellTD}></td><td style={cellTD}></td></tr>
         <tr><th style={cellTH}>Designation</th><th style={cellTH}>Designation</th></tr>
-        <tr><td style={cellTD}>{fields.witness_designation || ''}</td><td style={cellTD}>{fields.sp_witness_designation || ''}</td></tr>
+        <tr><td style={cellTD}></td><td style={cellTD}></td></tr>
         <tr><th style={cellTH}>Signature</th><th style={cellTH}>Signature</th></tr>
         <tr><td style={cellSig}></td><td style={cellSig}></td></tr>
       </tbody>
