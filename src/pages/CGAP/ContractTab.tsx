@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ChevronsUpDown, Check, Package, Plus, Trash2, Eye, ArrowUp, ArrowDown, RotateCcw, ScissorsSquareDashedBottom, X, Move, QrCode, Printer } from 'lucide-react';
+import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ChevronsUpDown, Check, Package, Plus, Trash2, Eye, ArrowUp, ArrowDown, RotateCcw, ScissorsSquareDashedBottom, X, Move, QrCode, Printer, GripVertical } from 'lucide-react';
 import { numberToWords, periodToText, formatNepaliNumber, generateAbbreviation, getTodayISO } from '@/utils/cgapAutoFill';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -106,6 +106,10 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [costItems, setCostItems] = useState<CostLineItem[]>([{ description: '', qty: '1', unitPrice: '' }]);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
+  // ID of the QR anchor the user last clicked / dragged in the preview.
+  // Drives "Copy to page" so the source is whichever on-screen QR they
+  // were just working with, not a hard-coded universal default.
+  const [selectedQrAnchorId, setSelectedQrAnchorId] = useState<string | null>(null);
   // Letterhead toggle — applies to both the live preview and the PDF
   // export. Defaults to OFF so the document is plain A4 by default; flip ON
   // to stamp the configured letterhead image on every page.
@@ -198,9 +202,90 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     setSections((prev) => prev.filter((s) => s.id !== id));
   };
   const addSection = () => setSections((prev) => [...prev, blankContractSection()]);
+  const addSubSection = (sectionId: string) => {
+    setSections((prev) => prev.map((s) => {
+      if (s.id !== sectionId) return s;
+      const newSubSection = {
+        id: `sub_${Date.now()}`,
+        heading: 'New Sub-section',
+        body_html: '',
+      };
+      return {
+        ...s,
+        subSections: [...(s.subSections || []), newSubSection],
+      };
+    }));
+  };
+  const updateSubSection = (sectionId: string, subSectionId: string, updates: Partial<{ heading: string; body_html: string; forcePageBreakBefore?: boolean }>) => {
+    setSections((prev) => prev.map((s) => {
+      if (s.id !== sectionId) return s;
+      return {
+        ...s,
+        subSections: (s.subSections || []).map((sub) =>
+          sub.id === subSectionId ? { ...sub, ...updates } : sub
+        ),
+      };
+    }));
+  };
+  const deleteSubSection = (sectionId: string, subSectionId: string) => {
+    if (!confirm('Delete this sub-section?')) return;
+    setSections((prev) => prev.map((s) => {
+      if (s.id !== sectionId) return s;
+      return {
+        ...s,
+        subSections: (s.subSections || []).filter((sub) => sub.id !== subSectionId),
+      };
+    }));
+  };
   const resetSections = () => {
     if (!confirm(`Reset all sections for "${CONTRACT_CATEGORY_LABELS[categoryKey]}" to defaults? Custom edits will be lost.`)) return;
     setSections(getDefaultStructureForCategory(categoryKey));
+  };
+  const moveSubSection = (sectionId: string, idx: number, delta: -1 | 1) => {
+    setSections((prev) => prev.map((s) => {
+      if (s.id !== sectionId) return s;
+      const subs = s.subSections ?? [];
+      const target = idx + delta;
+      if (target < 0 || target >= subs.length) return s;
+      const next = [...subs];
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return { ...s, subSections: next };
+    }));
+  };
+
+  // Drag-and-drop reordering for the admin Pages & Sections panel. The
+  // grip handle on each row is the only draggable element; the whole
+  // card is the drop target. Sub-section drags carry their parent
+  // section id so we never accidentally cross sections.
+  const [dragSrcSection, setDragSrcSection] = useState<string | null>(null);
+  const [dragOverSection, setDragOverSection] = useState<string | null>(null);
+  const [dragSrcSubSection, setDragSrcSubSection] = useState<{ sectionId: string; subId: string } | null>(null);
+  const [dragOverSubSection, setDragOverSubSection] = useState<{ sectionId: string; subId: string } | null>(null);
+  const reorderSections = (srcId: string, dstId: string) => {
+    if (srcId === dstId) return;
+    setSections((prev) => {
+      const srcIdx = prev.findIndex((s) => s.id === srcId);
+      const dstIdx = prev.findIndex((s) => s.id === dstId);
+      if (srcIdx < 0 || dstIdx < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(srcIdx, 1);
+      next.splice(dstIdx, 0, moved);
+      return next;
+    });
+  };
+  const reorderSubSections = (sectionId: string, srcId: string, dstId: string) => {
+    if (srcId === dstId) return;
+    setSections((prev) => prev.map((s) => {
+      if (s.id !== sectionId) return s;
+      const subs = s.subSections ?? [];
+      const srcIdx = subs.findIndex((sub) => sub.id === srcId);
+      const dstIdx = subs.findIndex((sub) => sub.id === dstId);
+      if (srcIdx < 0 || dstIdx < 0) return s;
+      const next = [...subs];
+      const [moved] = next.splice(srcIdx, 1);
+      next.splice(dstIdx, 0, moved);
+      return { ...s, subSections: next };
+    }));
   };
 
   // ── Iframe preview (SLA-style PDF preview) ────────────────────────
@@ -521,18 +606,106 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     );
   };
 
+  /** Build a 1:1 PDF by rasterising the live preview pages with
+   *  html2canvas and stitching them into A4 pages via jsPDF. Output is
+   *  visually identical to what the user sees in the preview at the
+   *  cost of producing a raster (non-searchable) PDF. */
   const downloadPdf = async () => {
     const id = resolveDocumentId();
-    const pdf = await buildPdf(id);
-    const filename = `${id || 'contract'}.pdf`;
-    pdf.save(filename);
-    logActivity({
-      kind: 'pdf',
-      module: 'CGAP/Contract',
-      action: 'Contract PDF generated',
-      meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, category: categoryKey },
-    });
-    toast({ title: 'Contract PDF downloaded', description: filename });
+    const pages = Array.from(document.querySelectorAll<HTMLElement>('.contract-page-surface'));
+    if (pages.length === 0) {
+      toast({ title: 'No preview pages found', description: 'Falling back to the structured PDF.', variant: 'destructive' });
+      const pdf = await buildPdf(id);
+      pdf.save(`${id || 'contract'}.pdf`);
+      return;
+    }
+    toast({ title: 'Building PDF…', description: `Capturing ${pages.length} page${pages.length === 1 ? '' : 's'} from the preview` });
+
+    // Pre-resolve the letterhead background to a same-origin data URL.
+    // CSS background-image with a cross-origin URL taints the
+    // html2canvas canvas — and unlike <img> elements, CSS backgrounds
+    // can't be tagged with `crossOrigin = 'anonymous'`, so `useCORS`
+    // doesn't help. letterheadToDataUrl pipes through Image+canvas to
+    // get a data URL we can swap in safely.
+    const bgUrlMatch = pages[0]?.style.backgroundImage?.match(/url\(["']?(.+?)["']?\)/);
+    const bgUrl = bgUrlMatch?.[1];
+    let inlineBgUrl: string | null = null;
+    if (bgUrl && !bgUrl.startsWith('data:')) {
+      try {
+        inlineBgUrl = await letterheadToDataUrl(bgUrl);
+      } catch (err) {
+        console.warn('Letterhead inline failed (will capture without bg):', err);
+      }
+    } else if (bgUrl?.startsWith('data:')) {
+      inlineBgUrl = bgUrl;
+    }
+
+    // Build an off-screen capture host directly under document.body.
+    // The original preview pages live deep inside react-tree containers
+    // that may be position:fixed (fullscreen mode), absolutely
+    // positioned, or transform-scaled — all of which trigger the
+    // html2canvas "unable to find element in cloned iframe" error. By
+    // cloning each page into a clean host at native A4 pixel size with
+    // no transforms or scroll ancestors, we sidestep that entirely.
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;top:-99999px;left:-99999px;width:794px;background:#fff;pointer-events:none;z-index:-1';
+    document.body.appendChild(host);
+
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const { default: JsPDF } = await import('jspdf');
+      const pdf = new JsPDF('p', 'mm', 'a4');
+      for (let i = 0; i < pages.length; i++) {
+        // deep-clone the source page → re-stamp at native size in the host
+        const clone = pages[i].cloneNode(true) as HTMLElement;
+        clone.style.transform = 'none';
+        clone.style.position = 'relative';
+        clone.style.top = '0';
+        clone.style.left = '0';
+        clone.style.width = '794px';
+        clone.style.height = '1123px';
+        clone.style.boxShadow = 'none';
+        if (inlineBgUrl) clone.style.backgroundImage = `url("${inlineBgUrl}")`;
+        host.replaceChildren(clone);
+        // Let layout settle (fonts, images).
+        await new Promise((r) => requestAnimationFrame(r));
+        const canvas = await html2canvas(clone, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: '#ffffff',
+          width: 794,
+          height: 1123,
+          windowWidth: 794,
+          windowHeight: 1123,
+          logging: false,
+        });
+        const imgData = canvas.toDataURL('image/png');
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
+      }
+      const filename = `${id || 'contract'}.pdf`;
+      pdf.save(filename);
+      logActivity({
+        kind: 'pdf',
+        module: 'CGAP/Contract',
+        action: 'Contract PDF generated (1:1 from preview)',
+        meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, category: categoryKey, pages: pages.length },
+      });
+      toast({ title: 'Contract PDF downloaded', description: filename });
+    } catch (err) {
+      console.error('Preview capture failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({
+        title: 'Preview capture failed',
+        description: `${msg.slice(0, 180)} · Falling back to structured PDF.`,
+        variant: 'destructive',
+      });
+      const pdf = await buildPdf(id);
+      pdf.save(`${id || 'contract'}.pdf`);
+    } finally {
+      host.remove();
+    }
   };
 
   const downloadPdfAndSaveToDatabase = async () => {
@@ -1136,7 +1309,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
               max="20"
               placeholder="To page"
               className="w-16 h-8 text-xs"
-              title="Target page to copy QR coordinates"
+              title="Target page to copy the selected QR's coordinates onto"
               id="copy-qr-target-page"
             />
             <Button
@@ -1144,22 +1317,48 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
               size="sm"
               onClick={() => {
                 const targetPageInput = document.getElementById('copy-qr-target-page') as HTMLInputElement;
-                const targetPage = parseInt(targetPageInput?.value || '1') || 1;
-                const anchors = loadContractAnchors();
-                const selectedAnchor = anchors.find(a => a.id === 'qr_code'); // Default to first QR
-                if (selectedAnchor) {
-                  const newAnchor = {
-                    ...selectedAnchor,
-                    id: `qr_code_${Date.now()}`,
-                    page: targetPage,
-                  };
-                  saveContractAnchors([...anchors, newAnchor]);
-                  window.dispatchEvent(new Event('contract-anchors-update'));
-                  toast({ title: 'QR copied', description: `QR copied to page ${targetPage}` });
+                const targetPage = parseInt(targetPageInput?.value || '0') || 0;
+                if (targetPage < 1) {
+                  toast({ title: 'Pick a target page', description: 'Enter a page number (1+) to copy the QR onto.' });
+                  return;
                 }
+                const anchors = loadContractAnchors();
+                // Source: the QR the user last clicked in the preview.
+                // Fall back to the universal `qr_code` anchor if nothing
+                // is selected (first-time use, or after deletion).
+                const src = (selectedQrAnchorId && anchors.find(a => a.id === selectedQrAnchorId && a.kind === 'qr'))
+                  || anchors.find(a => a.id === 'qr_code' && a.kind === 'qr')
+                  || anchors.find(a => a.kind === 'qr');
+                if (!src) {
+                  toast({ title: 'No QR to copy', description: 'No QR anchor is configured yet. Drag the QR somewhere first.' });
+                  return;
+                }
+                // Match the drag-fork id convention so subsequent drags on
+                // the target page mutate the same anchor (no duplicates).
+                const targetId = `qr_code__p${targetPage}`;
+                const existingIdx = anchors.findIndex(a => a.id === targetId);
+                const newAnchor: ContractAnchor = {
+                  id: targetId,
+                  kind: 'qr',
+                  x: src.x,
+                  y: src.y,
+                  width: src.width,
+                  height: src.height,
+                  page: targetPage,
+                };
+                const next = [...anchors];
+                if (existingIdx >= 0) next[existingIdx] = newAnchor;
+                else next.push(newAnchor);
+                saveContractAnchors(next);
+                window.dispatchEvent(new Event('contract-anchors-update'));
+                const sourceLabel = src.page === 0 ? 'default' : `page ${src.page}`;
+                toast({
+                  title: existingIdx >= 0 ? 'QR updated' : 'QR copied',
+                  description: `Coordinates from ${sourceLabel} → page ${targetPage} (x=${src.x.toFixed(1)} mm, y=${src.y.toFixed(1)} mm).`,
+                });
               }}
               className="gap-1.5 h-8"
-              title="Copy selected QR to target page"
+              title="Copy the selected QR's coordinates to the target page (overwrites any existing QR on that page)"
             >
               Copy to page
             </Button>
@@ -1167,49 +1366,55 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
               variant="outline"
               size="sm"
               onClick={() => {
-                // Open print dialog with A4 page size using a new window approach
-                const printWindow = window.open('', '_blank');
-                if (printWindow) {
-                  const previewContainer = document.querySelector('.contract-preview-container');
-                  if (previewContainer) {
-                    printWindow.document.write(`
-                      <!DOCTYPE html>
-                      <html>
-                      <head>
-                        <title>Print Contract</title>
-                        <style>
-                          @page {
-                            size: A4;
-                            margin: 0;
-                          }
-                          body {
-                            margin: 0;
-                            padding: 0;
-                          }
-                          .page {
-                            page-break-after: always;
-                            width: 210mm;
-                            height: 297mm;
-                            overflow: hidden;
-                            position: relative;
-                          }
-                        </style>
-                      </head>
-                      <body>
-                        ${previewContainer.innerHTML}
-                      </body>
-                      </html>
-                    `);
-                    printWindow.document.close();
-                    printWindow.onload = () => {
-                      printWindow.print();
-                      printWindow.close();
-                    };
-                  }
-                }
+                // Open the PDF in a hidden iframe and fire the browser's
+                // print dialog from there. Avoids two failure modes of
+                // the previous `window.open` approach: (1) Brave/Chrome
+                // route blob:application/pdf URLs to download instead of
+                // inline preview, so a new tab just downloaded the file;
+                // (2) `printWindow.onload` fires before the PDF viewer
+                // plugin finishes parsing, so `.print()` runs against
+                // an empty document. Iframes render PDFs reliably with
+                // the built-in viewer in the current tab.
+                const id = resolveDocumentId();
+                buildPdf(id).then(pdf => {
+                  const pdfBlob = pdf.output('blob');
+                  const pdfUrl = URL.createObjectURL(pdfBlob);
+                  const iframe = document.createElement('iframe');
+                  iframe.style.position = 'fixed';
+                  iframe.style.right = '0';
+                  iframe.style.bottom = '0';
+                  iframe.style.width = '0';
+                  iframe.style.height = '0';
+                  iframe.style.border = '0';
+                  iframe.src = pdfUrl;
+                  iframe.onload = () => {
+                    try {
+                      iframe.contentWindow?.focus();
+                      iframe.contentWindow?.print();
+                    } catch (err) {
+                      console.error('Print dialog failed:', err);
+                      toast({
+                        title: 'Print failed',
+                        description: 'Browser blocked the print dialog. Use "Download & Save" instead.',
+                        variant: 'destructive',
+                      });
+                    }
+                  };
+                  document.body.appendChild(iframe);
+                  // Clean up after a generous delay so the print dialog
+                  // and any user "Save as PDF" flow finish reading the
+                  // blob before it's revoked.
+                  setTimeout(() => {
+                    URL.revokeObjectURL(pdfUrl);
+                    iframe.remove();
+                  }, 60_000);
+                }).catch((err) => {
+                  console.error('PDF build failed for print:', err);
+                  toast({ title: 'Print failed', description: 'Could not build the PDF.', variant: 'destructive' });
+                });
               }}
               className="gap-1.5 h-8"
-              title="Print preview to PDF (A4)"
+              title="Open the system print dialog with the current contract PDF"
             >
               <Printer className="w-3.5 h-3.5" /> Print to PDF
             </Button>
@@ -1244,7 +1449,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           </Button>
         )}
       </div>
-      <ContractPreview fields={contractFieldBag} sections={sections} darkMode={dm} useLetterhead={useLetterhead} editedHtml={editedHtml} qrCodeDataUrl={qrCodeDataUrl} designerMode={designerMode} onAnchorsChange={(anchors) => saveContractAnchors(anchors)} />
+      <ContractPreview fields={contractFieldBag} sections={sections} darkMode={dm} useLetterhead={useLetterhead} editedHtml={editedHtml} qrCodeDataUrl={qrCodeDataUrl} designerMode={designerMode} onAnchorsChange={(anchors) => saveContractAnchors(anchors)} onSelectedAnchorChange={setSelectedQrAnchorId} />
 
       {/* Print preview (iframe) — auto-refreshes ~1.2 s after each edit
           so you always see exactly what the downloaded PDF looks like
@@ -1342,14 +1547,52 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
               {sections.map((sec, idx) => (
                 <div
                   key={sec.id}
+                  onDragOver={(e) => {
+                    if (!dragSrcSection || dragSrcSection === sec.id) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (dragOverSection !== sec.id) setDragOverSection(sec.id);
+                  }}
+                  onDragLeave={(e) => {
+                    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                    if (dragOverSection === sec.id) setDragOverSection(null);
+                  }}
+                  onDrop={(e) => {
+                    if (!dragSrcSection) return;
+                    e.preventDefault();
+                    reorderSections(dragSrcSection, sec.id);
+                    setDragSrcSection(null);
+                    setDragOverSection(null);
+                  }}
                   className={cn(
-                    'p-3 rounded-xl border',
+                    'p-3 rounded-xl border transition-colors',
                     dm ? 'bg-gray-900/40 border-gray-700' : 'bg-white/70 border-gray-200',
                     sec.forcePageBreakBefore && (dm ? 'border-l-4 border-l-teal-500' : 'border-l-4 border-l-teal-400'),
                     sec.special && (dm ? 'bg-amber-950/20' : 'bg-amber-50/60'),
+                    dragSrcSection === sec.id && 'opacity-50',
+                    dragOverSection === sec.id && dragSrcSection !== sec.id && (dm ? 'ring-2 ring-teal-500' : 'ring-2 ring-teal-400'),
                   )}
                 >
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', sec.id);
+                        setDragSrcSection(sec.id);
+                      }}
+                      onDragEnd={() => {
+                        setDragSrcSection(null);
+                        setDragOverSection(null);
+                      }}
+                      className={cn(
+                        'inline-flex items-center justify-center h-7 w-5 rounded cursor-grab active:cursor-grabbing',
+                        dm ? 'text-gray-500 hover:bg-gray-800 hover:text-gray-300' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600',
+                      )}
+                      title="Drag to reorder section"
+                    >
+                      <GripVertical className="w-4 h-4" />
+                    </span>
                     <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${dm ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
                       {String(idx + 1).padStart(2, '0')}
                     </span>
@@ -1392,11 +1635,132 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
                       Auto-rendered section ({sec.special === 'signature_page' ? 'signature table' : 'cost-of-services table'}) — body text is ignored at render time. Use the form above to drive the content.
                     </p>
                   ) : (
-                    <SectionEditor
-                      value={sec.body_html}
-                      onChange={(html) => updateSection(sec.id, { body_html: html })}
-                      darkMode={dm}
-                    />
+                    <>
+                      <SectionEditor
+                        value={sec.body_html}
+                        onChange={(html) => updateSection(sec.id, { body_html: html })}
+                        darkMode={dm}
+                      />
+                      {/* Sub-sections */}
+                      {sec.subSections && sec.subSections.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          <Label className={`${labelCls} normal-case font-normal`}>Sub-sections</Label>
+                          {sec.subSections.map((subSec, subIdx) => (
+                            <div
+                              key={subSec.id}
+                              onDragOver={(e) => {
+                                if (!dragSrcSubSection || dragSrcSubSection.sectionId !== sec.id || dragSrcSubSection.subId === subSec.id) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.dataTransfer.dropEffect = 'move';
+                                if (!dragOverSubSection || dragOverSubSection.subId !== subSec.id) {
+                                  setDragOverSubSection({ sectionId: sec.id, subId: subSec.id });
+                                }
+                              }}
+                              onDragLeave={(e) => {
+                                if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                                if (dragOverSubSection?.subId === subSec.id) setDragOverSubSection(null);
+                              }}
+                              onDrop={(e) => {
+                                if (!dragSrcSubSection || dragSrcSubSection.sectionId !== sec.id) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                reorderSubSections(sec.id, dragSrcSubSection.subId, subSec.id);
+                                setDragSrcSubSection(null);
+                                setDragOverSubSection(null);
+                              }}
+                              className={cn(
+                                'p-2 rounded-lg border transition-colors',
+                                dm ? 'bg-gray-900/40 border-gray-700' : 'bg-white/70 border-gray-200',
+                                subSec.forcePageBreakBefore && (dm ? 'border-l-4 border-l-teal-500' : 'border-l-4 border-l-teal-400'),
+                                dragSrcSubSection?.subId === subSec.id && 'opacity-50',
+                                dragOverSubSection?.subId === subSec.id && dragSrcSubSection?.subId !== subSec.id && (dm ? 'ring-2 ring-teal-500' : 'ring-2 ring-teal-400'),
+                              )}
+                            >
+                              <div className="flex items-center gap-2 mb-2">
+                                <span
+                                  draggable
+                                  onDragStart={(e) => {
+                                    e.dataTransfer.effectAllowed = 'move';
+                                    e.dataTransfer.setData('text/plain', subSec.id);
+                                    setDragSrcSubSection({ sectionId: sec.id, subId: subSec.id });
+                                  }}
+                                  onDragEnd={() => {
+                                    setDragSrcSubSection(null);
+                                    setDragOverSubSection(null);
+                                  }}
+                                  className={cn(
+                                    'inline-flex items-center justify-center h-6 w-4 rounded cursor-grab active:cursor-grabbing',
+                                    dm ? 'text-gray-500 hover:bg-gray-800 hover:text-gray-300' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600',
+                                  )}
+                                  title="Drag to reorder sub-section"
+                                >
+                                  <GripVertical className="w-3.5 h-3.5" />
+                                </span>
+                                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${dm ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                                  {String(subIdx + 1).padStart(2, '0')}
+                                </span>
+                                <Input
+                                  value={subSec.heading}
+                                  onChange={(e) => updateSubSection(sec.id, subSec.id, { heading: e.target.value })}
+                                  placeholder="Sub-section heading"
+                                  className="h-7 text-xs font-semibold flex-1"
+                                />
+                                <label className={`inline-flex items-center gap-1.5 px-2 h-7 rounded border text-[11px] cursor-pointer whitespace-nowrap ${subSec.forcePageBreakBefore ? (dm ? 'bg-teal-900/30 border-teal-700 text-teal-200' : 'bg-teal-50 border-teal-300 text-teal-700') : (dm ? 'border-gray-700' : 'border-gray-300')}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(subSec.forcePageBreakBefore)}
+                                    onChange={(e) => updateSubSection(sec.id, subSec.id, { forcePageBreakBefore: e.target.checked })}
+                                    className="w-3 h-3"
+                                  />
+                                  <ScissorsSquareDashedBottom className="w-3 h-3" /> Start on new page
+                                </label>
+                                <div className="flex items-center gap-0.5">
+                                  <Button variant="ghost" size="sm" onClick={() => moveSubSection(sec.id, subIdx, -1)} disabled={subIdx === 0} className="h-6 w-6 p-0" title="Move up">
+                                    <ArrowUp className="w-3 h-3" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => moveSubSection(sec.id, subIdx, 1)} disabled={subIdx === (sec.subSections?.length ?? 0) - 1} className="h-6 w-6 p-0" title="Move down">
+                                    <ArrowDown className="w-3 h-3" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => deleteSubSection(sec.id, subSec.id)}
+                                    className="h-6 w-6 p-0 text-red-500 hover:text-red-600"
+                                    title="Delete sub-section"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                              <SectionEditor
+                                value={subSec.body_html}
+                                onChange={(html) => updateSubSection(sec.id, subSec.id, { body_html: html })}
+                                darkMode={dm}
+                              />
+                            </div>
+                          ))}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addSubSection(sec.id)}
+                            className="h-7 text-xs gap-1.5"
+                          >
+                            <Plus className="w-3 h-3" /> Add sub-section
+                          </Button>
+                        </div>
+                      )}
+                      {(!sec.subSections || sec.subSections.length === 0) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addSubSection(sec.id)}
+                          className="mt-2 h-7 text-xs gap-1.5"
+                        >
+                          <Plus className="w-3 h-3" /> Add sub-section
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
               ))}

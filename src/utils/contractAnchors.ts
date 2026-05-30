@@ -17,9 +17,13 @@ export interface ContractAnchor {
   page: number;
 }
 
-/** Default QR code anchor position - bottom right on all pages (no page specified = all pages) */
+/** Default QR code anchor position — bottom-left, 30 mm square. Matches
+ *  `contract_layout_template.json` global_elements.qr_code:
+ *  x = 47.75 pt ≈ 16.85 mm, y = 676.27 pt ≈ 238.63 mm, w = h = 85.04 pt ≈ 30 mm.
+ *  page=0 means "render on every page" (per-page overrides created on
+ *  drag take precedence — see ContractPreview.tsx and contractTemplate.ts). */
 export const DEFAULT_CONTRACT_ANCHORS: ContractAnchor[] = [
-  { id: 'qr_code', kind: 'qr', x: 155, y: 270, width: 30, height: 30, page: 0 },
+  { id: 'qr_code', kind: 'qr', x: 16.85, y: 238.63, width: 30, height: 30, page: 0 },
 ];
 
 /** Build a fresh copy of the defaults */
