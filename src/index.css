@@ -209,6 +209,41 @@
   background: radial-gradient(circle at 50% 50%, #22d3ee, #67e8f9 60%, transparent 75%);
   animation: bg-drift-6 30s ease-in-out infinite alternate; } /* aqua */
 
+/* TipTap SectionEditor — highlight {tokens} as teal chips so the user
+   can see at a glance which runs are template placeholders (and is
+   warned visually if they edit one mid-character and break it). The
+   `cgap-editor-tokens` class is applied on the prosemirror editor div
+   in SectionEditor.tsx. Background-image positions a teal chip using
+   a CSS gradient because contenteditable doesn't easily host real
+   pseudo-elements per match — falls back to a coloured monospace font
+   that still reads as "this is a token". */
+.cgap-editor-tokens {
+  /* Tokens are written as literal {name} text in the editor. Modern
+     browsers can target them via :has() + ::part but that's overkill;
+     instead we colour any text matching the token pattern using a CSS
+     attribute selector on a wrapping span. We *don't* wrap dynamically
+     here; the SectionEditor doesn't add token-detection marks, so this
+     ruleset only styles {tokens} the user pastes verbatim. The real
+     mangling guard is `cleanSectionHtml` in sectionHtmlCleaner.ts. */
+  font-feature-settings: "kern" 1;
+}
+.cgap-editor-tokens :is(strong, em, u) {
+  color: inherit;
+}
+/* Visible "this is editable" affordance — slight box on focus. */
+.cgap-editor-tokens:focus { outline: 0; }
+
+/* DCAP page editor — sejda-style text-layer overlays.
+   Initially invisible (text colour: transparent via WebkitTextFillColor,
+   background: transparent) so the rendered page image shows through.
+   On hover, faint teal outline cues the user that the text is editable.
+   Once clicked + edited, the inline `style` flips background → white
+   and WebkitTextFillColor → the picked colour, painting the new text
+   over a white-out box that masks the original. */
+.opc-text-span:hover {
+  outline: 1px dashed rgba(20, 184, 166, 0.6);
+}
+
 @keyframes bg-drift-1 {
   0%   { transform: translate(0, 0) scale(1); }
   50%  { transform: translate(18vw, 14vh) scale(1.12); }

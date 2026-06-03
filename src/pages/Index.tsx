@@ -11,6 +11,7 @@ import VpsPricingCalculator from "./Index/VpsPricingCalculator";
 import SettingsTab from "./CGAP/SettingsTab";
 import DatabasePage from "./DatabasePage";
 import TTAPTab from "./TTAPTab";
+import DCAPTab from "./DCAPTab";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -467,7 +468,7 @@ const Index = () => {
             {/* Top-level toggle: UCAP vs CGAP — glass-tabs strip with
                 glass-tab pills so the lava-lamp shows through. */}
             <Tabs defaultValue="ttap" className="w-full">
-              <TabsList className={`glass-tabs grid w-full ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'} mb-4`}>
+              <TabsList className={`glass-tabs grid w-full ${isAdmin ? 'grid-cols-8' : 'grid-cols-7'} mb-4`}>
                 <TabsTrigger value="ttap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
                   <Sparkles className="w-5 h-5" />
                   TTAP
@@ -487,6 +488,10 @@ const Index = () => {
                 <TabsTrigger value="vrap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
                   <FileSpreadsheet className="w-5 h-5" />
                   VRAP
+                </TabsTrigger>
+                <TabsTrigger value="dcap" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
+                  <FileText className="w-5 h-5" />
+                  DCAP
                 </TabsTrigger>
                 <TabsTrigger value="database" className="glass-tab flex items-center gap-2 text-base font-semibold py-3">
                   <Database className="w-5 h-5" />
@@ -585,6 +590,10 @@ const Index = () => {
 
               <TabsContent value="ttap">
                 <TTAPTab darkMode={darkMode} />
+              </TabsContent>
+
+              <TabsContent value="dcap">
+                <DCAPTab darkMode={darkMode} />
               </TabsContent>
 
               <TabsContent value="database">

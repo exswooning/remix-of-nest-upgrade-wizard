@@ -1,0 +1,50 @@
+# docker compose up -d --build
+#
+# Strict localhost binding (127.0.0.1) — only the host machine can
+# reach this; nothing exposed to LAN / WAN. Put a reverse proxy
+# (Caddy / Nginx) in front of this service if you want public access.
+
+services:
+  poq-maker:
+    container_name: poq-maker
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: poq-maker:latest
+    restart: unless-stopped
+
+    # Bind strictly to the loopback interface. Without 127.0.0.1
+    # docker would expose the port on every interface.
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    # Lightweight wget-based healthcheck. The container ships wget
+    # in the runtime stage so this works without curl.
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    networks:
+      - poq-net
+
+    # Hard ceiling on JSON log storage: 10m × 3 files = 30 MB max.
+    # Without this, Docker's default json-file driver grows unbounded
+    # and silently fills the host disk over weeks/months.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  poq-net:
+    driver: bridge

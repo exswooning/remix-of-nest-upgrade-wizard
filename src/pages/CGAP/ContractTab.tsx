@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ChevronsUpDown, Check, Package, Plus, Trash2, Eye, ArrowUp, ArrowDown, RotateCcw, ScissorsSquareDashedBottom, X, Move, QrCode, Printer, GripVertical } from 'lucide-react';
+import { Upload, Download, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Loader2, AlertCircle, FileText, Wand2, Lock, ChevronsUpDown, Check, Package, Plus, Trash2, ArrowUp, ArrowDown, RotateCcw, ScissorsSquareDashedBottom, X, Move, QrCode, Printer, GripVertical } from 'lucide-react';
 import { numberToWords, periodToText, formatNepaliNumber, generateAbbreviation, getTodayISO } from '@/utils/cgapAutoFill';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -18,83 +18,51 @@ import { generateContractPdfFromStructure, type CostLineItem, type ContractField
 import {
   loadContractStructure, saveContractStructure, blankContractSection,
   getDefaultStructureForCategory, suggestedContractProductFor,
+  saveUserDefaultStructure,
   CONTRACT_CATEGORY_KEYS, CONTRACT_CATEGORY_LABELS,
   type ContractStructureSection,
 } from '@/utils/contractStructure';
-import SectionEditor from '@/components/SectionEditor';
+import SectionBodyEditor from '@/components/SectionBodyEditor';
+import { letterheadToDataUrl } from '@/utils/letterheadToDataUrl';
+import { loadUserDefaultToggles, saveUserDefaultToggles } from '@/utils/contractToggles';
+import { TEST_DATA, DEFAULT_NEW_FIELDS, AUTO_FIELDS } from './contractDefaults';
+import {
+  fillContractHtmlTemplate,
+  getEffectiveContractHtmlTemplateForLength,
+  saveContractHtmlTemplateForLength,
+  clearContractHtmlTemplateForLength,
+  loadContractHtmlTemplateForLength,
+  getEffectiveContractLengthOptions,
+  noteUploadedTemplateLength,
+  forgetExtraLength,
+  detectTemplatePageCount,
+  DEFAULT_CONTRACT_LENGTH,
+  type ContractLength,
+} from '@/utils/contractHtmlTemplate';
+import { Slider } from '@/components/ui/slider';
+import PdfToolsPanel from '@/components/PdfToolsPanel';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { logActivity } from '@/utils/activityLog';
 import { loadBankSlots, updateBankSlot, populateAllBankSlots, BANK_SLOTS, type BankSlot } from '@/utils/bankSlots';
 import { resolveLetterhead } from '@/utils/templateAssignments';
 import { Switch } from '@/components/ui/switch';
 import ContractPreview from './ContractPreview';
-import { loadContractAnchors, saveContractAnchors, type ContractAnchor } from '@/utils/contractAnchors';
+import { loadContractAnchors, saveContractAnchors, saveUserDefaultContractAnchors, type ContractAnchor } from '@/utils/contractAnchors';
 import ContractCustomTemplate from './ContractCustomTemplate';
 import QuickFillFromReply from '@/components/QuickFillFromReply';
 import { EDITED_HTML_KEY, FIELDS_SNAPSHOT_KEY } from '@/pages/ContractEditorPage';
 import { generateContractQR, storeContractMetadata, type ContractQRMetadata } from '@/utils/contractQR';
 import { PenLine, ExternalLink } from 'lucide-react';
 
-/** Fetch a letterhead image and return it as a Base64 PNG data URL so
- *  jsPDF can embed it. Returns null on any failure — the caller falls
- *  back to a blank page. Goes through a canvas to handle JPEG sources
- *  and to enforce a known format on the PDF side. */
-async function letterheadToDataUrl(imageUrl: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth || 794;
-        canvas.height = img.naturalHeight || 1123;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return resolve(null);
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
-      } catch {
-        resolve(null);
-      }
-    };
-    img.onerror = () => resolve(null);
-    img.src = imageUrl;
-  });
-}
+// Helpers + constants extracted to dedicated modules so this file
+// stays cheap to load. See:
+//   src/utils/letterheadToDataUrl.ts   — canvas-based image fetcher
+//   src/utils/contractToggles.ts       — ContractToggles + load/save
+//   src/pages/CGAP/contractDefaults.ts — TEST_DATA / DEFAULT_NEW_FIELDS / AUTO_FIELDS
+//   src/components/SectionBodyEditor.tsx — the per-row wrapper component
 
 const ACCENT = '#0F766E';  // brand teal
 const STEPS = ['Saving', 'Copying', 'Filling', 'Invoice', 'Done'];
-
-const TEST_DATA: Record<string, string> = {
-  companyAbv: 'WMA',
-  clientCompanyName: 'Acme Corporation Pvt. Ltd.',
-  clientLocation: 'Putalisadak, Kathmandu',
-  clientCoordinator: 'Ram Sharma',
-  contractPeriodNum: '12',
-  numUsers: '25',
-  paymentAmount: '150000',
-  advancePercent: '100',
-  signatoryName: 'Shyam Prasad',
-  signatoryTitle: 'Managing Director',
-  witnessName: 'Hari Bahadur',
-  witnessDesignation: 'Operations Manager',
-  spSignatoryName: 'Aryan Shrestha',
-  spSignatoryTitle: 'Director',
-  spWitnessName: 'Suman KC',
-  spWitnessDesignation: 'Technical Lead',
-  effectiveDate: getTodayISO(),
-  bankName: 'Laxmi Sunrise Bank',
-  payeeName: 'Nest Nepal Business Solution Pvt. Ltd.',
-  bankAccount: '03211002193',
-};
-
-const DEFAULT_NEW_FIELDS: Partial<Record<string, string>> = {
-  effectiveDate: getTodayISO(),
-  bankName: 'Laxmi Sunrise Bank',
-  payeeName: 'Nest Nepal Business Solution Pvt. Ltd.',
-  bankAccount: '03211002193',
-};
-
-const AUTO_FIELDS = new Set(['paymentWords', 'contractPeriod', 'companyAbv']);
 
 interface ContractTabProps { darkMode?: boolean; }
 
@@ -110,10 +78,79 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   // Drives "Copy to page" so the source is whichever on-screen QR they
   // were just working with, not a hard-coded universal default.
   const [selectedQrAnchorId, setSelectedQrAnchorId] = useState<string | null>(null);
-  // Letterhead toggle — applies to both the live preview and the PDF
-  // export. Defaults to OFF so the document is plain A4 by default; flip ON
-  // to stamp the configured letterhead image on every page.
-  const [useLetterhead, setUseLetterhead] = useState(false);
+  // Letterhead + QR + HTML-template toggles. Initial values come from
+  // the user's saved defaults (set via "Save as default" button) if
+  // present, else ship-defaults (letterhead OFF, QR ON, template OFF).
+  const [useLetterhead, setUseLetterhead] = useState(() => loadUserDefaultToggles()?.useLetterhead ?? false);
+  const [showQrCode, setShowQrCode] = useState(() => loadUserDefaultToggles()?.showQrCode ?? true);
+  // HTML template is the canonical render path — always on. The
+  // previous toggle / saved-default fallback is ignored deliberately;
+  // the React `ContractPreview` component is kept for the contract
+  // editor route but not for the live preview / PDF download here.
+  const [useHtmlTemplate, setUseHtmlTemplate] = useState(true);
+  void setUseHtmlTemplate; // setter retained for future re-introduction
+  // Length slider state. Each step (1 / 3 / 5 / 7 / 9 pages) maps to
+  // its own uploaded HTML template — see `contractHtmlTemplate.ts`
+  // for the storage cascade (length-specific → legacy single → bundled).
+  // `templateBump` is incremented on Upload / Clear so the iframe and
+  // PDF path pick up the freshly-written localStorage value without a
+  // full reload.
+  const [contractLength, setContractLength] = useState<ContractLength>(DEFAULT_CONTRACT_LENGTH);
+  const [templateBump, setTemplateBump] = useState(0);
+  const lengthTemplateUploaded = useMemo(
+    () => !!loadContractHtmlTemplateForLength(contractLength),
+    [contractLength, templateBump],
+  );
+  // Dynamic options: base 1..9 + any extras that were added by an
+  // upload whose page count exceeded 9. Memo key bumps on upload /
+  // clear so the slider extends and contracts in real time.
+  const lengthOptions = useMemo(
+    () => getEffectiveContractLengthOptions(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [templateBump],
+  );
+  const templateFileInputRef = useRef<HTMLInputElement | null>(null);
+  const handleUploadLengthTemplate = useCallback(async (file: File) => {
+    try {
+      const html = await file.text();
+      if (!html.trim()) {
+        toast({ title: 'Empty file', description: 'The selected file has no content.', variant: 'destructive' });
+        return;
+      }
+      // Auto-detect the actual page count so the slot key matches
+      // reality. The user no longer has to manually align the slider
+      // with the file's length — the file decides. Falls back to the
+      // current slider position if detection can't find page markers.
+      const detected = detectTemplatePageCount(html);
+      const targetLength: ContractLength = detected > 1 ? detected : contractLength;
+      saveContractHtmlTemplateForLength(targetLength, html);
+      noteUploadedTemplateLength(targetLength); // adds to slider if > 9
+      setTemplateBump(b => b + 1);
+      setContractLength(targetLength); // snap to the file's actual length
+      const detectionNote = detected > 1
+        ? (detected === contractLength ? '' : ` (auto-detected ${detected} pages)`)
+        : ' (couldn’t detect page count — used current slider value)';
+      toast({
+        title: `${targetLength}-page template uploaded`,
+        description: `${file.name} · ${(file.size / 1024).toFixed(1)} KB${detectionNote}`,
+      });
+    } catch (err) {
+      toast({ title: 'Upload failed', description: String(err instanceof Error ? err.message : err).slice(0, 180), variant: 'destructive' });
+    }
+  }, [contractLength, toast]);
+  const handleClearLengthTemplate = useCallback(() => {
+    clearContractHtmlTemplateForLength(contractLength);
+    // Lengths > 9 were dynamic extensions of the slider; drop the
+    // extra slot now that nothing's stored there. Lengths 1..9 are
+    // always shown so the user can re-upload without remembering they
+    // existed.
+    if (contractLength > 9) {
+      forgetExtraLength(contractLength);
+      setContractLength(DEFAULT_CONTRACT_LENGTH);
+    }
+    setTemplateBump(b => b + 1);
+    toast({ title: `${contractLength}-page template cleared`, description: 'Reverted to the legacy single override / bundled default.' });
+  }, [contractLength, toast]);
   // Edited-mode: when the user has opened the standalone editor and made
   // changes, the editor writes HTML into localStorage. We mirror it here
   // so the preview can render it instead of the template.
@@ -134,8 +171,8 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const [designerMode, setDesignerMode] = useState(false);
   const [newQrPage, setNewQrPage] = useState('1');
   const [selectedProduct, setSelectedProduct] = useState('');
-  const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [showCustomTemplate, setShowCustomTemplate] = useState(false);
+  const [showPdfTools, setShowPdfTools] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // ─── Bank slots (similar to VRAP issuing company slots) ───────────────
@@ -287,15 +324,6 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       return { ...s, subSections: next };
     }));
   };
-
-  // ── Iframe preview (SLA-style PDF preview) ────────────────────────
-  // The live A4 preview below stays as-is for instant WYSIWYG feedback.
-  // The iframe path here renders the *actual* downloaded PDF inside an
-  // <iframe> so users can confirm pagination, fonts, and the cost-table
-  // layout match exactly. Opens on demand; revoked when closed.
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewBuilding, setPreviewBuilding] = useState(false);
-  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   const productGroups = useMemo(() => {
     const staticGroups = [
@@ -539,6 +567,32 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     return fresh;
   };
 
+  /** Upload an exported file blob to the user's contracts bucket in
+   *  Supabase. Returns the storage path on success, null on failure.
+   *  Shared by every export path (PDF download, 1:1 preview download,
+   *  .docx download, Print → Save) so every artifact the user produces
+   *  ends up archived without needing a separate "save to database" click. */
+  const saveExportToDatabase = async (blob: Blob, filename: string, contentType: string): Promise<string | null> => {
+    if (!currentUsername) return null;
+    try {
+      const path = `${currentUsername}/${filename}`;
+      const { data, error } = await supabase.storage
+        .from('contracts')
+        .upload(path, blob, { upsert: true, contentType });
+      if (error) {
+        console.error('Database save failed:', error);
+        toast({ title: 'Saved locally — database upload failed', description: error.message, variant: 'destructive' });
+        return null;
+      }
+      return data?.path ?? path;
+    } catch (err) {
+      console.error('Database save failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({ title: 'Saved locally — database upload failed', description: msg, variant: 'destructive' });
+      return null;
+    }
+  };
+
   const downloadDocx = async () => {
     const id = resolveDocumentId();
     try {
@@ -549,13 +603,17 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
       const blob = await buildContractDocx({ ...contractFieldBag, contract_id: id }, 'filled');
       const filename = `${id || 'contract'}.docx`;
       saveAs(blob, filename);
+      const savedPath = await saveExportToDatabase(blob, filename, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
       logActivity({
         kind: 'pdf', // closest existing ActivityKind
         module: 'CGAP/Contract',
         action: 'Contract .docx generated',
-        meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct },
+        meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, archived_path: savedPath },
       });
-      toast({ title: '.docx downloaded', description: filename });
+      toast({
+        title: savedPath ? '.docx downloaded and archived' : '.docx downloaded',
+        description: savedPath ? `${filename} · saved to database` : filename,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to build .docx';
       toast({ title: 'Failed', description: msg, variant: 'destructive' });
@@ -602,7 +660,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     return generateContractPdfFromStructure(
       { ...contractFieldBag, contract_id: id },
       sections,
-      { letterheadDataUrl, qrCodeDataUrl: qrCodeDataUrlToUse },
+      { letterheadDataUrl, qrCodeDataUrl: showQrCode ? qrCodeDataUrlToUse : undefined },
     );
   };
 
@@ -610,8 +668,74 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
    *  html2canvas and stitching them into A4 pages via jsPDF. Output is
    *  visually identical to what the user sees in the preview at the
    *  cost of producing a raster (non-searchable) PDF. */
+  /** Render the effective HTML template into an off-screen host with
+   *  all form-field tokens substituted, then capture each
+   *  `.contract-page` div via html2canvas → assemble into an A4 PDF.
+   *  Used by the "Use HTML template" toggle on the Contract tab. */
+  const downloadPdfFromHtmlTemplate = async (id: string) => {
+    toast({ title: 'Building PDF…', description: 'Rendering uploaded HTML template' });
+    const filled = fillContractHtmlTemplate(
+      getEffectiveContractHtmlTemplateForLength(contractLength),
+      { ...contractFieldBag, contract_id: id, qr_data_url: showQrCode ? (qrCodeDataUrl || '') : '', page_num: '1', total_pages: String(contractLength) } as unknown as Record<string, string>,
+    );
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;top:-99999px;left:-99999px;width:794px;background:#fff;pointer-events:none;z-index:-1';
+    host.innerHTML = filled;
+    document.body.appendChild(host);
+    await new Promise((r) => requestAnimationFrame(r));
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const { default: JsPDF } = await import('jspdf');
+      const pages = Array.from(host.querySelectorAll<HTMLElement>('.contract-page'));
+      if (pages.length === 0) throw new Error('Template produced no .contract-page elements.');
+      const pdf = new JsPDF('p', 'mm', 'a4');
+      for (let i = 0; i < pages.length; i++) {
+        // Re-stamp the page-N-of-M footer per page (template literal had "1").
+        const pageNumEl = pages[i].querySelectorAll('div');
+        pageNumEl.forEach((el) => {
+          if (el.textContent && /^Page \d+ of \d+$/.test(el.textContent.trim())) {
+            el.textContent = `Page ${i + 1} of ${pages.length}`;
+          }
+        });
+        const canvas = await html2canvas(pages[i], {
+          scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#ffffff',
+          width: 794, height: 1123, windowWidth: 794, windowHeight: 1123, logging: false,
+        });
+        if (i > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 210, 297, undefined, 'FAST');
+      }
+      const filename = `${id || 'contract'}.pdf`;
+      const pdfBlob = pdf.output('blob');
+      pdf.save(filename);
+      const savedPath = await saveExportToDatabase(pdfBlob, filename, 'application/pdf');
+      logActivity({
+        kind: 'pdf', module: 'CGAP/Contract',
+        action: 'Contract PDF generated (HTML template)',
+        meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, pages: pages.length, archived_path: savedPath },
+      });
+      toast({
+        title: savedPath ? 'Contract PDF downloaded and archived' : 'Contract PDF downloaded',
+        description: savedPath ? `${filename} · saved to database` : filename,
+      });
+    } catch (err) {
+      console.error('HTML template capture failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({ title: 'Template render failed', description: msg.slice(0, 180), variant: 'destructive' });
+    } finally {
+      host.remove();
+    }
+  };
+
   const downloadPdf = async () => {
     const id = resolveDocumentId();
+    // HTML-template path — render the effective template (filled with
+    // current form values) into an off-screen host and capture each
+    // `.contract-page` div. Mirrors what the live iframe is showing,
+    // so the download matches the preview exactly.
+    if (useHtmlTemplate) {
+      await downloadPdfFromHtmlTemplate(id);
+      return;
+    }
     const pages = Array.from(document.querySelectorAll<HTMLElement>('.contract-page-surface'));
     if (pages.length === 0) {
       toast({ title: 'No preview pages found', description: 'Falling back to the structured PDF.', variant: 'destructive' });
@@ -685,14 +809,19 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         pdf.addImage(imgData, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
       }
       const filename = `${id || 'contract'}.pdf`;
+      const pdfBlob = pdf.output('blob');
       pdf.save(filename);
+      const savedPath = await saveExportToDatabase(pdfBlob, filename, 'application/pdf');
       logActivity({
         kind: 'pdf',
         module: 'CGAP/Contract',
         action: 'Contract PDF generated (1:1 from preview)',
-        meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, category: categoryKey, pages: pages.length },
+        meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, category: categoryKey, pages: pages.length, archived_path: savedPath },
       });
-      toast({ title: 'Contract PDF downloaded', description: filename });
+      toast({
+        title: savedPath ? 'Contract PDF downloaded and archived' : 'Contract PDF downloaded',
+        description: savedPath ? `${filename} · saved to database` : filename,
+      });
     } catch (err) {
       console.error('Preview capture failed:', err);
       const msg = err instanceof Error ? err.message : String(err);
@@ -702,7 +831,10 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
         variant: 'destructive',
       });
       const pdf = await buildPdf(id);
-      pdf.save(`${id || 'contract'}.pdf`);
+      const fallbackFilename = `${id || 'contract'}.pdf`;
+      const fallbackBlob = pdf.output('blob');
+      pdf.save(fallbackFilename);
+      await saveExportToDatabase(fallbackBlob, fallbackFilename, 'application/pdf');
     } finally {
       host.remove();
     }
@@ -712,66 +844,19 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     const id = resolveDocumentId();
     const pdf = await buildPdf(id);
     const filename = `${id || 'contract'}.pdf`;
-    
-    // Download to computer
+    const pdfBlob = pdf.output('blob');
     pdf.save(filename);
-    
-    // Save to database
-    try {
-      const pdfBlob = pdf.output('blob');
-      const { data, error } = await supabase.storage
-        .from('contracts')
-        .upload(`${currentUsername}/${filename}`, pdfBlob, {
-          upsert: true,
-          contentType: 'application/pdf',
-        });
-      
-      if (error) {
-        console.error('Error saving to database:', error);
-        toast({ title: 'Downloaded, but database save failed', description: error.message, variant: 'destructive' });
-      } else {
-        logActivity({
-          kind: 'pdf',
-          module: 'CGAP/Contract',
-          action: 'Contract PDF downloaded and saved to database',
-          meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, category: categoryKey, path: data.path },
-        });
-        toast({ title: 'Contract PDF downloaded and saved', description: `Saved to database as ${filename}` });
-      }
-    } catch (err) {
-      console.error('Error saving to database:', err);
-      toast({ title: 'Downloaded, but database save failed', description: 'An error occurred while saving to database', variant: 'destructive' });
+    const savedPath = await saveExportToDatabase(pdfBlob, filename, 'application/pdf');
+    if (savedPath) {
+      logActivity({
+        kind: 'pdf',
+        module: 'CGAP/Contract',
+        action: 'Contract PDF downloaded and saved to database',
+        meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, category: categoryKey, path: savedPath },
+      });
+      toast({ title: 'Contract PDF downloaded and saved', description: `Saved to database as ${filename}` });
     }
   };
-
-  /** Build the iframe-preview blob from whatever's currently in the
-   *  form. Uses `liveContractId` (no counter bump) so the preview can
-   *  auto-refresh on every change without burning through IDs. */
-  const refreshPdfPreview = useCallback(async () => {
-    setPreviewBuilding(true);
-    try {
-      const pdf = await buildPdf(liveContractId, true); // Use placeholder QR (nestnepal.com)
-      const blob = pdf.output('blob');
-      const url = URL.createObjectURL(blob);
-      setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
-    } catch (err) {
-      // Silent on auto-refresh — only surface manual failures via toast.
-      console.warn('Contract preview build failed:', err);
-    } finally {
-      setPreviewBuilding(false);
-    }
-    // buildPdf closes over contractFieldBag + sections + useLetterhead;
-    // we include them so a structure/field change re-fires this effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveContractId, sections, contractFieldBag, useLetterhead, qrCodeDataUrl]);
-
-  // Auto-build the preview on mount + whenever the inputs change. Hard
-  // debounce (1.2 s) because TipTap fires onChange on every keystroke
-  // and jsPDF generation is non-trivial (≈80-150 ms for a 17-page doc).
-  useEffect(() => {
-    const t = setTimeout(() => { refreshPdfPreview(); }, 1200);
-    return () => clearTimeout(t);
-  }, [refreshPdfPreview]);
 
   // Mirror the field bag to localStorage so the standalone editor tab can
   // re-render a fresh template baseline on demand (e.g. after "Reset to
@@ -944,6 +1029,80 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           // user can copy them somewhere manually if needed.
         }}
       />
+
+      {/* Contract-length slider — sits below QuickFillFromReply so it's
+          right next to the "what kind of customer is this" inputs. Each
+          step (1 / 3 / 5 / 7 / 9 pages) maps to its own uploaded HTML
+          template via the storage cascade in `contractHtmlTemplate.ts`.
+          The chip shows whether a custom template is loaded for the
+          active length or whether it's falling back to the bundled
+          default. */}
+      <div className={cn(
+        'mb-3 rounded-xl border p-3 flex items-center gap-3 flex-wrap',
+        dm ? 'border-gray-800 bg-gray-900/40' : 'border-gray-200 bg-white',
+      )}>
+        <div className={`text-xs font-medium ${dm ? 'text-gray-200' : 'text-gray-700'}`}>Contract length</div>
+        <div
+          className="flex-1 min-w-[260px]"
+          // Stretches wider when uploads have pushed the slider past
+          // 9 ticks so the labels stay legible.
+          style={{ maxWidth: `${Math.max(420, lengthOptions.length * 32)}px` }}
+        >
+          <Slider
+            min={0}
+            max={lengthOptions.length - 1}
+            step={1}
+            value={[Math.max(0, lengthOptions.indexOf(contractLength))]}
+            onValueChange={([idx]) => setContractLength(lengthOptions[idx] ?? DEFAULT_CONTRACT_LENGTH)}
+          />
+          <div className={`flex justify-between text-[10px] mt-1 tabular-nums ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
+            {lengthOptions.map(n => (
+              <span key={n} className={n === contractLength ? (dm ? 'text-teal-300 font-semibold' : 'text-teal-600 font-semibold') : ''}>{n}</span>
+            ))}
+          </div>
+        </div>
+        <span className={cn(
+          'inline-flex items-center px-2 h-6 rounded-full text-[10px] font-medium border tabular-nums',
+          lengthTemplateUploaded
+            ? (dm ? 'bg-teal-900/40 text-teal-300 border-teal-700' : 'bg-teal-50 text-teal-700 border-teal-300')
+            : (dm ? 'bg-gray-900 text-gray-400 border-gray-700' : 'bg-gray-50 text-gray-500 border-gray-300'),
+        )}>
+          {contractLength}p · {lengthTemplateUploaded ? 'custom template' : 'bundled default'}
+        </span>
+        <input
+          ref={templateFileInputRef}
+          type="file"
+          accept=".html,.htm,text/html"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleUploadLengthTemplate(f);
+            if (templateFileInputRef.current) templateFileInputRef.current.value = '';
+          }}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          type="button"
+          onClick={() => templateFileInputRef.current?.click()}
+          className="h-8 gap-1.5"
+          title={`Upload an HTML template for the ${contractLength}-page length`}
+        >
+          <Upload className="w-3.5 h-3.5" /> Upload
+        </Button>
+        {lengthTemplateUploaded && (
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={handleClearLengthTemplate}
+            className="h-8 gap-1.5"
+            title={`Remove the custom template for ${contractLength}-page contracts (falls back to bundled default)`}
+          >
+            <RotateCcw className="w-3.5 h-3.5" /> Reset
+          </Button>
+        )}
+      </div>
 
       {/* Product & Contract Terms Section */}
       {sectionHeader('Product & Contract Terms', 'Select a product from UCAP plans; Section 2A — Period text auto-fills from months')}
@@ -1250,6 +1409,40 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           />
           <span>Use letterhead{!useLetterhead && <span className={`ml-2 italic ${dm ? 'text-amber-400' : 'text-amber-600'}`}>· blank page</span>}</span>
         </label>
+        <label htmlFor="contract-show-qr" className={`flex items-center gap-2 text-xs cursor-pointer ${dm ? 'text-gray-300' : 'text-gray-700'}`} title="Off = no QR stamped on the preview or the downloaded PDF. On = QR appears at every per-page position (anchor coords).">
+          <Switch
+            id="contract-show-qr"
+            checked={showQrCode}
+            onCheckedChange={setShowQrCode}
+          />
+          <span>Show QR{!showQrCode && <span className={`ml-2 italic ${dm ? 'text-amber-400' : 'text-amber-600'}`}>· hidden</span>}</span>
+        </label>
+        {/* HTML template is now the only render path — toggle removed
+            so the user can't accidentally switch back to the React
+            ContractPreview. The state stays in this component (locked
+            to `true`) so the rest of the render branches don't need
+            to change. */}
+        {/* Contract-length slider lives in its own card under
+            QuickFillFromReply now — see the JSX block below the
+            QuickFillFromReply component. */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            // Snapshot: sections (per category) + QR anchors + toggle prefs.
+            saveUserDefaultStructure(categoryKey, sections);
+            saveUserDefaultContractAnchors(loadContractAnchors());
+            saveUserDefaultToggles({ useLetterhead, showQrCode, useHtmlTemplate });
+            toast({
+              title: 'Saved as default',
+              description: `Pages & Sections (${CONTRACT_CATEGORY_LABELS[categoryKey] ?? categoryKey}) · QR layout · toggles. Future contracts in this category will start from this state.`,
+            });
+          }}
+          className="gap-1.5 h-8"
+          title="Snapshot current Pages & Sections (this category), QR layout, and toolbar toggles as the new defaults. Used by 'Reset to default' and applied on next page load."
+        >
+          <CheckCircle2 className="w-3.5 h-3.5" /> Save as default
+        </Button>
         <Button
           variant={designerMode ? 'default' : 'outline'}
           size="sm"
@@ -1449,41 +1642,39 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           </Button>
         )}
       </div>
-      <ContractPreview fields={contractFieldBag} sections={sections} darkMode={dm} useLetterhead={useLetterhead} editedHtml={editedHtml} qrCodeDataUrl={qrCodeDataUrl} designerMode={designerMode} onAnchorsChange={(anchors) => saveContractAnchors(anchors)} onSelectedAnchorChange={setSelectedQrAnchorId} />
+      {useHtmlTemplate ? (
+        // HTML-template preview path — render the effective template
+        // (from Settings → Format Templates, override-aware) with all
+        // current form-field tokens substituted, in a sandboxed
+        // iframe. The Downloads code path mirrors this rendering off-
+        // screen so the captured PDF matches what's shown here.
+        <div className={cn('rounded-xl border overflow-hidden', dm ? 'bg-gray-950 border-gray-800' : 'bg-white border-gray-200')}>
+          <iframe
+            title="Contract HTML template preview"
+            sandbox="allow-same-origin"
+            srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:16px 0;background:#f3f4f6}.contract-page{margin:0 auto 16px;box-shadow:0 2px 10px rgba(0,0,0,0.10)}</style></head><body>${fillContractHtmlTemplate(getEffectiveContractHtmlTemplateForLength(contractLength), { ...contractFieldBag, qr_data_url: showQrCode ? (qrCodeDataUrl || '') : '', page_num: '1', total_pages: String(contractLength) } as unknown as Record<string, string>)}</body></html>`}
+            key={`${contractLength}-${templateBump}`}
+            className="block bg-transparent"
+            style={{ width: '100%', height: 900, border: 0 }}
+          />
+        </div>
+      ) : (
+        <ContractPreview fields={contractFieldBag} sections={sections} darkMode={dm} useLetterhead={useLetterhead} editedHtml={editedHtml} qrCodeDataUrl={showQrCode ? qrCodeDataUrl : null} designerMode={designerMode} onAnchorsChange={(anchors) => saveContractAnchors(anchors)} onSelectedAnchorChange={setSelectedQrAnchorId} />
+      )}
 
-      {/* Print preview (iframe) — auto-refreshes ~1.2 s after each edit
-          so you always see exactly what the downloaded PDF looks like
-          without clicking a button. Manual refresh available too. */}
-      <Collapsible open={showPrintPreview} onOpenChange={setShowPrintPreview}>
+      {/* PDF Tools — embed DCAP's PdfToolsPanel so admins can
+          post-process the downloaded contract (merge with cover letter,
+          reorder pages, rotate, etc.) without leaving the tab. */}
+      <Collapsible open={showPdfTools} onOpenChange={setShowPdfTools}>
         <CollapsibleTrigger asChild>
           <Button variant="outline" className={`${card} w-full justify-start gap-2`}>
-            <Eye className="w-4 h-4" />
-            Print preview
-            {previewBuilding && <Loader2 className="w-3 h-3 animate-spin" />}
-            <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${showPrintPreview ? 'rotate-180' : ''}`} />
+            <FileText className="w-4 h-4" />
+            PDF Tools (merge / split / rotate / reorder)
+            <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${showPdfTools ? 'rotate-180' : ''}`} />
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-2">
-          <div className={`${card} p-4`}>
-            <div className="flex items-center gap-2 mb-3 flex-wrap">
-              <span className={`text-[11px] ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
-                Auto-refreshes after every change — confirms pagination + fonts match the download exactly.
-              </span>
-              <span className="flex-1" />
-              <Button variant="outline" size="sm" onClick={refreshPdfPreview} disabled={previewBuilding} className="gap-1.5">
-                <Eye className="w-3.5 h-3.5" /> Refresh now
-              </Button>
-            </div>
-            {previewUrl ? (
-              <iframe src={previewUrl} title="Contract PDF preview" className="w-full rounded-lg border border-border bg-white" style={{ height: '900px' }} />
-            ) : (
-              <div className="w-full rounded-lg border border-dashed border-border bg-white/50 flex items-center justify-center" style={{ height: '900px' }}>
-                <span className={`text-xs flex items-center gap-2 ${dm ? 'text-gray-500' : 'text-gray-400'}`}>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Building first preview…
-                </span>
-              </div>
-            )}
-          </div>
+          <PdfToolsPanel darkMode={dm} defaultDownloadName={liveContractId || 'contract-edited'} />
         </CollapsibleContent>
       </Collapsible>
 
@@ -1636,10 +1827,11 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
                     </p>
                   ) : (
                     <>
-                      <SectionEditor
+                      <SectionBodyEditor
                         value={sec.body_html}
                         onChange={(html) => updateSection(sec.id, { body_html: html })}
                         darkMode={dm}
+                        miniPreviewHeading={sec.numeral ? `${sec.numeral} ${sec.heading}` : sec.heading}
                       />
                       {/* Sub-sections */}
                       {sec.subSections && sec.subSections.length > 0 && (
@@ -1733,10 +1925,11 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
                                   </Button>
                                 </div>
                               </div>
-                              <SectionEditor
+                              <SectionBodyEditor
                                 value={subSec.body_html}
                                 onChange={(html) => updateSubSection(sec.id, subSec.id, { body_html: html })}
                                 darkMode={dm}
+                                miniPreviewHeading={subSec.heading}
                               />
                             </div>
                           ))}

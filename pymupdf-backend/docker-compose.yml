@@ -1,0 +1,23 @@
+services:
+  pymupdf-backend:
+    build: .
+    container_name: pymupdf-backend
+    ports:
+      # Localhost-only by default; reverse-proxy in front for prod.
+      - "127.0.0.1:8090:8090"
+    environment:
+      - PORT=8090
+      # Allow the Vite dev origin in dev; tighten in prod via env override.
+      - PYMUPDF_ALLOWED_ORIGIN=*
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8090/api/health',timeout=2).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

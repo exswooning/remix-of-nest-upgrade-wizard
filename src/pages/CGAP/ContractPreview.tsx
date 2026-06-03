@@ -97,6 +97,10 @@ const ContractPreview: React.FC<Props> = ({
     id: string; startMouseX: number; startMouseY: number; origX: number; origY: number;
     width: number; height: number;
   } | null>(null);
+  const [resizingAnchor, setResizingAnchor] = useState<{
+    id: string; startMouseX: number; startMouseY: number; origWidth: number; origHeight: number;
+    handle: 'se' | 'sw' | 'ne' | 'nw';
+  } | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const [pageScale, setPageScale] = useState(0.85);
   const [fullscreen, setFullscreen] = useState(false);
@@ -172,6 +176,83 @@ const ContractPreview: React.FC<Props> = ({
     setSelectedAnchorId(null);
   }, []);
 
+  // Handle resize start
+  const handleResizeStart = useCallback((e: React.MouseEvent, anchorId: string, handle: 'se' | 'sw' | 'ne' | 'nw', pageIndex: number) => {
+    if (!designerMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const anchor = anchors.find((a) => a.id === anchorId);
+    if (!anchor) return;
+
+    const width = anchor.width || 30;
+    const height = anchor.height || 30;
+
+    // Fork: universal QR anchor → per-page override on resize.
+    let effectiveId = anchorId;
+    if (anchor.kind === 'qr' && anchor.page === 0) {
+      const targetPage = pageIndex + 1;
+      const forkedId = `${anchor.id}__p${targetPage}`;
+      const existingFork = anchors.find((a) => a.id === forkedId);
+      if (existingFork) {
+        effectiveId = existingFork.id;
+      } else {
+        const forked: ContractAnchor = { ...anchor, id: forkedId, page: targetPage };
+        setAnchors((prev) => [...prev, forked]);
+        effectiveId = forkedId;
+      }
+    }
+
+    setResizingAnchor({
+      id: effectiveId,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      origWidth: width,
+      origHeight: height,
+      handle,
+    });
+    setSelectedAnchorId(effectiveId);
+  }, [designerMode, anchors]);
+
+  // Handle resize move
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (!resizingAnchor) return;
+
+    const dx = (e.clientX - resizingAnchor.startMouseX) / PX_PER_MM / pageScale;
+    const dy = (e.clientY - resizingAnchor.startMouseY) / PX_PER_MM / pageScale;
+
+    let newWidth = resizingAnchor.origWidth;
+    let newHeight = resizingAnchor.origHeight;
+
+    // Adjust based on which handle is being dragged
+    switch (resizingAnchor.handle) {
+      case 'se':
+        newWidth = Math.max(10, resizingAnchor.origWidth + dx);
+        newHeight = Math.max(10, resizingAnchor.origHeight + dy);
+        break;
+      case 'sw':
+        newWidth = Math.max(10, resizingAnchor.origWidth - dx);
+        newHeight = Math.max(10, resizingAnchor.origHeight + dy);
+        break;
+      case 'ne':
+        newWidth = Math.max(10, resizingAnchor.origWidth + dx);
+        newHeight = Math.max(10, resizingAnchor.origHeight - dy);
+        break;
+      case 'nw':
+        newWidth = Math.max(10, resizingAnchor.origWidth - dx);
+        newHeight = Math.max(10, resizingAnchor.origHeight - dy);
+        break;
+    }
+
+    setAnchors((prev) => updateAnchorById(prev, resizingAnchor.id, { width: newWidth, height: newHeight }));
+  }, [resizingAnchor, pageScale]);
+
+  // Handle resize end
+  const handleResizeEnd = useCallback(() => {
+    if (!resizingAnchor) return;
+    setResizingAnchor(null);
+  }, [resizingAnchor]);
+
   // Handle drag move
   const handleDragMove = useCallback((e: MouseEvent) => {
     if (!draggingAnchor) return;
@@ -201,6 +282,17 @@ const ContractPreview: React.FC<Props> = ({
       };
     }
   }, [draggingAnchor, handleDragMove, handleDragEnd]);
+
+  useEffect(() => {
+    if (resizingAnchor) {
+      window.addEventListener('mousemove', handleResizeMove);
+      window.addEventListener('mouseup', handleResizeEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleResizeMove);
+        window.removeEventListener('mouseup', handleResizeEnd);
+      };
+    }
+  }, [resizingAnchor, handleResizeMove, handleResizeEnd]);
 
   useEffect(() => {
     if (!useLetterhead) {
@@ -240,16 +332,23 @@ const ContractPreview: React.FC<Props> = ({
         if (start === 0) {
           out.push({ ...s, subSections: sliceSubs });
         } else {
+          // Continuation slice — promote the first sub-section to take
+          // the section's left-column slot so its heading aligns with
+          // the other section headings on the same page (e.g. "C.
+          // Payment Conditions" on page 2 lines up with "4. Project
+          // Administration" rather than floating in the body column).
+          const [firstSub, ...restSubs] = sliceSubs;
           out.push({
             ...s,
             id: `${s.id}__c${i}`,
-            heading: '',
-            hideTitle: true,
-            body_html: '',
-            numeral: undefined,
+            heading: firstSub?.heading || '',
+            numeral: '',
+            hideTitle: false,
+            layout: 'numbered',
+            body_html: firstSub?.body_html || '',
             annexSubtitle: undefined,
             forcePageBreakBefore: true,
-            subSections: sliceSubs,
+            subSections: restSubs.length > 0 ? restSubs : undefined,
           });
         }
       }
@@ -422,36 +521,139 @@ const ContractPreview: React.FC<Props> = ({
                 zIndex: designerMode ? 100 : 1,
               }}
             >
-              <img src={qrCodeDataUrl} alt="Contract QR" style={{ width: '100%', height: '100%', pointerEvents: 'none' }} />
+              <img src={qrCodeDataUrl} alt="Contract QR" style={{ width: '100%', height: '100%', pointerEvents: 'none', opacity: anchor.opacity ?? 1 }} />
               {designerMode && isSelected && (
-                <div
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleDeleteAnchor(anchor.id);
-                  }}
-                  style={{
-                    position: 'absolute',
-                    top: '-12px',
-                    right: '-12px',
-                    width: '24px',
-                    height: '24px',
-                    backgroundColor: '#ef4444',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    color: 'white',
-                    fontSize: '16px',
-                    fontWeight: 'bold',
-                    zIndex: 200,
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                  }}
-                  title="Delete QR code"
-                >
-                  ×
-                </div>
+                <>
+                  <div
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDeleteAnchor(anchor.id);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: '-12px',
+                      right: '-12px',
+                      width: '24px',
+                      height: '24px',
+                      backgroundColor: '#ef4444',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: 'white',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                      zIndex: 200,
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                    }}
+                    title="Delete QR code"
+                  >
+                    ×
+                  </div>
+                  {/* Resize handles */}
+                  <div
+                    onMouseDown={(e) => handleResizeStart(e, anchor.id, 'se', index)}
+                    style={{
+                      position: 'absolute',
+                      bottom: '-6px',
+                      right: '-6px',
+                      width: '12px',
+                      height: '12px',
+                      backgroundColor: '#0F766E',
+                      border: '2px solid white',
+                      borderRadius: '2px',
+                      cursor: 'se-resize',
+                      zIndex: 200,
+                    }}
+                    title="Resize"
+                  />
+                  <div
+                    onMouseDown={(e) => handleResizeStart(e, anchor.id, 'sw', index)}
+                    style={{
+                      position: 'absolute',
+                      bottom: '-6px',
+                      left: '-6px',
+                      width: '12px',
+                      height: '12px',
+                      backgroundColor: '#0F766E',
+                      border: '2px solid white',
+                      borderRadius: '2px',
+                      cursor: 'sw-resize',
+                      zIndex: 200,
+                    }}
+                    title="Resize"
+                  />
+                  <div
+                    onMouseDown={(e) => handleResizeStart(e, anchor.id, 'ne', index)}
+                    style={{
+                      position: 'absolute',
+                      top: '-6px',
+                      right: '-6px',
+                      width: '12px',
+                      height: '12px',
+                      backgroundColor: '#0F766E',
+                      border: '2px solid white',
+                      borderRadius: '2px',
+                      cursor: 'ne-resize',
+                      zIndex: 200,
+                    }}
+                    title="Resize"
+                  />
+                  <div
+                    onMouseDown={(e) => handleResizeStart(e, anchor.id, 'nw', index)}
+                    style={{
+                      position: 'absolute',
+                      top: '-6px',
+                      left: '-6px',
+                      width: '12px',
+                      height: '12px',
+                      backgroundColor: '#0F766E',
+                      border: '2px solid white',
+                      borderRadius: '2px',
+                      cursor: 'nw-resize',
+                      zIndex: 200,
+                    }}
+                    title="Resize"
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '-35px',
+                      left: 0,
+                      right: 0,
+                      backgroundColor: 'white',
+                      border: '1px solid #0F766E',
+                      borderRadius: '4px',
+                      padding: '4px 8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      zIndex: 200,
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <span style={{ fontSize: '10px', color: '#0F766E', whiteSpace: 'nowrap' }}>Opacity:</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={anchor.opacity ?? 1}
+                      onChange={(e) => {
+                        const newOpacity = parseFloat(e.target.value);
+                        const updated = updateAnchorById(anchors, anchor.id, { opacity: newOpacity });
+                        setAnchors(updated);
+                        saveContractAnchors(updated);
+                        onAnchorsChange?.(updated);
+                      }}
+                      style={{ width: '60px' }}
+                    />
+                    <span style={{ fontSize: '10px', color: '#0F766E', minWidth: '30px' }}>{Math.round((anchor.opacity ?? 1) * 100)}%</span>
+                  </div>
+                </>
               )}
             </div>
             );
@@ -546,17 +748,30 @@ const ContractPreview: React.FC<Props> = ({
           {s.subSections && s.subSections.map((subSec) => (
             <div
               key={subSec.id}
-              className="cgap-contract-body"
-              style={{ marginTop: '8pt' }}
-              dangerouslySetInnerHTML={{
-                __html: `<strong>${subSec.heading}</strong>&nbsp;${fillContractTokens(subSec.body_html, fields)}`,
+              style={{
+                display: 'grid',
+                // `fit-content(50mm)` lets short headings ((i), A.) sit
+                // in a tight column while long headings (C. Payment
+                // Conditions, B. Records and Accounts) get up to 50 mm
+                // before wrapping — keeps the layout from breaking when
+                // the heading is wider than 32 mm.
+                gridTemplateColumns: 'fit-content(50mm) 1fr',
+                gap: '3mm',
+                marginTop: '8pt',
+                fontFamily: '"Times New Roman", Times, serif',
               }}
-            />
+            >
+              <div style={{ fontWeight: 700, fontSize: '11pt', minWidth: '32mm' }}>{subSec.heading}</div>
+              <div
+                className="cgap-contract-body"
+                dangerouslySetInnerHTML={{ __html: fillContractTokens(subSec.body_html, fields) }}
+              />
+            </div>
           ))}
         </div>
       );
     }
-    if (s.hideTitle || s.layout === 'fullWidth' || !s.numeral) {
+    if (s.hideTitle || s.layout === 'fullWidth' || (!s.numeral && !s.heading)) {
       return (
         <div key={key} style={{ margin: '0 0 8pt' }}>
           <div
@@ -567,12 +782,25 @@ const ContractPreview: React.FC<Props> = ({
           {s.subSections && s.subSections.map((subSec) => (
             <div
               key={subSec.id}
-              className="cgap-contract-body"
-              style={{ marginTop: '8pt' }}
-              dangerouslySetInnerHTML={{
-                __html: `<strong>${subSec.heading}</strong>&nbsp;${fillContractTokens(subSec.body_html, fields)}`,
+              style={{
+                display: 'grid',
+                // `fit-content(50mm)` lets short headings ((i), A.) sit
+                // in a tight column while long headings (C. Payment
+                // Conditions, B. Records and Accounts) get up to 50 mm
+                // before wrapping — keeps the layout from breaking when
+                // the heading is wider than 32 mm.
+                gridTemplateColumns: 'fit-content(50mm) 1fr',
+                gap: '3mm',
+                marginTop: '8pt',
+                fontFamily: '"Times New Roman", Times, serif',
               }}
-            />
+            >
+              <div style={{ fontWeight: 700, fontSize: '11pt', minWidth: '32mm' }}>{subSec.heading}</div>
+              <div
+                className="cgap-contract-body"
+                dangerouslySetInnerHTML={{ __html: fillContractTokens(subSec.body_html, fields) }}
+              />
+            </div>
           ))}
         </div>
       );
@@ -586,7 +814,7 @@ const ContractPreview: React.FC<Props> = ({
         margin: '0 0 10pt',
       }}>
         <div style={{ fontWeight: 700, fontSize: '11pt' }}>
-          {s.numeral} {s.heading}
+          {s.numeral ? `${s.numeral} ${s.heading}` : s.heading}
         </div>
         <div>
           <div
@@ -597,12 +825,25 @@ const ContractPreview: React.FC<Props> = ({
           {s.subSections && s.subSections.map((subSec) => (
             <div
               key={subSec.id}
-              className="cgap-contract-body"
-              style={{ marginTop: '8pt' }}
-              dangerouslySetInnerHTML={{
-                __html: `<strong>${subSec.heading}</strong>&nbsp;${fillContractTokens(subSec.body_html, fields)}`,
+              style={{
+                display: 'grid',
+                // `fit-content(50mm)` lets short headings ((i), A.) sit
+                // in a tight column while long headings (C. Payment
+                // Conditions, B. Records and Accounts) get up to 50 mm
+                // before wrapping — keeps the layout from breaking when
+                // the heading is wider than 32 mm.
+                gridTemplateColumns: 'fit-content(50mm) 1fr',
+                gap: '3mm',
+                marginTop: '8pt',
+                fontFamily: '"Times New Roman", Times, serif',
               }}
-            />
+            >
+              <div style={{ fontWeight: 700, fontSize: '11pt', minWidth: '32mm' }}>{subSec.heading}</div>
+              <div
+                className="cgap-contract-body"
+                dangerouslySetInnerHTML={{ __html: fillContractTokens(subSec.body_html, fields) }}
+              />
+            </div>
           ))}
         </div>
       </div>

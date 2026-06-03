@@ -15,4 +15,12 @@ export default defineConfig({
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime"],
   },
+  // pdfjs-dist's worker script is a standalone bundle — feeding it
+  // through Vite's dep optimizer breaks it (esbuild doesn't recognise
+  // the entry, drops the file). Excluding both the main lib and the
+  // worker means Vite serves them as-is. We still wire the worker URL
+  // via ?url at import time in src/utils/pdfTools.ts.
+  optimizeDeps: {
+    exclude: ["pdfjs-dist", "pdfjs-dist/build/pdf.worker.min.mjs"],
+  },
 });

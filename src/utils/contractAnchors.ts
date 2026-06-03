@@ -15,6 +15,8 @@ export interface ContractAnchor {
   height?: number;
   /** Page number (1-indexed) */
   page: number;
+  /** Opacity (0-1) for QR code transparency */
+  opacity?: number;
 }
 
 /** Default QR code anchor position — bottom-left, 30 mm square. Matches
@@ -26,9 +28,29 @@ export const DEFAULT_CONTRACT_ANCHORS: ContractAnchor[] = [
   { id: 'qr_code', kind: 'qr', x: 16.85, y: 238.63, width: 30, height: 30, page: 0 },
 ];
 
-/** Build a fresh copy of the defaults */
+/** Build a fresh copy of the defaults — preferring the user-saved
+ *  default (set via "Save as default" in the Contract tab) over the
+ *  hardcoded fallback. */
 export function freshDefaultContractAnchors(): ContractAnchor[] {
+  const userDefault = loadUserDefaultContractAnchors();
+  if (userDefault) return userDefault.map((a) => ({ ...a }));
   return DEFAULT_CONTRACT_ANCHORS.map((a) => ({ ...a }));
+}
+
+// ── User-saved default QR anchor layout ─────────────────────────────
+const USER_DEFAULT_ANCHORS_KEY = 'contract-user-default-anchors';
+
+export function saveUserDefaultContractAnchors(anchors: ContractAnchor[]): void {
+  try { localStorage.setItem(USER_DEFAULT_ANCHORS_KEY, JSON.stringify(anchors)); } catch { /* noop */ }
+}
+
+export function loadUserDefaultContractAnchors(): ContractAnchor[] | null {
+  try {
+    const raw = localStorage.getItem(USER_DEFAULT_ANCHORS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as ContractAnchor[]) : null;
+  } catch { return null; }
 }
 
 /** Load contract anchors from localStorage */

@@ -1,0 +1,56 @@
+# Self-hosted Stirling PDF — the real open-source sejda clone.
+# https://github.com/Stirling-Tools/Stirling-PDF
+#
+# Brings up the full Stirling web UI (merge / split / rotate / OCR /
+# watermark / sign / edit / page-numbers / forms / convert / redact /
+# compress, etc.) on http://localhost:8084. The DCAP tab in the SPA
+# iframes this URL when VITE_STIRLING_URL is set.
+#
+# Usage:
+#   cd stirling-pdf && docker compose up -d
+#   open http://localhost:8084
+#
+# Then in the frontend's .env.local:
+#   VITE_STIRLING_URL=http://localhost:8084
+
+services:
+  stirling-pdf:
+    image: docker.stirlingpdf.com/stirlingtools/stirling-pdf:latest
+    container_name: stirling-pdf
+    restart: unless-stopped
+    ports:
+      # Bound to all interfaces so the SPA running on Vercel/Render
+      # can reach it if needed; for local-only, prefix with 127.0.0.1.
+      - "8084:8080"
+    volumes:
+      - ./training-data:/usr/share/tesseract-ocr/4.00/tessdata
+      - ./extra-configs:/configs
+      - ./custom-files:/customFiles
+      - ./logs:/logs
+    environment:
+      # Security is off for local dev. For production, set
+      # DOCKER_ENABLE_SECURITY=true and configure auth via the
+      # /configs/settings.yml file (see Stirling docs).
+      DOCKER_ENABLE_SECURITY: "false"
+      INSTALL_BOOK_AND_ADVANCED_HTML_OPS: "false"
+      LANGS: "en_GB"
+      SYSTEM_DEFAULTLOCALE: "en-GB"
+      UI_APPNAME: "DCAP — PDF Tools"
+      UI_HOMEDESCRIPTION: "PDF tools powered by Stirling PDF"
+      UI_APPNAMENAVBAR: "DCAP / Stirling"
+      # Allow embedding in the SPA iframe — Stirling honours these
+      # via Spring Security headers. If your CSP refuses framing,
+      # delete X-Frame-Options below and instead set the value via
+      # the embedded reverse-proxy config.
+      ALLOWED_HOST_ORIGIN: "*"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

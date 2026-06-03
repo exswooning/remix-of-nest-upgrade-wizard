@@ -1,5 +1,6 @@
 import React from 'react';
 import ContractTab from '@/pages/CGAP/ContractTab';
+import OnePageContractTab from '@/pages/CGAP/OnePageContractTab';
 import AddendumTab from '@/pages/CGAP/AddendumTab';
 import QuickAmendmentTab from '@/pages/CGAP/QuickAmendmentTab';
 import SLATab from '@/pages/CGAP/SLATab';
@@ -8,7 +9,7 @@ import RequestForPaymentTab from '@/pages/CGAP/RequestForPaymentTab';
 import MOUTab from '@/pages/CGAP/MOUTab';
 import DocTemplateTab from '@/pages/CGAP/DocTemplateTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, FilePlus, Zap, Receipt, ShieldCheck, ClipboardList, Handshake, FileSpreadsheet } from 'lucide-react';
+import { FileText, FilePlus, Zap, Receipt, ShieldCheck, ClipboardList, Handshake, FileSpreadsheet, FileMinus } from 'lucide-react';
 
 interface CGAPEmbeddedProps {
   darkMode: boolean;
@@ -27,9 +28,12 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
   return (
     <div className="space-y-4">
       <Tabs defaultValue="contract" className="w-full">
-        <TabsList className="glass-tabs-sm grid w-full grid-cols-8 mb-3">
+        <TabsList className="glass-tabs-sm grid w-full grid-cols-9 mb-3">
           <TabsTrigger value="contract" className="glass-tab flex items-center gap-1 text-xs py-2">
             <FileText className="w-3 h-3" /> Contract
+          </TabsTrigger>
+          <TabsTrigger value="one-page" className="glass-tab flex items-center gap-1 text-xs py-2">
+            <FileMinus className="w-3 h-3" /> One-page
           </TabsTrigger>
           <TabsTrigger value="addendum" className="glass-tab flex items-center gap-1 text-xs py-2">
             <FilePlus className="w-3 h-3" /> Addendum
@@ -54,6 +58,7 @@ const CGAPEmbedded: React.FC<CGAPEmbeddedProps> = ({ darkMode }) => {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="contract"><ContractTab darkMode={darkMode} /></TabsContent>
+        <TabsContent value="one-page"><OnePageContractTab darkMode={darkMode} /></TabsContent>
         <TabsContent value="addendum"><AddendumTab darkMode={darkMode} /></TabsContent>
         <TabsContent value="amendment"><QuickAmendmentTab darkMode={darkMode} /></TabsContent>
         <TabsContent value="mou"><MOUTab darkMode={darkMode} /></TabsContent>

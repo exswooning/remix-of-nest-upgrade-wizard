@@ -4,6 +4,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import { Bold, Italic, Underline as UnderlineIcon, List, ListOrdered, Undo, Redo } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { cleanSectionHtml } from '@/utils/sectionHtmlCleaner';
 
 interface Props {
   value: string;
@@ -11,25 +12,42 @@ interface Props {
   darkMode?: boolean;
   /** Minimum height in px for the writable surface (default 80). */
   minHeight?: number;
+  /** Hide block-level controls (lists) so the user can only produce
+   *  paragraphs + inline marks — keeps body HTML compatible with the
+   *  contract's 2-column nested grid. */
+  restricted?: boolean;
 }
 
 /** Slim TipTap-based rich text editor for the SLA's boilerplate sections.
  *  Supports paragraphs, bold/italic/underline, bullet and numbered lists,
  *  plus undo/redo. The PDF renderer in SLATab walks the resulting HTML and
  *  emits styled vector text — no html2canvas raster pass. */
-const SectionEditor: React.FC<Props> = ({ value, onChange, darkMode = false, minHeight = 100 }) => {
+const SectionEditor: React.FC<Props> = ({ value, onChange, darkMode = false, minHeight = 100, restricted = false }) => {
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: false }),
+      StarterKit.configure({
+        heading: false,
+        // In restricted mode, drop list / blockquote / code-block too so
+        // the toolbar buttons we hide can't be invoked via shortcuts.
+        ...(restricted
+          ? { bulletList: false, orderedList: false, listItem: false, blockquote: false, codeBlock: false }
+          : {}),
+      }),
       Underline,
     ],
     content: value,
     editorProps: {
       attributes: {
-        class: 'focus:outline-none prose prose-sm max-w-none',
+        // `cgap-editor-tokens` activates the {token} highlight rule defined
+        // in src/index.css so contract placeholders render as teal chips.
+        class: 'focus:outline-none prose prose-sm max-w-none cgap-editor-tokens',
       },
     },
-    onUpdate: ({ editor }) => onChange(editor.getHTML()),
+    // Every keystroke flows through `cleanSectionHtml` before bubbling
+    // up to the parent — strips empty paragraphs, normalises smart
+    // quotes, repairs split tokens. Bug-class avoidance is more
+    // valuable than the tiny perf cost.
+    onUpdate: ({ editor }) => onChange(cleanSectionHtml(editor.getHTML())),
   });
 
   if (!editor) {
@@ -69,8 +87,12 @@ const SectionEditor: React.FC<Props> = ({ value, onChange, darkMode = false, min
         <Btn active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></Btn>
         <Btn active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} title="Underline (Ctrl+U)"><UnderlineIcon className="w-3.5 h-3.5" /></Btn>
         <span className="w-px h-4 bg-gray-400/30 mx-1" />
-        <Btn active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} title="Bulleted list"><List className="w-3.5 h-3.5" /></Btn>
-        <Btn active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()} title="Numbered list"><ListOrdered className="w-3.5 h-3.5" /></Btn>
+        {!restricted && (
+          <>
+            <Btn active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} title="Bulleted list"><List className="w-3.5 h-3.5" /></Btn>
+            <Btn active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()} title="Numbered list"><ListOrdered className="w-3.5 h-3.5" /></Btn>
+          </>
+        )}
         <span className="flex-1" />
         <Btn onClick={() => editor.chain().focus().undo().run()} title="Undo" disabled={!editor.can().undo()}><Undo className="w-3.5 h-3.5" /></Btn>
         <Btn onClick={() => editor.chain().focus().redo().run()} title="Redo" disabled={!editor.can().redo()}><Redo className="w-3.5 h-3.5" /></Btn>

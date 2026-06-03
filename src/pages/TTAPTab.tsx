@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Trash2, Bot, User, Wrench, AlertCircle, Loader2, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { Send, Trash2, Bot, User, Wrench, AlertCircle, Loader2, ChevronDown, ChevronRight, Sparkles, FileImage, ScanLine, X, Paperclip } from "lucide-react";
 import { chat, getApiKey, type ChatMessage } from "@/utils/ttapClient";
 import { logActivity } from "@/utils/activityLog";
+import { extractCandidates, formatForChat, runOcr } from "@/utils/txnIdOcr";
 
 interface TraceEntry {
   type: "user" | "assistant" | "tool";
@@ -26,7 +27,16 @@ const TTAPTab: React.FC<Props> = ({ darkMode = false }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<ChatMessage[]>([]);
+  // Image attached to the next outbound message. The composer accepts
+  // it via paste / drop / file-picker; on send, we run OCR locally and
+  // append the extracted text + transaction-id candidates to the
+  // user's typed message so the AI sees structured context (no vision
+  // model required).
+  const [attachedImage, setAttachedImage] = useState<File | null>(null);
+  const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+  const [ocrProgress, setOcrProgress] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasKey = !!getApiKey();
   const card = `glass-card rounded-2xl p-6`;
@@ -35,16 +45,112 @@ const TTAPTab: React.FC<Props> = ({ darkMode = false }) => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [trace, busy]);
 
+  const attachImage = (picked: File) => {
+    if (!picked.type.startsWith("image/")) {
+      setError("Only images can be attached (PNG, JPG, WebP).");
+      return;
+    }
+    if (attachedPreview) URL.revokeObjectURL(attachedPreview);
+    setAttachedImage(picked);
+    setAttachedPreview(URL.createObjectURL(picked));
+    setOcrProgress(0);
+  };
+  const clearAttachment = () => {
+    if (attachedPreview) URL.revokeObjectURL(attachedPreview);
+    setAttachedImage(null);
+    setAttachedPreview(null);
+    setOcrProgress(0);
+  };
+
+  // Cmd+V / Ctrl+V → attach an image from the clipboard (typical
+  // screenshot-tool source). Skips when the user is typing into a
+  // non-composer input/textarea so paste still works there.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (busy) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      // We DO accept paste into the composer textarea — but only when
+      // the clipboard has an image; otherwise let the textarea handle
+      // pasted text normally.
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      let imageItem: DataTransferItem | null = null;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].kind === "file" && items[i].type.startsWith("image/")) {
+          imageItem = items[i];
+          break;
+        }
+      }
+      if (!imageItem) return;
+      // Don't hijack paste in arbitrary inputs that aren't ours.
+      if (tag === "input" && target !== fileInputRef.current) {
+        // Plain text inputs elsewhere on the page → ignore.
+        return;
+      }
+      if (target?.isContentEditable && !target.closest(".ttap-composer")) return;
+      const raw = imageItem.getAsFile();
+      if (!raw) return;
+      e.preventDefault();
+      const ext = (imageItem.type.split("/")[1] || "png").replace("jpeg", "jpg");
+      const named = new File(
+        [raw],
+        raw.name && raw.name !== "image.png" ? raw.name : `pasted-${Date.now()}.${ext}`,
+        { type: imageItem.type },
+      );
+      attachImage(named);
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, attachedPreview]);
+
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || busy) return;
+    const image = attachedImage;
+    if ((!text && !image) || busy) return;
     setError(null);
     setInput("");
-    setTrace((t) => [...t, { type: "user", content: text }]);
     setBusy(true);
-    logActivity({ kind: "action", module: "TTAP", action: "Chat message sent", meta: { length: text.length } });
 
-    const nextHistory: ChatMessage[] = [...history, { role: "user", content: text }];
+    // Build the message that will go into the chat: typed text + (if
+    // an image is attached) OCR output + extracted transaction-id
+    // candidates. The AI gets the full structured block; the user
+    // sees their typed text with an "📎 image attached" badge above it
+    // (rendered by TraceRow when content has the marker prefix).
+    let outboundContent = text;
+    let attachmentSummary: string | undefined;
+    let candidatesCount = 0;
+    if (image) {
+      try {
+        setOcrProgress(0);
+        const ocr = await runOcr(image, p => setOcrProgress(p));
+        const candidates = extractCandidates(ocr);
+        candidatesCount = candidates.length;
+        attachmentSummary = formatForChat(image.name, ocr, candidates);
+        outboundContent = text
+          ? `${text}\n\n${attachmentSummary}`
+          : attachmentSummary;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "OCR failed";
+        setError(msg);
+        setBusy(false);
+        return;
+      }
+      clearAttachment();
+    }
+
+    // Trace entry uses the FULL outbound so the user can see what the
+    // AI actually received (image's OCR + candidates included).
+    setTrace((t) => [...t, { type: "user", content: outboundContent }]);
+    logActivity({
+      kind: "action",
+      module: "TTAP",
+      action: image ? "Chat message sent (with image)" : "Chat message sent",
+      meta: { length: outboundContent.length, image: image?.name ?? null, candidates: candidatesCount },
+    });
+
+    const nextHistory: ChatMessage[] = [...history, { role: "user", content: outboundContent }];
     try {
       const final = await chat(nextHistory, (e) => {
         if (e.type === "tool_call") {
@@ -116,6 +222,7 @@ const TTAPTab: React.FC<Props> = ({ darkMode = false }) => {
                   <li>"Set QGAP default validity to 14 days."</li>
                   <li>"What PDFs were generated this week?"</li>
                   <li>"Add a client: Acme Pvt Ltd, contact John, john@acme.com."</li>
+                  <li>Paste a payment screenshot (⌘V / Ctrl+V) — TTAP runs OCR and pulls out the transaction id.</li>
                 </ul>
               </div>
             </div>
@@ -139,21 +246,82 @@ const TTAPTab: React.FC<Props> = ({ darkMode = false }) => {
         )}
 
         {/* Composer */}
-        <div className="flex items-end gap-2 mt-3">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
-            }}
-            placeholder={hasKey ? "Ask TTAP… (Enter to send, Shift+Enter for newline)" : "Configure API key in Settings first."}
-            rows={2}
-            disabled={!hasKey || busy}
-            className={`flex-1 ${dm ? "bg-gray-900 border-gray-700 text-white" : ""}`}
-          />
-          <Button onClick={handleSend} disabled={!hasKey || busy || !input.trim()} className="gap-1.5 h-12">
-            <Send className="w-4 h-4" /> Send
-          </Button>
+        <div
+          className="ttap-composer mt-3"
+          onDragOver={(e) => { if (!busy) e.preventDefault(); }}
+          onDrop={(e) => {
+            if (busy) return;
+            const picked = e.dataTransfer?.files?.[0];
+            if (picked && picked.type.startsWith("image/")) {
+              e.preventDefault();
+              attachImage(picked);
+            }
+          }}
+        >
+          {/* Attached image chip — sits above the textarea so the
+              user sees exactly what will be sent on the next Send. */}
+          {attachedImage && (
+            <div className={`flex items-center gap-2 px-2 py-1.5 mb-2 rounded-md border text-xs ${dm ? "border-teal-800 bg-teal-900/30 text-teal-200" : "border-teal-200 bg-teal-50 text-teal-800"}`}>
+              {attachedPreview && (
+                <img src={attachedPreview} alt={attachedImage.name} className="w-10 h-10 object-cover rounded" />
+              )}
+              <FileImage className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate flex-1" title={attachedImage.name}>{attachedImage.name}</span>
+              <span className="opacity-70 tabular-nums">{(attachedImage.size / 1024).toFixed(1)} KB</span>
+              {busy && ocrProgress > 0 && (
+                <span className="flex items-center gap-1 opacity-80">
+                  <ScanLine className="w-3 h-3" /> {ocrProgress}%
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={clearAttachment}
+                disabled={busy}
+                className={`p-0.5 rounded hover:bg-red-500/15 ${dm ? "text-teal-300 hover:text-red-300" : "text-teal-700 hover:text-red-600"}`}
+                title="Remove attachment"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const picked = e.target.files?.[0];
+                if (picked) attachImage(picked);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!hasKey || busy}
+              className="h-12 px-3 gap-1.5"
+              title="Attach an image (or paste ⌘V / Ctrl+V, or drop here)"
+            >
+              <Paperclip className="w-4 h-4" />
+            </Button>
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+              }}
+              placeholder={hasKey ? (attachedImage ? "Add a note (optional) — Enter to send" : "Ask TTAP… (paste a screenshot for OCR, ⌘V)") : "Configure API key in Settings first."}
+              rows={2}
+              disabled={!hasKey || busy}
+              className={`flex-1 ${dm ? "bg-gray-900 border-gray-700 text-white" : ""}`}
+            />
+            <Button onClick={handleSend} disabled={!hasKey || busy || (!input.trim() && !attachedImage)} className="gap-1.5 h-12">
+              <Send className="w-4 h-4" /> Send
+            </Button>
+          </div>
         </div>
       </div>
     </div>

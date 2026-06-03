@@ -464,8 +464,39 @@ function buildDefaultStructure(flavour: CategoryFlavour): ContractStructureSecti
 }
 
 export function getDefaultStructureForCategory(categoryKey: string): ContractStructureSection[] {
+  // User-saved default (from "Save as default" in the Contract tab)
+  // takes precedence over the bundled per-category defaults so that
+  // "Reset to default" — and the load-time auto-migration — restore
+  // the user's preferred baseline rather than the seed text.
+  const userDefault = loadUserDefaultStructure(categoryKey);
+  if (userDefault) return userDefault;
   const flavour = CATEGORY_FLAVOURS[categoryKey] ?? CATEGORY_FLAVOURS['google-workspace'];
   return buildDefaultStructure(flavour);
+}
+
+// ── User-saved defaults ─────────────────────────────────────────────
+// Persists the user's "Save as default" snapshot per category.
+// Distinct from the live working structure (`contract-sections-…`) so
+// the user can keep editing without clobbering their saved baseline.
+
+const userDefaultKeyFor = (categoryKey: string) => `contract-user-default-sections-${categoryKey}`;
+
+export function saveUserDefaultStructure(categoryKey: string, sections: ContractStructureSection[]): void {
+  try { localStorage.setItem(userDefaultKeyFor(categoryKey), JSON.stringify(sections)); } catch { /* noop */ }
+}
+
+export function loadUserDefaultStructure(categoryKey: string): ContractStructureSection[] | null {
+  try {
+    const raw = localStorage.getItem(userDefaultKeyFor(categoryKey));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    return parsed as ContractStructureSection[];
+  } catch { return null; }
+}
+
+export function clearUserDefaultStructure(categoryKey: string): void {
+  try { localStorage.removeItem(userDefaultKeyFor(categoryKey)); } catch { /* noop */ }
 }
 
 export const DEFAULT_CONTRACT_STRUCTURE: ContractStructureSection[] = buildDefaultStructure(CATEGORY_FLAVOURS['google-workspace']);

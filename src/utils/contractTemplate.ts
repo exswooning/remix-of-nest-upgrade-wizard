@@ -428,6 +428,65 @@ const FOOTER_CONTRACT_X = 24.69;
 const LABEL_COL_WIDTH = 42;   // narrow left column for section labels
 const COL_GAP = 4;
 
+/** Render a sub-section in a 2-column layout: bold heading on the
+ *  left (auto-sized between 32 mm and 50 mm to match the preview's
+ *  `fit-content(50mm)` grid column), body HTML on the right. The
+ *  body's writeRichHtml call advances `cursor.y` as it wraps; after
+ *  it returns we floor `cursor.y` to at least `yStart + headingHeight`
+ *  so the next row clears the heading even when the body is shorter.
+ *  Mirrors the nested grid in ContractPreview.tsx. */
+const SUBSEC_HEAD_MIN_W = 32;
+const SUBSEC_HEAD_MAX_W = 50;
+const SUBSEC_GAP = 3;
+function renderSubSectionTwoCol(
+  pdf: jsPDF,
+  subSec: { heading: string; body_html: string; forcePageBreakBefore?: boolean },
+  fields: ContractFields,
+  left: number,
+  contentW: number,
+  cursor: { y: number },
+  ensure: (need: number) => void,
+  opts: { asSection?: boolean } = {},
+): void {
+  // When the sub-section is the orphan continuation on a new page
+  // (forcePageBreakBefore), promote it to section-level styling: fixed
+  // 42 mm heading column + 4 mm gap, matching the outer section grid
+  // so its heading aligns vertically with other section headings on
+  // the same page. Otherwise use the auto-grown 32–50 mm column.
+  const promoteToSection = opts.asSection || Boolean(subSec.forcePageBreakBefore);
+  pdf.setFont('times', 'bold');
+  pdf.setFontSize(11);
+  let headW: number;
+  let gap: number;
+  if (promoteToSection) {
+    headW = 42;
+    gap = 4;
+  } else {
+    const measured = pdf.getTextWidth(subSec.heading);
+    headW = Math.max(SUBSEC_HEAD_MIN_W, Math.min(SUBSEC_HEAD_MAX_W, measured + 2));
+    gap = SUBSEC_GAP;
+  }
+  const bodyLeft = left + headW + gap;
+  const bodyW = contentW - headW - gap;
+  const yStart = cursor.y;
+
+  // Heading (bold, wraps if longer than the resolved column).
+  setColor(pdf, BLACK);
+  const headingLines = pdf.splitTextToSize(subSec.heading, headW) as string[];
+  pdf.text(headingLines, left, yStart);
+  const headingHeight = headingLines.length * 5; // 11 pt ≈ 5 mm line height
+
+  // Body — same y baseline, narrower column on the right.
+  const subFilled = fillContractTokens(subSec.body_html, fields);
+  cursor.y = yStart;
+  writeRichHtml(
+    { pdf, left: bodyLeft, contentW: bodyW, cursor, ensureSpace: ensure, font: 'times' },
+    subFilled,
+  );
+
+  if (cursor.y < yStart + headingHeight) cursor.y = yStart + headingHeight;
+}
+
 // ── jsPDF helpers ─────────────────────────────────────────────────────
 const setColor = (pdf: jsPDF, c: readonly [number, number, number]) => pdf.setTextColor(c[0], c[1], c[2]);
 const BLACK = [0, 0, 0] as const;
@@ -571,7 +630,15 @@ export function generateContractPdf(fields: ContractFields, options: GenerateOpt
       const qrSize = anchor.width || 30;
       const qrX = anchor.x;
       const qrY = anchor.y;
-      pdf.addImage(options.qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize, `contract-qr-${anchor.id}-${pageNum}`, 'NONE');
+      
+      // Apply opacity if specified
+      if (anchor.opacity !== undefined && anchor.opacity < 1) {
+        pdf.setGState({ opacity: anchor.opacity });
+        pdf.addImage(options.qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize, `contract-qr-${anchor.id}-${pageNum}`, 'NONE');
+        pdf.setGState({ opacity: 1 }); // Reset opacity
+      } else {
+        pdf.addImage(options.qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize, `contract-qr-${anchor.id}-${pageNum}`, 'NONE');
+      }
     });
   };
   
@@ -875,7 +942,15 @@ export function generateContractPdfFromStructure(
       const qrSize = anchor.width || 30;
       const qrX = anchor.x;
       const qrY = anchor.y;
-      pdf.addImage(options.qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize, `contract-qr-${anchor.id}-${pageNum}`, 'NONE');
+      
+      // Apply opacity if specified
+      if (anchor.opacity !== undefined && anchor.opacity < 1) {
+        pdf.setGState({ opacity: anchor.opacity });
+        pdf.addImage(options.qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize, `contract-qr-${anchor.id}-${pageNum}`, 'NONE');
+        pdf.setGState({ opacity: 1 }); // Reset opacity
+      } else {
+        pdf.addImage(options.qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize, `contract-qr-${anchor.id}-${pageNum}`, 'NONE');
+      }
     });
   };
   
@@ -963,17 +1038,14 @@ export function generateContractPdfFromStructure(
       const filled = fillContractTokens(section.body_html, fields);
       writeRichHtml({ pdf, left: M.left, contentW, cursor, ensureSpace: ensure, font: 'times' }, filled);
       
-      // Render sub-sections. Heading is prepended as inline <strong> so
-      // it flows on the same line as the body's first sentence (e.g.
-      // "(i) The Service Provider shall…") — mirrors ContractPreview.
+      // Render sub-sections in a 2-column layout: heading on the left,
+      // body on the right (mirrors ContractPreview's nested grid).
       if (section.subSections && section.subSections.length > 0) {
         section.subSections.forEach((subSec) => {
           if (subSec.forcePageBreakBefore) newPage();
-          else cursor.y += 4; // gap before sub-section
-          const subFilled = fillContractTokens(subSec.body_html, fields);
-          const inlined = `<strong>${subSec.heading}</strong>&nbsp;${subFilled}`;
-          writeRichHtml({ pdf, left: M.left, contentW, cursor, ensureSpace: ensure, font: 'times' }, inlined);
-          cursor.y += 3; // gap after sub-section
+          else cursor.y += 4;
+          renderSubSectionTwoCol(pdf, subSec, fields, M.left, contentW, cursor, ensure);
+          cursor.y += 3;
         });
       }
 
@@ -996,18 +1068,14 @@ export function generateContractPdfFromStructure(
     writeRichHtml({ pdf, left: M.left, contentW, cursor, ensureSpace: ensure, font: 'times' }, filled);
     cursor.y += 3; // gap between sections
     
-    // Render sub-sections
+    // Render sub-sections in a 2-column layout — heading on the left,
+    // body on the right (mirrors ContractPreview's nested grid).
     if (section.subSections && section.subSections.length > 0) {
       section.subSections.forEach((subSec) => {
         if (subSec.forcePageBreakBefore) newPage();
-        else cursor.y += 4; // gap before sub-section
-        pdf.setFont('times', 'bold');
-        pdf.setFontSize(11);
-        pdf.text(subSec.heading, M.left, cursor.y);
-        cursor.y += 6;
-        const subFilled = fillContractTokens(subSec.body_html, fields);
-        writeRichHtml({ pdf, left: M.left, contentW, cursor, ensureSpace: ensure, font: 'times' }, subFilled);
-        cursor.y += 3; // gap after sub-section
+        else cursor.y += 4;
+        renderSubSectionTwoCol(pdf, subSec, fields, M.left, contentW, cursor, ensure);
+        cursor.y += 3;
       });
     }
   }
