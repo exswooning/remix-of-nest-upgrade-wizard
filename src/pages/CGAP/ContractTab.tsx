@@ -36,6 +36,8 @@ import {
   noteUploadedTemplateLength,
   forgetExtraLength,
   detectTemplatePageCount,
+  hasBundledLengthTemplate,
+  buildPaymentScheduleTokens,
   DEFAULT_CONTRACT_LENGTH,
   type ContractLength,
 } from '@/utils/contractHtmlTemplate';
@@ -112,27 +114,32 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
   const templateFileInputRef = useRef<HTMLInputElement | null>(null);
   const handleUploadLengthTemplate = useCallback(async (file: File) => {
     try {
-      const html = await file.text();
+      // Dispatch by file format. .html passes straight through; .docx
+      // is converted via mammoth; .pdf via pdfjs into one positioned
+      // page per source page. See `src/utils/documentToHtml.ts` for
+      // the per-format pipelines.
+      const { convertToHtml } = await import('@/utils/documentToHtml');
+      const converted = await convertToHtml(file);
+      const html = converted.html;
       if (!html.trim()) {
         toast({ title: 'Empty file', description: 'The selected file has no content.', variant: 'destructive' });
         return;
       }
-      // Auto-detect the actual page count so the slot key matches
-      // reality. The user no longer has to manually align the slider
-      // with the file's length — the file decides. Falls back to the
-      // current slider position if detection can't find page markers.
-      const detected = detectTemplatePageCount(html);
-      const targetLength: ContractLength = detected > 1 ? detected : contractLength;
+      // Page count: converters report their own (DOCX = 1, PDF = pdfjs
+      // numPages, HTML = detected `.contract-page` count). The HTML
+      // sniff is a fallback for anything the converter couldn't pin.
+      const detected = converted.pageCount > 0 ? converted.pageCount : detectTemplatePageCount(html);
+      const targetLength: ContractLength = detected > 0 ? detected : contractLength;
       saveContractHtmlTemplateForLength(targetLength, html);
       noteUploadedTemplateLength(targetLength); // adds to slider if > 9
       setTemplateBump(b => b + 1);
       setContractLength(targetLength); // snap to the file's actual length
-      const detectionNote = detected > 1
-        ? (detected === contractLength ? '' : ` (auto-detected ${detected} pages)`)
-        : ' (couldn’t detect page count — used current slider value)';
+      const formatLabel = converted.format === 'docx' ? 'Word doc' : converted.format === 'pdf' ? 'PDF' : 'HTML';
+      const detectionNote = ` · ${formatLabel} → ${detected} page${detected === 1 ? '' : 's'}`;
+      const extraNotes = converted.notes.length ? ` · ${converted.notes.length} note${converted.notes.length === 1 ? '' : 's'}` : '';
       toast({
         title: `${targetLength}-page template uploaded`,
-        description: `${file.name} · ${(file.size / 1024).toFixed(1)} KB${detectionNote}`,
+        description: `${file.name} · ${(file.size / 1024).toFixed(1)} KB${detectionNote}${extraNotes}`,
       });
     } catch (err) {
       toast({ title: 'Upload failed', description: String(err instanceof Error ? err.message : err).slice(0, 180), variant: 'destructive' });
@@ -593,8 +600,109 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
     }
   };
 
+  /** HTML-template-based .docx download. Mirrors the PDF capture path
+   *  (`downloadPdfFromHtmlTemplate`): renders the active length
+   *  template into an off-screen host, captures each `.contract-page`
+   *  as a PNG via html2canvas, then packs one image per A4 page into a
+   *  zero-margin DOCX so the output is visually identical to what's in
+   *  the live preview iframe. Trade-off vs the legacy buildContractDocx
+   *  path: the resulting .docx is non-editable (each page is a single
+   *  embedded image), but it MATCHES the preview pixel-for-pixel —
+   *  which was the user's complaint about the previous output looking
+   *  "messy". */
+  const downloadDocxFromHtmlTemplate = async (id: string) => {
+    toast({ title: 'Building .docx…', description: 'Rendering active HTML template into Word' });
+    const scheduleTokens = buildPaymentScheduleTokens(parseInt(fields.contractPeriodNum || '12', 10));
+    const filled = fillContractHtmlTemplate(
+      getEffectiveContractHtmlTemplateForLength(contractLength),
+      { ...contractFieldBag, contract_id: id, qr_data_url: showQrCode ? (qrCodeDataUrl || '') : '', page_num: '1', total_pages: String(contractLength), ...scheduleTokens } as unknown as Record<string, string>,
+    );
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;top:-99999px;left:-99999px;width:794px;background:#fff;pointer-events:none;z-index:-1';
+    host.innerHTML = filled;
+    document.body.appendChild(host);
+    await new Promise((r) => requestAnimationFrame(r));
+    try {
+      const [html2canvas, docxLib, { saveAs }] = await Promise.all([
+        import('html2canvas').then(m => m.default),
+        import('docx'),
+        import('file-saver'),
+      ]);
+      const pages = Array.from(host.querySelectorAll<HTMLElement>('.contract-page'));
+      if (pages.length === 0) throw new Error('Template produced no .contract-page elements.');
+      const pageImages: ArrayBuffer[] = [];
+      for (let i = 0; i < pages.length; i++) {
+        const pageNumEl = pages[i].querySelectorAll('div');
+        pageNumEl.forEach((el) => {
+          if (el.textContent && /^Page \d+ of \d+$/.test(el.textContent.trim())) {
+            el.textContent = `Page ${i + 1} of ${pages.length}`;
+          }
+        });
+        const canvas = await html2canvas(pages[i], {
+          scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#ffffff',
+          width: 794, height: 1123, windowWidth: 794, windowHeight: 1123, logging: false,
+        });
+        const blob: Blob = await new Promise((r, j) => canvas.toBlob(b => b ? r(b) : j(new Error('Canvas toBlob returned null')), 'image/png'));
+        pageImages.push(await blob.arrayBuffer());
+      }
+      // A4 in twips: 1 inch = 1440 twips, A4 = 8.27" × 11.69" =
+      // 11906 × 16838 twips. Image dimensions are in pixels (Word uses
+      // 96 DPI as the default px → EMU conversion).
+      const { Document, ImageRun, Packer, Paragraph } = docxLib;
+      const doc = new Document({
+        sections: [{
+          properties: {
+            page: {
+              size: { width: 11906, height: 16838 },
+              margin: { top: 0, right: 0, bottom: 0, left: 0, header: 0, footer: 0, gutter: 0 },
+            },
+          },
+          children: pageImages.map((data, i) => new Paragraph({
+            pageBreakBefore: i > 0,
+            spacing: { before: 0, after: 0 },
+            children: [
+              new ImageRun({
+                type: 'png',
+                data,
+                transformation: { width: 794, height: 1123 },
+              }),
+            ],
+          })),
+        }],
+      });
+      const blob = await Packer.toBlob(doc);
+      const filename = `${id || 'contract'}.docx`;
+      saveAs(blob, filename);
+      const savedPath = await saveExportToDatabase(blob, filename, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      logActivity({
+        kind: 'pdf',
+        module: 'CGAP/Contract',
+        action: 'Contract .docx generated (HTML template)',
+        meta: { filename, contract_id: id, client: fields.clientCompanyName, product: selectedProduct, pages: pageImages.length, archived_path: savedPath },
+      });
+      toast({
+        title: savedPath ? '.docx downloaded and archived' : '.docx downloaded',
+        description: savedPath ? `${filename} · saved to database` : filename,
+      });
+    } catch (err) {
+      console.error('HTML template DOCX capture failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({ title: 'DOCX render failed', description: msg.slice(0, 180), variant: 'destructive' });
+    } finally {
+      host.remove();
+    }
+  };
+
   const downloadDocx = async () => {
     const id = resolveDocumentId();
+    // HTML template is the canonical render path (toggle is locked on)
+    // so always go through the preview-matching DOCX builder. Legacy
+    // buildContractDocx path is retained below behind the `useHtmlTemplate`
+    // guard in case the toggle is ever re-introduced.
+    if (useHtmlTemplate) {
+      await downloadDocxFromHtmlTemplate(id);
+      return;
+    }
     try {
       const [{ buildContractDocx }, { saveAs }] = await Promise.all([
         import('@/utils/contractDocxBuilder'),
@@ -674,9 +782,10 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
    *  Used by the "Use HTML template" toggle on the Contract tab. */
   const downloadPdfFromHtmlTemplate = async (id: string) => {
     toast({ title: 'Building PDF…', description: 'Rendering uploaded HTML template' });
+    const scheduleTokens = buildPaymentScheduleTokens(parseInt(fields.contractPeriodNum || '12', 10));
     const filled = fillContractHtmlTemplate(
       getEffectiveContractHtmlTemplateForLength(contractLength),
-      { ...contractFieldBag, contract_id: id, qr_data_url: showQrCode ? (qrCodeDataUrl || '') : '', page_num: '1', total_pages: String(contractLength) } as unknown as Record<string, string>,
+      { ...contractFieldBag, contract_id: id, qr_data_url: showQrCode ? (qrCodeDataUrl || '') : '', page_num: '1', total_pages: String(contractLength), ...scheduleTokens } as unknown as Record<string, string>,
     );
     const host = document.createElement('div');
     host.style.cssText = 'position:fixed;top:-99999px;left:-99999px;width:794px;background:#fff;pointer-events:none;z-index:-1';
@@ -1067,12 +1176,16 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
             ? (dm ? 'bg-teal-900/40 text-teal-300 border-teal-700' : 'bg-teal-50 text-teal-700 border-teal-300')
             : (dm ? 'bg-gray-900 text-gray-400 border-gray-700' : 'bg-gray-50 text-gray-500 border-gray-300'),
         )}>
-          {contractLength}p · {lengthTemplateUploaded ? 'custom template' : 'bundled default'}
+          {contractLength}p · {lengthTemplateUploaded
+            ? 'custom template'
+            : hasBundledLengthTemplate(contractLength)
+              ? 'bundled template'
+              : 'fallback default'}
         </span>
         <input
           ref={templateFileInputRef}
           type="file"
-          accept=".html,.htm,text/html"
+          accept=".html,.htm,text/html,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,application/pdf"
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
@@ -1086,7 +1199,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           type="button"
           onClick={() => templateFileInputRef.current?.click()}
           className="h-8 gap-1.5"
-          title={`Upload an HTML template for the ${contractLength}-page length`}
+          title={`Upload a template for the ${contractLength}-page length. Accepts .html / .docx / .pdf — Word docs convert via mammoth, PDFs via pdfjs (per-page positioned text).`}
         >
           <Upload className="w-3.5 h-3.5" /> Upload
         </Button>
@@ -1652,7 +1765,7 @@ const ContractTab: React.FC<ContractTabProps> = ({ darkMode = false }) => {
           <iframe
             title="Contract HTML template preview"
             sandbox="allow-same-origin"
-            srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:16px 0;background:#f3f4f6}.contract-page{margin:0 auto 16px;box-shadow:0 2px 10px rgba(0,0,0,0.10)}</style></head><body>${fillContractHtmlTemplate(getEffectiveContractHtmlTemplateForLength(contractLength), { ...contractFieldBag, qr_data_url: showQrCode ? (qrCodeDataUrl || '') : '', page_num: '1', total_pages: String(contractLength) } as unknown as Record<string, string>)}</body></html>`}
+            srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:16px 0;background:#f3f4f6}.contract-page{margin:0 auto 16px;box-shadow:0 2px 10px rgba(0,0,0,0.10)}</style></head><body>${fillContractHtmlTemplate(getEffectiveContractHtmlTemplateForLength(contractLength), { ...contractFieldBag, qr_data_url: showQrCode ? (qrCodeDataUrl || '') : '', page_num: '1', total_pages: String(contractLength), ...buildPaymentScheduleTokens(parseInt(fields.contractPeriodNum || '12', 10)) } as unknown as Record<string, string>)}</body></html>`}
             key={`${contractLength}-${templateBump}`}
             className="block bg-transparent"
             style={{ width: '100%', height: 900, border: 0 }}

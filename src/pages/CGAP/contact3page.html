@@ -1,0 +1,373 @@
+<!--
+  Bundled 3-page Google Workspace contract template.
+  Imported as raw text by src/utils/contractHtmlTemplate.ts and
+  slotted in at length 3 on the Contract tab's length slider. Pages
+  line up with the bundled 9-page template's visual style:
+   - Header: {contract_id} top-left, "CONTRACT AGREEMENT" top-centre
+   - Footer: "Page N of 3" bottom-right
+   - Two-column section grid: number/name on the LEFT, body on the
+     RIGHT (mirrors the YD-NNBS reference samples)
+   - Times New Roman 12pt body, justified text
+   - Sub-sections (A. / B. / C.) indented within the body column
+  Cascade still applies: user upload for length 3 > this file >
+  legacy single override > 9-page bundled default. Tokens use the
+  {single-brace} convention substituted by fillContractHtmlTemplate.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Contract Agreement — 3 Pages</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0;
+  background: #f0f0f0;
+  font-family: "Times New Roman", Times, serif;
+}
+.contract-page {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 10mm auto;
+  background: white;
+  padding: 30mm 22mm 25mm 22mm;
+  position: relative;
+  box-shadow: 0 0 5px rgba(0,0,0,.2);
+  font-size: 12pt;
+  line-height: 1.4;
+}
+.page-break { page-break-after: always; }
+.page-header {
+  position: absolute;
+  top: 10mm;
+  left: 22mm;
+  right: 22mm;
+  display: flex;
+  align-items: baseline;
+  font-size: 10pt;
+}
+.page-header .header-id { font-weight: bold; }
+.page-header .header-title {
+  flex: 1;
+  text-align: center;
+  font-weight: bold;
+}
+.page-footer {
+  position: absolute;
+  bottom: 10mm;
+  right: 22mm;
+  font-size: 10pt;
+}
+.title-block {
+  text-align: center;
+  margin-bottom: 8mm;
+}
+.title-block .main-title {
+  font-size: 14pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.3pt;
+}
+.title-block .product-title {
+  font-size: 14pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.3pt;
+  margin-top: 2mm;
+}
+.contract-no {
+  text-align: center;
+  font-weight: bold;
+  text-decoration: underline;
+  font-size: 13pt;
+  margin: 8mm 0 10mm;
+}
+.preamble {
+  text-align: justify;
+  margin-bottom: 4mm;
+}
+.preamble p { margin: 0 0 3mm; }
+.section {
+  display: grid;
+  grid-template-columns: 38mm 1fr;
+  gap: 6mm;
+  margin-top: 6mm;
+}
+.section-title {
+  font-weight: bold;
+  padding-top: 0.4mm;
+}
+.section-body { text-align: justify; }
+.section-body p { margin: 0 0 3mm; }
+.sub-section {
+  display: grid;
+  grid-template-columns: 8mm 1fr;
+  gap: 4mm;
+  margin-top: 3mm;
+}
+.sub-letter {
+  font-weight: bold;
+}
+.sub-heading {
+  font-weight: bold;
+  text-decoration: underline;
+  margin-bottom: 2mm;
+}
+ol.term-list {
+  margin: 2mm 0 0 5mm;
+  padding-left: 4mm;
+}
+ol.term-list li {
+  margin-bottom: 2mm;
+  text-align: justify;
+}
+.annex-title {
+  text-align: center;
+  font-weight: bold;
+  text-decoration: underline;
+  font-size: 13pt;
+  margin: 4mm 0 4mm;
+}
+.annex-sub {
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 4mm;
+}
+ul.scope-list {
+  margin: 2mm 0 0 5mm;
+  padding-left: 4mm;
+}
+ul.scope-list li {
+  margin-bottom: 1.5mm;
+  text-align: justify;
+}
+.signature-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6mm;
+}
+.signature-table th, .signature-table td {
+  border: 1px solid #000;
+  padding: 3mm 4mm;
+  vertical-align: top;
+  width: 50%;
+}
+.signature-table th {
+  text-align: center;
+  font-weight: bold;
+  padding: 2mm 4mm;
+  background: #fff;
+}
+.signature-table .sig-label {
+  font-weight: bold;
+  padding: 1.5mm 4mm;
+}
+.signature-table .sig-blank {
+  height: 14mm;
+}
+</style>
+</head>
+<body>
+
+<!-- PAGE 1 -->
+<div class="contract-page page-break">
+  <div class="page-header">
+    <span class="header-id">{contract_id}</span>
+    <span class="header-title">CONTRACT AGREEMENT</span>
+  </div>
+
+  <div class="title-block">
+    <div class="main-title">CONTRACT AGREEMENT FOR</div>
+    <div class="product-title">{product} SERVICES</div>
+  </div>
+
+  <div class="contract-no">CONTRACT IDENTIFICATION No. {contract_id}</div>
+
+  <div class="preamble">
+    <p>
+      THIS CONTRACT (&ldquo;Contract&rdquo;) is entered into on {effective_date},
+      by and between the <strong><em>{customer_name}</em></strong>
+      (&ldquo;the Client&rdquo;) having its principal place of business at
+      <strong><em>{customer_address}</em></strong> and
+      <strong><em>NEST NEPAL BUSINESS SOLUTIONS PVT. LTD.</em></strong>
+      (&ldquo;the Service Provider&rdquo;) having its principal office located at
+      <strong><em>Kupandole, Lalitpur.</em></strong>
+    </p>
+    <p>WHEREAS, the Client wishes to have the Service Provider performing/providing the services hereinafter referred to, and</p>
+    <p>WHEREAS, the Service Provider is willing to perform/provide these services,</p>
+    <p>NOW THEREFORE THE PARTIES hereby agree as follows:</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">1.&nbsp;Services</div>
+    <div class="section-body">
+      <p>The Service Provider shall provision {product} services including user licensing, business email setup, account activation, administrative access, technical support, troubleshooting, user configuration guidance, collaboration tools support, security setup, and related cloud productivity services.</p>
+      <p>The Service Provider shall provide the license credentials, administrative access, and support reports within the time periods specified by the Service Provider.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">2.&nbsp;Term</div>
+    <div class="section-body">
+      <p>The subscription shall remain valid for {service_term} from the date of license activation, covering {num_users} users including the periods of renewal. Any modification, additional licenses, or service upgrades shall be subject to a new agreement or an addendum/amendment to this contract. The Client acknowledges that the subscription to the provided services is bound for the term stated above.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">3.&nbsp;Payment</div>
+    <div class="section-body">
+      <div class="sub-section">
+        <div class="sub-letter">A.</div>
+        <div>
+          <div class="sub-heading">Ceiling</div>
+          <p>For Services rendered, the Client shall pay the Service Provider a total amount of <strong>NPR&nbsp;{amount}/- (Including VAT)</strong> — {amount_words} — covering all of the Service Provider&rsquo;s costs, profits, and applicable tax obligations within the subscription term.</p>
+        </div>
+      </div>
+      <div class="sub-section">
+        <div class="sub-letter">B.</div>
+        <div>
+          <div class="sub-heading">Payment Conditions</div>
+          <p>Payment shall become due upon successful activation and delivery of administrative credentials. Payments shall be made to the Service Provider&rsquo;s bank account:</p>
+          <p>
+            <strong>Bank Name:</strong> {bank_name}<br>
+            <strong>Account Name:</strong> {payee_name}<br>
+            <strong>Account Number:</strong> {bank_account}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-footer">Page <strong>1</strong> of 3</div>
+</div>
+
+<!-- PAGE 2 -->
+<div class="contract-page page-break">
+  <div class="page-header">
+    <span class="header-id">{contract_id}</span>
+    <span class="header-title">CONTRACT AGREEMENT</span>
+  </div>
+
+  <div class="section">
+    <div class="section-title">4.&nbsp;Project Administration</div>
+    <div class="section-body">
+      <p>Each party designates a coordinator responsible for communication, approvals, service requests, and contract execution. The Client&rsquo;s coordinator is <strong>{customer_attn}</strong>; the Service Provider designates its account manager for all subscription and service-related queries.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">5.&nbsp;Performance Standard</div>
+    <div class="section-body">
+      <p>The Service Provider undertakes to perform the Services with the highest standards of professional and ethical competence and integrity, targeting {uptime_pct} uptime.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">6.&nbsp;Confidentiality</div>
+    <div class="section-body">
+      <p>The Service Provider shall not, during the term of this Contract and within two years after its expiration, disclose any proprietary or confidential information relating to the Services, this Contract, or the Client&rsquo;s business or operations without the prior written consent of the Client. This clause shall not restrict the Service Provider from publicly acknowledging the successful completion of services in general terms.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">7.&nbsp;Ownership of Material</div>
+    <div class="section-body">
+      <p>Any studies, reports, or other material prepared by the Service Provider for the Client under the Contract shall remain the property of the Client. The Service Provider may retain a copy of such documents for archival purposes only.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">8.&nbsp;Assignment</div>
+    <div class="section-body">
+      <p>Neither party may assign this Contract or any portion of it without the other party&rsquo;s prior written consent.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">9.&nbsp;Governing Law &amp; Language</div>
+    <div class="section-body">
+      <p>This Contract shall be governed by the laws of the <strong><em>Government of Nepal</em></strong>, and the language of the Contract shall be <strong><em>English</em></strong>.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">10.&nbsp;Fraud, Termination &amp; Disputes</div>
+    <div class="section-body">
+      <p>Either party may terminate this Contract upon written notice if corrupt, fraudulent, collusive, coercive, or obstructive practices are identified. The Client may terminate this Contract with at least thirty (30) working days&rsquo; prior written notice on any of the following grounds:</p>
+      <ol class="term-list">
+        <li>Material breach not corrected within thirty (30) days of written notice.</li>
+        <li>Insolvency or bankruptcy of either party.</li>
+        <li>Fraudulent or corrupt practices in competing for or in performing the Contract.</li>
+        <li>Mutual written agreement of the parties.</li>
+        <li>Failure of the Client&rsquo;s payment obligations within the agreed timeline.</li>
+        <li>Service discontinuation under applicable provisions.</li>
+      </ol>
+      <p>Disputes arising from this agreement shall first be resolved through mutual consultation and, failing resolution, through arbitration in Nepal.</p>
+    </div>
+  </div>
+
+  <div class="page-footer">Page <strong>2</strong> of 3</div>
+</div>
+
+<!-- PAGE 3 -->
+<div class="contract-page">
+  <div class="page-header">
+    <span class="header-id">{contract_id}</span>
+    <span class="header-title">CONTRACT AGREEMENT</span>
+  </div>
+
+  <div class="annex-title">Annex A — Summary of Services</div>
+  <div class="annex-sub">{product}</div>
+
+  <p style="text-align:justify;">The Service Provider shall supply and manage {product} licenses where applicable. Services include:</p>
+
+  <ul class="scope-list">
+    <li>Business email provisioning on a custom domain</li>
+    <li>User account activation and Admin Console support</li>
+    <li>Desktop and mobile setup assistance</li>
+    <li>Video conferencing configuration and collaboration support</li>
+    <li>Drive, Docs, Sheets, Slides, and Calendar guidance</li>
+    <li>Password reset and account-related troubleshooting</li>
+    <li>Security and compliance guidance through subscription period</li>
+  </ul>
+
+  <div class="annex-title" style="margin-top: 8mm;">Annex B — Cost of Services</div>
+  <p style="text-align:justify;">Annual Subscription Cost: <strong>NPR&nbsp;{amount}/- (Including VAT)</strong> — {amount_words}.</p>
+
+  <table class="signature-table">
+    <tr>
+      <th>FOR THE CLIENT</th>
+      <th>FOR THE SERVICE PROVIDER</th>
+    </tr>
+    <tr>
+      <td class="sig-label">Signed By</td>
+      <td class="sig-label">Signed By</td>
+    </tr>
+    <tr>
+      <td>{signatory_name}</td>
+      <td>{sp_signatory_name}</td>
+    </tr>
+    <tr>
+      <td class="sig-label">Title</td>
+      <td class="sig-label">Title</td>
+    </tr>
+    <tr>
+      <td>{signatory_title}</td>
+      <td>{sp_signatory_title}</td>
+    </tr>
+    <tr>
+      <td class="sig-label">Signature</td>
+      <td class="sig-label">Signature</td>
+    </tr>
+    <tr>
+      <td class="sig-blank"></td>
+      <td class="sig-blank"></td>
+    </tr>
+  </table>
+
+  <div class="page-footer">Page <strong>3</strong> of 3</div>
+</div>
+
+</body>
+</html>

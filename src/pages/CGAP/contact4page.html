@@ -1,0 +1,354 @@
+<!--
+  Bundled 4-page Google Workspace contract template.
+  Imported as raw text by src/utils/contractHtmlTemplate.ts and
+  slotted in at length 4 on the Contract tab's length slider.
+
+  Layout matches the YD-NNBS reference samples (per-page header /
+  footer chrome, two-column section grid with the section name in the
+  LEFT column and body in the RIGHT, sub-letter gutters for Payment
+  sub-clauses, bordered 12-row signature table on page 3, full-width
+  Relevant Documents block on page 4).
+
+  Cascade still applies: user upload for length 4 > this file >
+  legacy single override > 9-page bundled default. Tokens use the
+  {single-brace} convention substituted by fillContractHtmlTemplate.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contract Agreement — 4 Pages</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0;
+  background: #f5f5f5;
+  font-family: "Times New Roman", Times, serif;
+}
+.contract-page {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 10mm auto;
+  background: #fff;
+  padding: 30mm 22mm 25mm 22mm;
+  box-sizing: border-box;
+  position: relative;
+  box-shadow: 0 0 5px rgba(0,0,0,.15);
+  page-break-after: always;
+  font-size: 12pt;
+  line-height: 1.45;
+}
+.page-header {
+  position: absolute;
+  top: 10mm;
+  left: 22mm;
+  right: 22mm;
+  display: flex;
+  align-items: baseline;
+  font-size: 10pt;
+}
+.page-header .header-id { font-weight: bold; }
+.page-header .header-title {
+  flex: 1;
+  text-align: center;
+  font-weight: bold;
+}
+.page-footer {
+  position: absolute;
+  bottom: 12mm;
+  right: 22mm;
+  font-size: 10pt;
+}
+.title-block { text-align: center; margin-bottom: 8mm; }
+.title-block .main-title {
+  font-size: 14pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.3pt;
+}
+.title-block .product-title {
+  font-size: 14pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.3pt;
+  margin-top: 1mm;
+}
+.contract-no {
+  text-align: center;
+  font-weight: bold;
+  text-decoration: underline;
+  font-size: 13pt;
+  margin: 8mm 0 10mm;
+}
+.preamble { text-align: justify; }
+.preamble p { margin: 0 0 3mm; }
+.section {
+  display: grid;
+  grid-template-columns: 38mm 1fr;
+  gap: 6mm;
+  margin-top: 7mm;
+}
+.section-title { font-weight: bold; padding-top: 0.4mm; }
+.section-body { text-align: justify; }
+.section-body p { margin: 0 0 3mm; }
+.sub-section {
+  display: grid;
+  grid-template-columns: 8mm 1fr;
+  gap: 4mm;
+  margin-top: 4mm;
+}
+.sub-letter { font-weight: bold; padding-top: 0.4mm; }
+.sub-heading {
+  font-weight: bold;
+  text-decoration: underline;
+  margin-bottom: 2mm;
+}
+.payment-cycle { margin-top: 4mm; }
+.payment-cycle .cycle-label {
+  font-weight: bold;
+  margin-bottom: 1.5mm;
+}
+.payment-cycle p { margin: 0.5mm 0; }
+.bank-details { margin-top: 4mm; line-height: 1.6; }
+.signature-block .sig-headers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  text-align: center;
+  font-weight: bold;
+  font-size: 13pt;
+  margin-top: 18mm;
+  margin-bottom: 2mm;
+}
+.signature-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.signature-table td {
+  border: 1px solid #000;
+  width: 50%;
+  vertical-align: top;
+  padding: 2.5mm 4mm;
+}
+.signature-table .sig-label {
+  text-align: center;
+  font-weight: bold;
+  padding: 1.8mm 4mm;
+}
+.signature-table .sig-blank-sm { height: 20mm; }
+.signature-table .sig-blank-md { height: 32mm; }
+.signature-table .sig-blank-lg { height: 42mm; }
+.relevant-block .relevant-title {
+  font-weight: bold;
+  font-size: 13pt;
+  margin-bottom: 5mm;
+}
+.relevant-block .relevant-body {
+  font-weight: bold;
+  font-size: 12pt;
+  text-align: justify;
+}
+</style>
+</head>
+<body>
+
+<!-- PAGE 1 -->
+<div class="contract-page">
+  <div class="page-header">
+    <span class="header-id">{contract_id}</span>
+    <span class="header-title">CONTRACT AGREEMENT</span>
+  </div>
+
+  <div class="title-block">
+    <div class="main-title">CONTRACT AGREEMENT FOR</div>
+    <div class="product-title">{product} SERVICES</div>
+  </div>
+
+  <div class="contract-no">CONTRACT IDENTIFICATION No. {contract_id}</div>
+
+  <div class="preamble">
+    <p>
+      THIS CONTRACT (&ldquo;Contract&rdquo;) is entered into this {effective_date},
+      by and between the <strong><em>{customer_name}</em></strong>
+      (&ldquo;the Client&rdquo;) having its principal place of business at
+      <strong><em>{customer_address}</em></strong> and
+      <strong>NEST NEPAL BUSINESS SOLUTIONS PVT LTD.</strong>
+      (&ldquo;the Service Provider&rdquo;) having its principal office located at
+      <strong><em>Kupandole, Lalitpur.</em></strong>
+    </p>
+    <p>WHEREAS, the Client wishes to have the Service Provider performing/providing the services hereinafter referred to, and</p>
+    <p>WHEREAS, the Service Provider is willing to perform/provide these services,</p>
+    <p>NOW THEREFORE THE PARTIES hereby agree as follows:</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">1.&nbsp;Services</div>
+    <div class="section-body">
+      <div class="sub-section">
+        <div class="sub-letter">(i)</div>
+        <div>
+          <p>The Service Provider shall provide the license credentials, administrative access, and support reports listed within the time periods specified in the ToR.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">2.&nbsp;Terms</div>
+    <div class="section-body">
+      <div class="sub-section">
+        <div class="sub-letter">A.</div>
+        <div>
+          <p>
+            The Service Provider shall provide the subscription services and technical support for a period of <strong>{service_term}</strong> commencing from the date of license activation. The contract covers the subscription period for <strong>{num_users} users</strong> including the periods of renewal &amp; the number of users shall not be reduced below {num_users}. The modification/User addition/renewal of services shall be subject to a new agreement or an addendum/amendment to this contract or the current contract &amp; The prices will be calculated according to Pro-Rata basis. The Client acknowledges that the subscription to the provided services is bound for the period of {service_term}.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-footer">Page <strong>1</strong> of 4</div>
+</div>
+
+<!-- PAGE 2 -->
+<div class="contract-page">
+  <div class="page-header">
+    <span class="header-id">{contract_id}</span>
+    <span class="header-title">CONTRACT AGREEMENT</span>
+  </div>
+
+  <div class="section">
+    <div class="section-title">3.&nbsp;Payment</div>
+    <div class="section-body">
+
+      <div class="sub-section">
+        <div class="sub-letter">A.</div>
+        <div>
+          <div class="sub-heading">Ceiling</div>
+          <p>
+            For Services rendered pursuant to Annex A, the Client shall pay the Service Provider an amount not to exceed a ceiling of <strong>NRs.&nbsp;{amount}/-</strong> (In words: {amount_words}) including VAT as per total charge within the total subscription period. This amount has been established based on the understanding that it includes all of the Service Provider&rsquo;s costs and profits as well as any tax obligation.
+          </p>
+        </div>
+      </div>
+
+      <div class="sub-section">
+        <div class="sub-letter">C.</div>
+        <div>
+          <div class="sub-heading">Payment Conditions</div>
+          <!-- Installment paragraph + cycle list are derived from
+               contractPeriodNum at substitution time. 12 months → only
+               the 1st installment line; 24 months → 1st + 2nd; 36+ →
+               full three-installment block. See
+               buildPaymentScheduleTokens in contractHtmlTemplate.ts. -->
+          {installment_block}
+          {payment_cycle_block}
+
+          <p style="margin-top:4mm;">Payments shall be made to Service Provider&rsquo;s bank account <em>as</em> mentioned below:</p>
+
+          <div class="bank-details">
+            <strong><em>Bank Name:</em></strong>&nbsp;<em>{bank_name}</em><br>
+            <strong><em>Account Name:</em></strong>&nbsp;<em>{payee_name}</em><br>
+            <strong><em>Account Number:</em></strong>&nbsp;<em>{bank_account}</em>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="page-footer">Page <strong>2</strong> of 4</div>
+</div>
+
+<!-- PAGE 3 -->
+<div class="contract-page">
+  <div class="page-header">
+    <span class="header-id">{contract_id}</span>
+    <span class="header-title">CONTRACT AGREEMENT</span>
+  </div>
+
+  <div class="signature-block">
+    <div class="sig-headers">
+      <div>FOR THE CLIENT</div>
+      <div>FOR THE SERVICE PROVIDER</div>
+    </div>
+
+    <table class="signature-table">
+      <tr>
+        <td class="sig-label">Signed By</td>
+        <td class="sig-label">Signed By</td>
+      </tr>
+      <tr>
+        <td class="sig-blank-sm">{signatory_name}</td>
+        <td class="sig-blank-sm">{sp_signatory_name}</td>
+      </tr>
+      <tr>
+        <td class="sig-label">Title</td>
+        <td class="sig-label">Title</td>
+      </tr>
+      <tr>
+        <td class="sig-blank-sm">{signatory_title}</td>
+        <td class="sig-blank-sm">{sp_signatory_title}</td>
+      </tr>
+      <tr>
+        <td class="sig-label">Signature</td>
+        <td class="sig-label">Signature</td>
+      </tr>
+      <tr>
+        <td class="sig-blank-md"></td>
+        <td class="sig-blank-md"></td>
+      </tr>
+      <tr>
+        <td class="sig-label">With the witness of</td>
+        <td class="sig-label">With the witness of</td>
+      </tr>
+      <tr>
+        <td class="sig-label">Name</td>
+        <td class="sig-label">Name</td>
+      </tr>
+      <tr>
+        <td class="sig-blank-sm">{witness_name}</td>
+        <td class="sig-blank-sm">{sp_witness_name}</td>
+      </tr>
+      <tr>
+        <td class="sig-label">Designation</td>
+        <td class="sig-label">Designation</td>
+      </tr>
+      <tr>
+        <td class="sig-blank-sm">{witness_designation}</td>
+        <td class="sig-blank-sm">{sp_witness_designation}</td>
+      </tr>
+      <tr>
+        <td class="sig-label">Signature</td>
+        <td class="sig-label">Signature</td>
+      </tr>
+      <tr>
+        <td class="sig-blank-lg"></td>
+        <td class="sig-blank-lg"></td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="page-footer">Page <strong>3</strong> of 4</div>
+</div>
+
+<!-- PAGE 4 -->
+<div class="contract-page">
+  <div class="page-header">
+    <span class="header-id">{contract_id}</span>
+    <span class="header-title">CONTRACT AGREEMENT</span>
+  </div>
+
+  <div class="relevant-block">
+    <div class="relevant-title">Relevant Documents</div>
+    <div class="relevant-body">
+      Duly Attached, Financial Quotation Provided with the Agreement, company registration and tax clearance google partnership letter
+    </div>
+  </div>
+
+  <div class="page-footer">Page <strong>4</strong> of 4</div>
+</div>
+
+</body>
+</html>

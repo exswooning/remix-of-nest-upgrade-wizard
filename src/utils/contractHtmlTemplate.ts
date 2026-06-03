@@ -174,11 +174,89 @@ export function clearContractHtmlTemplateForLength(len: ContractLength): void {
   try { localStorage.removeItem(LENGTH_OVERRIDE_KEY(len)); } catch { /* noop */ }
 }
 
-/** Length-aware template resolver. Falls back through the legacy
- *  single override and then the bundled default. */
+// Per-length templates that ship with the build. Bundled at compile
+// time via Vite's `?raw` query so each one is just an inline string —
+// no fetch / loading state needed. Add more entries here as users
+// hand over format files for other lengths.
+import contract3pageHtml from '@/pages/CGAP/contact3page.html?raw';
+import contract4pageHtml from '@/pages/CGAP/contact4page.html?raw';
+
+const BUNDLED_LENGTH_TEMPLATES: Record<number, string> = {
+  3: contract3pageHtml,
+  4: contract4pageHtml,
+};
+
+/** True when the build ships a template tuned for this length (so
+ *  even without a user upload the slider isn't falling back to the
+ *  generic 9-page default). Used by the Contract tab's status chip. */
+export function hasBundledLengthTemplate(len: number): boolean {
+  return Object.prototype.hasOwnProperty.call(BUNDLED_LENGTH_TEMPLATES, len);
+}
+
+/**
+ * Derive the §3 Payment Conditions installment paragraph + Payment
+ * Cycle list HTML based on the contract's term length in months. A
+ * 12-month term only shows the 1st installment / 1st Payment line; a
+ * 24-month term shows 1st + 2nd; a 36-month (or longer) term shows
+ * all three. Returned as a `{ installment_block, payment_cycle_block }`
+ * pair the caller spreads into the template substitution map, so the
+ * 4-page (and any future) bundled template can reference these via
+ * the standard `{token}` convention without needing a Mustache-style
+ * conditional rendering layer.
+ *
+ * Both blocks include the surrounding context the reference template
+ * shows (the "Letter of Completion / SCR" verification sentence on
+ * the installment block, the "Payment Cycle:" label on the cycle
+ * block) so the template only has to drop `{installment_block}` /
+ * `{payment_cycle_block}` in place — no extra prose around them.
+ */
+export function buildPaymentScheduleTokens(periodMonths: number | null | undefined): {
+  installment_block: string;
+  payment_cycle_block: string;
+} {
+  // Round up so 13–24 months counts as a 2-year contract for
+  // installment purposes (and 25–36 as 3-year). Falls back to 1 year
+  // for any non-positive / unparseable input — safest behaviour is
+  // single-payment, which is the most common scenario.
+  const months = Number.isFinite(periodMonths) && (periodMonths as number) > 0 ? (periodMonths as number) : 12;
+  const years = Math.max(1, Math.ceil(months / 12));
+  const completionClause = ` After the successful activation of all licenses and handover of administrative credentials to the Client, verified by a &quot;Letter of Completion&quot; or &quot;Service Completion Report&quot; from the Client's IT section &mdash; if no SCR is received an assumption of service delivery/obligation completion is to be made.`;
+  let installmentSentence: string;
+  let cycleItems: string[];
+  if (years <= 1) {
+    installmentSentence = `The Client shall pay <strong>upon the license and contract activation</strong>.`;
+    cycleItems = [
+      `<p>1<sup>st</sup> Payment: upon license activation, after the invoice is raised</p>`,
+    ];
+  } else if (years === 2) {
+    installmentSentence = `The Client shall pay <strong>1st installment</strong> upon the license and contract activation, and finally <strong>2nd installment</strong> within 1 Year of the initial payment.`;
+    cycleItems = [
+      `<p>1<sup>st</sup> Payment: upon license activation, after the invoice is raised</p>`,
+      `<p>2<sup>nd</sup> Payment: 12 months after activation, after the invoice is raised</p>`,
+    ];
+  } else {
+    installmentSentence = `The Client shall pay <strong>1st installment</strong> upon the license and contract activation, next <strong>2nd installment</strong> within 1 Year of the initial payment and finally <strong>3rd installment</strong> upon another 1 Year of the subscription.`;
+    cycleItems = [
+      `<p>1<sup>st</sup> Payment: upon license activation, after the invoice is raised</p>`,
+      `<p>2<sup>nd</sup> Payment: 12 months after activation, after the invoice is raised</p>`,
+      `<p>3<sup>rd</sup> Payment: 24 months after activation, after the invoice is raised</p>`,
+    ];
+  }
+  return {
+    installment_block: `<p>${installmentSentence}${completionClause}</p>`,
+    payment_cycle_block: `<div class="payment-cycle"><div class="cycle-label">Payment Cycle:</div>${cycleItems.join('')}</div>`,
+  };
+}
+
+/** Length-aware template resolver. Cascade:
+ *    1. User upload for this length (localStorage)
+ *    2. Bundled per-length template (BUNDLED_LENGTH_TEMPLATES above)
+ *    3. Legacy single override (localStorage)
+ *    4. Bundled 9-page default (CONTRACT_HTML_TEMPLATE) */
 export function getEffectiveContractHtmlTemplateForLength(len: ContractLength): string {
   return (
     loadContractHtmlTemplateForLength(len)
+    ?? BUNDLED_LENGTH_TEMPLATES[len]
     ?? loadContractHtmlTemplateOverride()
     ?? CONTRACT_HTML_TEMPLATE
   );
