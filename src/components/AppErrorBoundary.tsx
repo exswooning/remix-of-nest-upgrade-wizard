@@ -8,6 +8,7 @@ type Props = {
 
 type State = {
   hasError: boolean;
+  errorMessage?: string;
 };
 
 const RESETTABLE_STORAGE_KEYS = [
@@ -25,8 +26,8 @@ class AppErrorBoundary extends React.Component<Props, State> {
     hasError: false,
   };
 
-  static getDerivedStateFromError(): State {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, errorMessage: error?.message };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
@@ -54,11 +55,24 @@ class AppErrorBoundary extends React.Component<Props, State> {
             <div className="rounded-full bg-destructive/10 p-2 text-destructive">
               <AlertTriangle className="h-5 w-5" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 flex-1 min-w-0">
               <h1 className="text-xl font-semibold">Something went wrong</h1>
               <p className="text-sm text-muted-foreground">
                 I blocked the blank screen and showed a recovery state instead.
               </p>
+              {this.state.errorMessage && (
+                <pre className="text-[11px] font-mono mt-2 p-2 rounded bg-muted/40 border whitespace-pre-wrap break-words max-h-40 overflow-auto">
+                  {this.state.errorMessage}
+                </pre>
+              )}
+              {this.state.errorMessage?.includes('Missing Supabase env vars') && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  On Vercel: Project Settings → Environment Variables → add{' '}
+                  <code className="font-mono">VITE_SUPABASE_URL</code> and{' '}
+                  <code className="font-mono">VITE_SUPABASE_PUBLISHABLE_KEY</code>{' '}
+                  (apply to Production + Preview + Development), then redeploy.
+                </p>
+              )}
             </div>
           </div>
 
